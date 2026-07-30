@@ -7,18 +7,23 @@ confirms - that's the CLI layer's job (Phase 1 slice 5), the same
 split Atlas keeps between config/writer.py and the atlas init command.
 """
 
+import json
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
 from installer.detect import detect_render_group_gid
 from installer.services import resource_limits_for
-from installer.tiers import TierDefinition
+from installer.tiers import TIERS, TierDefinition
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+STACK_DIR = Path("stack")
+STATE_FILENAME = ".vulcan-state.json"
 
 
 @dataclass
@@ -60,6 +65,55 @@ def enabled_service_keys(config: GenerationConfig) -> set[str]:
     }
 
 
+def save_state(config: GenerationConfig, output_dir: Path) -> None:
+
+    state = {
+        "tier": config.tier.name,
+        "media_path": config.media_path,
+        "puid": config.puid,
+        "pgid": config.pgid,
+        "timezone": config.timezone,
+        "enabled_optional": sorted(config.enabled_optional),
+        "gpu_vendor": config.gpu_vendor,
+        "generated_at": datetime.now(dt_timezone.utc).isoformat()
+    }
+
+    (output_dir / STATE_FILENAME).write_text(json.dumps(state, indent=2))
+
+
+def load_previous_state(output_dir: Path) -> dict | None:
+    """
+    Never raises - missing file, corrupt JSON, or an unknown tier name
+    (e.g. hand-edited) all just mean "no usable previous state."
+    """
+
+    try:
+
+        state = json.loads((output_dir / STATE_FILENAME).read_text())
+        assert state["tier"] in TIERS
+        return state
+
+    except (OSError, json.JSONDecodeError, KeyError, AssertionError):
+        return None
+
+
+def _preserved_vpn_value(output_dir: Path, key: str, default: str) -> str:
+
+    try:
+        existing = (output_dir / ".env").read_text()
+    except OSError:
+        return default
+
+    for line in existing.splitlines():
+
+        if line.startswith(f"{key}="):
+
+            value = line.split("=", 1)[1]
+            return value if value != "changeme" else default
+
+    return default
+
+
 def _jinja_env() -> Environment:
 
     return Environment(
@@ -85,7 +139,12 @@ def render_compose(config: GenerationConfig) -> str:
     )
 
 
-def render_env(config: GenerationConfig) -> str:
+def render_env(
+    config: GenerationConfig,
+    vpn_service_provider: str = "changeme",
+    vpn_type: str = "wireguard",
+    wireguard_private_key: str = "changeme"
+) -> str:
 
     template = _jinja_env().get_template("env.j2")
 
@@ -94,11 +153,14 @@ def render_env(config: GenerationConfig) -> str:
         puid=config.puid,
         pgid=config.pgid,
         timezone=config.timezone,
-        gluetun_enabled="gluetun" in config.enabled_optional
+        gluetun_enabled="gluetun" in config.enabled_optional,
+        vpn_service_provider=vpn_service_provider,
+        vpn_type=vpn_type,
+        wireguard_private_key=wireguard_private_key
     )
 
 
-def write_stack(config: GenerationConfig, output_dir: Path = Path("stack")) -> dict:
+def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -106,8 +168,19 @@ def write_stack(config: GenerationConfig, output_dir: Path = Path("stack")) -> d
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
 
+    # Read any existing .env before it gets overwritten - a real Gluetun
+    # VPN credential the user already filled in must survive a regenerate,
+    # not get reset back to a placeholder.
+    env_content = render_env(
+        config,
+        vpn_service_provider=_preserved_vpn_value(output_dir, "VPN_SERVICE_PROVIDER", "changeme"),
+        vpn_type=_preserved_vpn_value(output_dir, "VPN_TYPE", "wireguard"),
+        wireguard_private_key=_preserved_vpn_value(output_dir, "WIREGUARD_PRIVATE_KEY", "changeme")
+    )
+
     compose_path.write_text(render_compose(config))
-    env_path.write_text(render_env(config))
+    env_path.write_text(env_content)
+    save_state(config, output_dir)
 
     for key in enabled_service_keys(config):
         (output_dir / "config" / key).mkdir(parents=True, exist_ok=True)
