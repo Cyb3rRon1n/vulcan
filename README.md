@@ -10,7 +10,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ## Status
 
-Phase 1 is complete and usable: real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and a guided (or scripted) `./install` flow are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are now fully buildable. The guided flow is plain interactive CLI prompts today, not yet the Security Onion-style TUI; re-running the installer against an existing stack to upgrade tiers isn't built yet either — both are in progress as part of Phase 2.
+Phase 1 is complete and usable: real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and a guided (or scripted) `./install` flow are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are now fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. The guided flow is still plain interactive CLI prompts, not yet the Security Onion-style TUI — that's the remaining piece of Phase 2.
 
 ---
 
