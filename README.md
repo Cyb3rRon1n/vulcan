@@ -10,7 +10,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ## Status
 
-Phase 1 is complete and usable: real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and a guided (or scripted) `./install` flow are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are now fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. The guided flow is still plain interactive CLI prompts, not yet the Security Onion-style TUI — that's the remaining piece of Phase 2.
+Phases 1 and 2 are both complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` now launches the full Security Onion-style guided TUI by default — detection, Docker readiness, tier/configuration, and review/generate/start as five real screens; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way.
 
 ---
 
@@ -30,7 +30,7 @@ Non-interactive / scripted use is also supported:
 ./install --tier medium --media-path /mnt/media --non-interactive --yes --start
 ```
 
-`--non-interactive` requires both `--yes` and an explicit `--tier`/`--media-path` — nothing is inferred silently in scripted mode. `--start` is likewise opt-in on every path: generating a stack never launches it without being asked (interactively) or told to (`--start`).
+`--non-interactive` requires both `--yes` and an explicit `--tier`/`--media-path` — nothing is inferred silently in scripted mode. `--start` is likewise opt-in on every path: generating a stack never launches it without being asked (interactively) or told to (`--start`). Prefer the original plain-prompt flow over the TUI (e.g. on a limited terminal)? Add `--plain`.
 
 ---
 
