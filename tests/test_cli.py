@@ -59,23 +59,146 @@ def test_non_interactive_requires_tier_and_media_path():
     assert "--tier and --media-path are required" in result.output
 
 
-def test_tier_heavy_rejected_non_interactive():
+def test_tier_heavy_accepted_non_interactive(tmp_path):
 
-    result = runner.invoke(
-        app,
-        ["--tier", "heavy", "--non-interactive", "--yes", "--media-path", "/tmp/x"]
-    )
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            ["--tier", "heavy", "--non-interactive", "--yes", "--media-path", media_path]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "heavy"
+
+
+def test_tier_invalid_value_rejected():
+
+    result = runner.invoke(app, ["--tier", "extreme"])
 
     assert result.exit_code == 1
-    assert "isn't buildable yet" in result.output
+    assert "must be 'light', 'medium', or 'heavy'" in result.output
 
 
-def test_tier_heavy_rejected_interactive():
+def test_non_interactive_heavy_with_gpu_detected_auto_enables(tmp_path):
 
-    result = runner.invoke(app, ["--tier", "heavy"])
+    media_path = str(tmp_path / "media")
 
-    assert result.exit_code == 1
-    assert "isn't buildable yet" in result.output
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            ["--tier", "heavy", "--media-path", media_path, "--non-interactive", "--yes"]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.gpu_vendor == "amd"
+
+
+def test_non_interactive_heavy_with_no_gpu_flag_disables_it(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--non-interactive", "--yes", "--no-gpu"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.gpu_vendor is None
+
+
+def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="nvidia")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Enable hardware transcoding" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.gpu_vendor == "nvidia"
+
+
+def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
+                "--no-start", "--gpu"
+            ],
+            input="y\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Enable hardware transcoding" not in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.gpu_vendor == "amd"
 
 
 def test_full_non_interactive_run_generates_stack_without_starting(tmp_path):
@@ -351,7 +474,7 @@ def test_docker_running_but_missing_compose_v2(tmp_path):
     mock_compose.assert_called_once()
 
 
-def test_heavy_recommendation_defaults_to_medium_choice(tmp_path):
+def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
 
     media_path = str(tmp_path / "media")
 
@@ -371,14 +494,13 @@ def test_heavy_recommendation_defaults_to_medium_choice(tmp_path):
         result = runner.invoke(
             app,
             ["--media-path", media_path, "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
-            input="\nn\ny\nn\n"
+            input="\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
-    assert "defaulting to Medium" in result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.tier.name == "medium"
+    assert config.tier.name == "heavy"
 
 
 def test_invalid_tier_input_reprompts_until_valid(tmp_path):

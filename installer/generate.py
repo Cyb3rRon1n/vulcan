@@ -13,6 +13,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from installer.detect import detect_render_group_gid
 from installer.services import resource_limits_for
 from installer.tiers import TierDefinition
 
@@ -29,6 +30,7 @@ class GenerationConfig:
     pgid: int
     timezone: str
     enabled_optional: set[str] = field(default_factory=set)
+    gpu_vendor: str | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -75,7 +77,11 @@ def render_compose(config: GenerationConfig) -> str:
 
     return template.render(
         enabled=enabled_service_keys(config),
-        limits=resource_limits_for(config.tier.name)
+        limits=resource_limits_for(config.tier.name),
+        gpu_vendor=config.gpu_vendor,
+        render_gid=(
+            detect_render_group_gid() if config.gpu_vendor in ("amd", "intel") else None
+        )
     )
 
 
@@ -110,6 +116,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = Path("stack")) -> d
     (media_path / "downloads").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "movies").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "tv").mkdir(parents=True, exist_ok=True)
+    (media_path / "media" / "music").mkdir(parents=True, exist_ok=True)
 
     warnings = []
 
@@ -118,6 +125,14 @@ def write_stack(config: GenerationConfig, output_dir: Path = Path("stack")) -> d
         warnings.append(
             "Gluetun requires real VPN provider credentials in stack/.env "
             "before it will connect - see the TODO comments there."
+        )
+
+    if config.gpu_vendor == "nvidia":
+
+        warnings.append(
+            "NVIDIA hardware transcoding requires the nvidia-container-toolkit "
+            "to be installed and registered with Docker on this host - Vulcan "
+            "doesn't install it automatically."
         )
 
     return {

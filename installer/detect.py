@@ -7,6 +7,7 @@ rather than raising, since a missing tool (no nvidia-smi, no docker)
 just means "not present," not an error.
 """
 
+import grp
 import platform
 import shutil
 import subprocess
@@ -129,6 +130,25 @@ def detect_gpu() -> str | None:
 
         except (subprocess.SubprocessError, OSError):
             pass
+
+    return None
+
+
+def detect_render_group_gid() -> int | None:
+    """
+    The gid of the host's DRM render-node group - needed alongside
+    /dev/dri passthrough for AMD/Intel hardware transcoding, since
+    PUID/PGID alone doesn't grant a containerized process access to a
+    device node owned by this group. "video" is the fallback name on
+    distros/kernels that predate the dedicated "render" group.
+    """
+
+    for name in ("render", "video"):
+
+        try:
+            return grp.getgrnam(name).gr_gid
+        except KeyError:
+            continue
 
     return None
 

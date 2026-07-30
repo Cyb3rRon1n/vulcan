@@ -12,7 +12,11 @@ from installer.generate import (
 from installer.tiers import TIERS
 
 
-def make_config(tier_name: str, enabled_optional: set[str] | None = None) -> GenerationConfig:
+def make_config(
+    tier_name: str,
+    enabled_optional: set[str] | None = None,
+    gpu_vendor: str | None = None
+) -> GenerationConfig:
 
     return GenerationConfig(
         tier=TIERS[tier_name],
@@ -20,7 +24,8 @@ def make_config(tier_name: str, enabled_optional: set[str] | None = None) -> Gen
         puid=1000,
         pgid=1000,
         timezone="America/New_York",
-        enabled_optional=enabled_optional or set()
+        enabled_optional=enabled_optional or set(),
+        gpu_vendor=gpu_vendor
     )
 
 
@@ -91,6 +96,83 @@ def test_render_compose_medium_with_gluetun_routes_qbittorrent_through_it():
     assert "ports:" not in qbittorrent_block
 
 
+def test_render_compose_heavy_includes_all_new_services():
+
+    output = render_compose(make_config("heavy", enabled_optional={"lidarr", "traefik"}))
+
+    for name in ("lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
+        assert f"container_name: {name}" in output
+
+
+def test_render_compose_medium_excludes_heavy_only_services():
+
+    output = render_compose(make_config("medium"))
+
+    for name in ("lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
+        assert f"container_name: {name}" not in output
+
+
+def test_render_compose_heavy_without_optional_extras_excludes_lidarr_and_traefik():
+
+    output = render_compose(make_config("heavy"))
+
+    assert "container_name: lidarr" not in output
+    assert "container_name: traefik" not in output
+    assert "container_name: homepage" in output
+
+
+def _jellyfin_block(output: str) -> str:
+
+    return output.split("jellyfin:", 1)[1].split("  radarr:", 1)[0]
+
+
+def test_render_compose_amd_gpu_adds_device_and_group(tmp_path):
+
+    with patch("installer.generate.detect_render_group_gid", return_value=105):
+        output = render_compose(make_config("heavy", gpu_vendor="amd"))
+
+    jellyfin_block = _jellyfin_block(output)
+
+    assert "/dev/dri:/dev/dri" in jellyfin_block
+    assert 'group_add' in jellyfin_block
+    assert '"105"' in jellyfin_block
+    assert "driver: nvidia" not in jellyfin_block
+
+
+def test_render_compose_intel_gpu_adds_device_and_group(tmp_path):
+
+    with patch("installer.generate.detect_render_group_gid", return_value=105):
+        output = render_compose(make_config("heavy", gpu_vendor="intel"))
+
+    jellyfin_block = _jellyfin_block(output)
+
+    assert "/dev/dri:/dev/dri" in jellyfin_block
+    assert '"105"' in jellyfin_block
+
+
+def test_render_compose_nvidia_gpu_adds_reservation_under_same_deploy_key():
+
+    output = render_compose(make_config("heavy", gpu_vendor="nvidia"))
+
+    jellyfin_block = _jellyfin_block(output)
+
+    assert jellyfin_block.count("deploy:") == 1
+    assert "driver: nvidia" in jellyfin_block
+    assert "reservations:" in jellyfin_block
+    assert "/dev/dri" not in jellyfin_block
+
+
+def test_render_compose_no_gpu_adds_neither():
+
+    output = render_compose(make_config("heavy", gpu_vendor=None))
+
+    jellyfin_block = _jellyfin_block(output)
+
+    assert "/dev/dri" not in jellyfin_block
+    assert "driver: nvidia" not in jellyfin_block
+    assert "group_add" not in jellyfin_block
+
+
 def test_render_env_contains_core_values():
 
     output = render_env(make_config("light"))
@@ -142,6 +224,44 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "downloads").is_dir()
     assert (media_path / "media" / "movies").is_dir()
     assert (media_path / "media" / "tv").is_dir()
+    assert (media_path / "media" / "music").is_dir()
+
+
+def test_write_stack_warns_for_nvidia_gpu(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        gpu_vendor="nvidia"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] != []
+    assert "nvidia-container-toolkit" in result["warnings"][0]
+
+
+def test_write_stack_no_gpu_warning_for_amd(tmp_path):
+
+    with patch("installer.generate.detect_render_group_gid", return_value=105):
+
+        config = GenerationConfig(
+            tier=TIERS["heavy"],
+            media_path=str(tmp_path / "media-root"),
+            puid=1000,
+            pgid=1000,
+            timezone="UTC",
+            enabled_optional=set(),
+            gpu_vendor="amd"
+        )
+
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
 
 
 def test_write_stack_warns_when_gluetun_enabled(tmp_path):

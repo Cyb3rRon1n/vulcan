@@ -45,12 +45,13 @@ def version():
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    tier: str | None = typer.Option(None, "--tier", help="light or medium"),
+    tier: str | None = typer.Option(None, "--tier", help="light, medium, or heavy"),
     media_path: str | None = typer.Option(None, "--media-path"),
     non_interactive: bool = typer.Option(False, "--non-interactive"),
     yes: bool = typer.Option(False, "--yes"),
     vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
+    gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     timezone: str | None = typer.Option(None, "--timezone")
@@ -65,6 +66,7 @@ def main(
         yes=yes,
         vpn=vpn,
         start=start,
+        gpu=gpu,
         puid=puid,
         pgid=pgid,
         timezone=timezone
@@ -78,6 +80,7 @@ def run_install(
     yes: bool,
     vpn: bool | None,
     start: bool | None,
+    gpu: bool | None,
     puid: int | None,
     pgid: int | None,
     timezone: str | None
@@ -91,14 +94,8 @@ def run_install(
         console.print("[red]--tier and --media-path are required in --non-interactive mode.[/red]")
         raise typer.Exit(code=1)
 
-    if tier is not None and tier not in ("light", "medium"):
-
-        reason = (
-            "isn't buildable yet in this release" if tier == "heavy"
-            else "must be 'light' or 'medium'"
-        )
-
-        console.print(f"[red]--tier '{tier}' {reason}.[/red]")
+    if tier is not None and tier not in ("light", "medium", "heavy"):
+        console.print(f"[red]--tier '{tier}' must be 'light', 'medium', or 'heavy'.[/red]")
         raise typer.Exit(code=1)
 
     console.print("[bold]Detecting your system...[/bold]")
@@ -118,7 +115,7 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, puid, pgid, timezone, non_interactive
+        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -187,6 +184,7 @@ def _gather_generation_config(
     tier: str | None,
     media_path: str | None,
     vpn: bool | None,
+    gpu: bool | None,
     puid: int | None,
     pgid: int | None,
     timezone: str | None,
@@ -227,18 +225,12 @@ def _gather_generation_config(
 
         default_choice = recommendation.tier.name
 
-        if default_choice == "heavy":
+        chosen_tier_name = typer.prompt("Which tier? (light/medium/heavy)", default=default_choice)
 
-            console.print(
-                "[yellow]Heavy isn't buildable yet in this release - defaulting to Medium.[/yellow]"
+        while chosen_tier_name not in ("light", "medium", "heavy"):
+            chosen_tier_name = typer.prompt(
+                "Please enter 'light', 'medium', or 'heavy'", default=default_choice
             )
-
-            default_choice = "medium"
-
-        chosen_tier_name = typer.prompt("Which tier? (light/medium)", default=default_choice)
-
-        while chosen_tier_name not in ("light", "medium"):
-            chosen_tier_name = typer.prompt("Please enter 'light' or 'medium'", default=default_choice)
 
     chosen_tier = TIERS[chosen_tier_name]
 
@@ -259,6 +251,23 @@ def _gather_generation_config(
 
         if enable_vpn:
             enabled_optional.add("gluetun")
+
+    gpu_vendor_to_use = None
+
+    if chosen_tier_name == "heavy" and info.gpu_vendor:
+
+        if gpu is None:
+
+            enable_gpu = True if non_interactive else typer.confirm(
+                f"Enable hardware transcoding using the detected {info.gpu_vendor} GPU?",
+                default=True
+            )
+
+        else:
+            enable_gpu = gpu
+
+        if enable_gpu:
+            gpu_vendor_to_use = info.gpu_vendor
 
     default_puid, default_pgid = default_puid_pgid()
     default_tz = default_timezone()
@@ -284,7 +293,8 @@ def _gather_generation_config(
         puid=final_puid,
         pgid=final_pgid,
         timezone=final_tz,
-        enabled_optional=enabled_optional
+        enabled_optional=enabled_optional,
+        gpu_vendor=gpu_vendor_to_use
     )
 
 
@@ -302,6 +312,7 @@ def _generate_and_maybe_start(
     console.print(f"  PUID/PGID: {config.puid}/{config.pgid}")
     console.print(f"  Timezone: {config.timezone}")
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
+    console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if not yes and not typer.confirm("\nGenerate the stack with these settings?"):
         console.print("Aborted.")

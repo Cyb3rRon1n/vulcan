@@ -8,6 +8,7 @@ from installer.detect import (
     detect_gpu,
     detect_memory,
     detect_os,
+    detect_render_group_gid,
     detect_system,
 )
 
@@ -141,6 +142,44 @@ def test_detect_gpu_returns_none_when_nothing_found():
     with patch("installer.detect.shutil.which", return_value=None):
 
         assert detect_gpu() is None
+
+
+def test_detect_render_group_gid_prefers_render():
+
+    def getgrnam_side_effect(name):
+
+        if name == "render":
+            return MagicMock(gr_gid=105)
+
+        raise KeyError(name)
+
+    with patch("installer.detect.grp.getgrnam", side_effect=getgrnam_side_effect):
+
+        assert detect_render_group_gid() == 105
+
+
+def test_detect_render_group_gid_falls_back_to_video():
+
+    def getgrnam_side_effect(name):
+
+        if name == "render":
+            raise KeyError(name)
+
+        if name == "video":
+            return MagicMock(gr_gid=39)
+
+        raise KeyError(name)
+
+    with patch("installer.detect.grp.getgrnam", side_effect=getgrnam_side_effect):
+
+        assert detect_render_group_gid() == 39
+
+
+def test_detect_render_group_gid_returns_none_when_neither_exists():
+
+    with patch("installer.detect.grp.getgrnam", side_effect=KeyError):
+
+        assert detect_render_group_gid() is None
 
 
 def test_detect_docker_when_not_installed():
