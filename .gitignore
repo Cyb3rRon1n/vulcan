@@ -1,0 +1,54 @@
+# ==========================
+# Vulcan Project
+# ==========================
+
+# Generated stack output (docker-compose.yml, .env, etc.) - produced on
+# the end user's machine by the installer, never committed here.
+stack/
+
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.egg-info/
+dist/
+build/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# ==========================
+# Development Tools
+# ==========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==========================
+# Operating System
+# ==========================
+.DS_Store
+Thumbs.db
+
+# ==========================
+# Testing
+# ==========================
+.coverage
+htmlcov/
+
+# ==========================
+# Backup Files
+# ==========================
+*.bak
+*.backup
+*.old
