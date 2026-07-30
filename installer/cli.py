@@ -15,9 +15,11 @@ from installer.docker_setup import (
     start_docker_service,
 )
 from installer.generate import (
+    STACK_DIR,
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
+    load_previous_state,
     write_stack,
 )
 from installer.tiers import TIERS, recommend_tier
@@ -90,8 +92,13 @@ def run_install(
         console.print("[red]--yes is required alongside --non-interactive.[/red]")
         raise typer.Exit(code=1)
 
-    if non_interactive and (tier is None or media_path is None):
-        console.print("[red]--tier and --media-path are required in --non-interactive mode.[/red]")
+    previous = load_previous_state(STACK_DIR)
+
+    if non_interactive and previous is None and (tier is None or media_path is None):
+        console.print(
+            "[red]--tier and --media-path are required in --non-interactive mode "
+            "(no existing stack was found to fall back on).[/red]"
+        )
         raise typer.Exit(code=1)
 
     if tier is not None and tier not in ("light", "medium", "heavy"):
@@ -115,7 +122,7 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive
+        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive, previous
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -188,11 +195,24 @@ def _gather_generation_config(
     puid: int | None,
     pgid: int | None,
     timezone: str | None,
-    non_interactive: bool
+    non_interactive: bool,
+    previous: dict | None
 ) -> GenerationConfig:
 
+    if previous is not None:
+
+        console.print(
+            f"Found an existing [bold]{previous['tier']}[/bold] stack, generated "
+            f"{previous['generated_at']}. Using it as defaults - pass flags to override."
+        )
+
     if media_path is None:
-        media_path = typer.prompt("Media library path", default=str(Path.home() / "media"))
+
+        default_media_path = previous["media_path"] if previous else str(Path.home() / "media")
+
+        media_path = default_media_path if non_interactive else typer.prompt(
+            "Media library path", default=default_media_path
+        )
 
     media_path = str(Path(media_path).expanduser().resolve())
 
@@ -221,9 +241,13 @@ def _gather_generation_config(
 
         chosen_tier_name = tier
 
+    elif non_interactive:
+
+        chosen_tier_name = previous["tier"]
+
     else:
 
-        default_choice = recommendation.tier.name
+        default_choice = previous["tier"] if previous else recommendation.tier.name
 
         chosen_tier_name = typer.prompt("Which tier? (light/medium/heavy)", default=default_choice)
 
@@ -238,12 +262,14 @@ def _gather_generation_config(
 
     if chosen_tier_name == "medium":
 
+        vpn_default = "gluetun" in previous["enabled_optional"] if previous else False
+
         if vpn is None:
 
-            enable_vpn = False if non_interactive else typer.confirm(
+            enable_vpn = vpn_default if non_interactive else typer.confirm(
                 "Enable Gluetun VPN for qBittorrent? "
                 "(you'll need to add real VPN credentials afterward)",
-                default=False
+                default=vpn_default
             )
 
         else:
@@ -256,11 +282,13 @@ def _gather_generation_config(
 
     if chosen_tier_name == "heavy" and info.gpu_vendor:
 
+        gpu_default = bool(previous.get("gpu_vendor")) if previous else True
+
         if gpu is None:
 
-            enable_gpu = True if non_interactive else typer.confirm(
+            enable_gpu = gpu_default if non_interactive else typer.confirm(
                 f"Enable hardware transcoding using the detected {info.gpu_vendor} GPU?",
-                default=True
+                default=gpu_default
             )
 
         else:
@@ -271,6 +299,11 @@ def _gather_generation_config(
 
     default_puid, default_pgid = default_puid_pgid()
     default_tz = default_timezone()
+
+    if previous:
+        default_puid = previous["puid"]
+        default_pgid = previous["pgid"]
+        default_tz = previous["timezone"]
 
     if puid is None:
         final_puid = default_puid if non_interactive else typer.prompt("PUID", default=default_puid, type=int)
@@ -314,7 +347,15 @@ def _generate_and_maybe_start(
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
-    if not yes and not typer.confirm("\nGenerate the stack with these settings?"):
+    compose_exists = (STACK_DIR / "docker-compose.yml").exists()
+
+    confirm_text = (
+        "\nThis will overwrite the existing stack/docker-compose.yml. Continue?"
+        if compose_exists else
+        "\nGenerate the stack with these settings?"
+    )
+
+    if not yes and not typer.confirm(confirm_text):
         console.print("Aborted.")
         raise typer.Exit(code=0)
 

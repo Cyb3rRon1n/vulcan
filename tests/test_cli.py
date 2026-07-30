@@ -40,6 +40,17 @@ READY_WRITE_RESULT = {
     "warnings": []
 }
 
+PREVIOUS_STATE = {
+    "tier": "medium",
+    "media_path": "/mnt/previous-media",
+    "puid": 2000,
+    "pgid": 2000,
+    "timezone": "Europe/London",
+    "enabled_optional": ["gluetun"],
+    "gpu_vendor": None,
+    "generated_at": "2026-07-01T12:00:00+00:00"
+}
+
 
 def test_non_interactive_requires_yes():
 
@@ -51,12 +62,140 @@ def test_non_interactive_requires_yes():
     assert "--yes is required" in result.output
 
 
-def test_non_interactive_requires_tier_and_media_path():
+def test_non_interactive_requires_tier_and_media_path_without_previous_state():
 
-    result = runner.invoke(app, ["--non-interactive", "--yes"])
+    with patch("installer.cli.load_previous_state", return_value=None):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
 
     assert result.exit_code == 1
     assert "--tier and --media-path are required" in result.output
+
+
+def test_non_interactive_rerun_uses_previous_state_when_flags_omitted(tmp_path):
+
+    previous_state = {**PREVIOUS_STATE, "media_path": str(tmp_path / "previous-media")}
+
+    with patch(
+        "installer.cli.load_previous_state", return_value=previous_state
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": previous_state["media_path"]}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "medium"
+    assert config.media_path == previous_state["media_path"]
+    assert config.puid == 2000
+    assert config.pgid == 2000
+    assert config.timezone == "Europe/London"
+    assert config.enabled_optional == {"gluetun"}
+
+
+def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
+
+    previous_state = {**PREVIOUS_STATE, "media_path": str(tmp_path / "previous-media")}
+
+    with patch(
+        "installer.cli.load_previous_state", return_value=previous_state
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": previous_state["media_path"]}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        # media path, tier, gluetun confirm, PUID, PGID, timezone all hit
+        # enter to accept their (previous-state-derived) defaults; the
+        # generate confirm has no default so needs an explicit "y", then
+        # decline the final start confirm with "n".
+        result = runner.invoke(app, [], input="\n\n\n\n\n\ny\nn\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Found an existing" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "medium"
+    assert config.media_path == previous_state["media_path"]
+    assert config.puid == 2000
+    assert config.pgid == 2000
+    assert config.timezone == "Europe/London"
+    assert config.enabled_optional == {"gluetun"}
+
+
+def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.load_previous_state", return_value=None
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": "/tmp/x"}
+    ), patch(
+        "installer.cli.write_stack"
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", str(tmp_path / "media"),
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="n\n"
+        )
+
+    assert result.exit_code == 0
+    assert "This will overwrite the existing stack/docker-compose.yml" in result.output
+    mock_write_stack.assert_not_called()
+
+
+def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+
+    with patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.load_previous_state", return_value=None
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": "/tmp/x"}
+    ), patch(
+        "installer.cli.write_stack"
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", str(tmp_path / "media"),
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="n\n"
+        )
+
+    assert result.exit_code == 0
+    assert "Generate the stack with these settings?" in result.output
+    assert "overwrite" not in result.output
+    mock_write_stack.assert_not_called()
 
 
 def test_tier_heavy_accepted_non_interactive(tmp_path):

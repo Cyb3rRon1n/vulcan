@@ -5,8 +5,10 @@ from installer.generate import (
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,
+    load_previous_state,
     render_compose,
     render_env,
+    save_state,
     write_stack,
 )
 from installer.tiers import TIERS
@@ -326,3 +328,157 @@ def test_default_timezone_falls_back_to_utc():
     with patch("installer.generate.Path", side_effect=path_side_effect):
 
         assert default_timezone() == "UTC"
+
+
+def test_save_and_load_previous_state_round_trip(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path="/mnt/media",
+        puid=1000,
+        pgid=1000,
+        timezone="America/New_York",
+        enabled_optional={"lidarr", "traefik"},
+        gpu_vendor="amd"
+    )
+
+    save_state(config, tmp_path)
+    state = load_previous_state(tmp_path)
+
+    assert state["tier"] == "heavy"
+    assert state["media_path"] == "/mnt/media"
+    assert state["puid"] == 1000
+    assert state["pgid"] == 1000
+    assert state["timezone"] == "America/New_York"
+    assert sorted(state["enabled_optional"]) == ["lidarr", "traefik"]
+    assert state["gpu_vendor"] == "amd"
+    assert "generated_at" in state
+
+
+def test_load_previous_state_missing_file_returns_none(tmp_path):
+
+    assert load_previous_state(tmp_path) is None
+
+
+def test_load_previous_state_corrupt_json_returns_none(tmp_path):
+
+    (tmp_path / ".vulcan-state.json").write_text("{not valid json")
+
+    assert load_previous_state(tmp_path) is None
+
+
+def test_load_previous_state_unknown_tier_returns_none(tmp_path):
+
+    (tmp_path / ".vulcan-state.json").write_text('{"tier": "ultra"}')
+
+    assert load_previous_state(tmp_path) is None
+
+
+def test_render_env_defaults_match_original_placeholders():
+
+    output = render_env(make_config("medium", {"gluetun"}))
+
+    assert "VPN_SERVICE_PROVIDER=changeme" in output
+    assert "VPN_TYPE=wireguard" in output
+    assert "WIREGUARD_PRIVATE_KEY=changeme" in output
+
+
+def test_render_env_accepts_preserved_vpn_values():
+
+    output = render_env(
+        make_config("medium", {"gluetun"}),
+        vpn_service_provider="mullvad",
+        vpn_type="wireguard",
+        wireguard_private_key="real-secret-key-value"
+    )
+
+    assert "VPN_SERVICE_PROVIDER=mullvad" in output
+    assert "WIREGUARD_PRIVATE_KEY=real-secret-key-value" in output
+    assert "changeme" not in output
+
+
+def test_write_stack_preserves_real_vpn_credentials_on_regenerate(tmp_path):
+
+    media_path = tmp_path / "media-root"
+    output_dir = tmp_path / "stack"
+    output_dir.mkdir()
+
+    (output_dir / ".env").write_text(
+        "MEDIA_PATH=/old/path\n"
+        "PUID=1000\n"
+        "PGID=1000\n"
+        "TZ=UTC\n"
+        "VPN_SERVICE_PROVIDER=mullvad\n"
+        "VPN_TYPE=wireguard\n"
+        "WIREGUARD_PRIVATE_KEY=a-real-private-key\n"
+    )
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(media_path),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"gluetun"}
+    )
+
+    write_stack(config, output_dir=output_dir)
+
+    env_content = (output_dir / ".env").read_text()
+
+    assert "VPN_SERVICE_PROVIDER=mullvad" in env_content
+    assert "WIREGUARD_PRIVATE_KEY=a-real-private-key" in env_content
+
+    state = load_previous_state(output_dir)
+    assert state["tier"] == "heavy"
+
+
+def test_write_stack_does_not_preserve_placeholder_vpn_values(tmp_path):
+
+    media_path = tmp_path / "media-root"
+    output_dir = tmp_path / "stack"
+    output_dir.mkdir()
+
+    (output_dir / ".env").write_text(
+        "MEDIA_PATH=/old/path\n"
+        "PUID=1000\n"
+        "PGID=1000\n"
+        "TZ=UTC\n"
+        "VPN_SERVICE_PROVIDER=changeme\n"
+        "VPN_TYPE=wireguard\n"
+        "WIREGUARD_PRIVATE_KEY=changeme\n"
+    )
+
+    config = GenerationConfig(
+        tier=TIERS["medium"],
+        media_path=str(media_path),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"gluetun"}
+    )
+
+    write_stack(config, output_dir=output_dir)
+
+    env_content = (output_dir / ".env").read_text()
+
+    assert "VPN_SERVICE_PROVIDER=changeme" in env_content
+    assert "WIREGUARD_PRIVATE_KEY=changeme" in env_content
+
+
+def test_write_stack_writes_state_file(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    state = load_previous_state(tmp_path / "stack")
+
+    assert state is not None
+    assert state["tier"] == "light"
