@@ -30,7 +30,8 @@ class ReviewScreen(Screen):
             pgid=self.app.pgid,
             timezone=self.app.timezone,
             enabled_optional=self.app.enabled_optional,
-            gpu_vendor=self.app.gpu_vendor
+            gpu_vendor=self.app.gpu_vendor,
+            custom_services=self.app.custom_services
         )
 
     def compose(self) -> ComposeResult:
@@ -45,6 +46,9 @@ class ReviewScreen(Screen):
             f"Gluetun VPN: {'enabled' if 'gluetun' in self.app.enabled_optional else 'disabled'}\n"
             f"GPU passthrough: {self.app.gpu_vendor or 'disabled'}"
         )
+
+        if self.app.custom_services is not None:
+            summary += f"\nServices: {', '.join(sorted(self.app.custom_services))}"
 
         yield Vertical(
             Static(summary, id="summary"),

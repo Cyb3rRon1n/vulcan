@@ -1,11 +1,12 @@
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
 from installer.generate import default_puid_pgid, default_timezone
 from installer.tiers import recommend_tier
 from installer.tui.review_screen import ReviewScreen
+from installer.tui.service_selection_screen import ServiceSelectionScreen
 
 
 class TierConfigScreen(Screen):
@@ -59,7 +60,10 @@ class TierConfigScreen(Screen):
             Input(value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input"),
             Input(value=default_tz, placeholder="Timezone", id="timezone-input"),
             Static("", id="tier-error"),
-            Button("Continue", id="continue"),
+            Horizontal(
+                Button("Continue", id="continue"),
+                Button("Customize Services", id="customize"),
+            ),
         )
 
     def on_mount(self) -> None:
@@ -78,10 +82,7 @@ class TierConfigScreen(Screen):
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_visibility(event.pressed.id)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-
-        if event.button.id != "continue":
-            return
+    def _parse_puid_pgid(self) -> tuple[int, int] | None:
 
         error = self.query_one("#tier-error", Static)
 
@@ -90,6 +91,33 @@ class TierConfigScreen(Screen):
             pgid = int(self.query_one("#pgid-input", Input).value)
         except ValueError:
             error.update("PUID and PGID must both be numbers.")
+            return None
+
+        return puid, pgid
+
+    def _store_common_fields(self, puid: int, pgid: int) -> None:
+
+        self.app.tier_name = self._current_tier_id()
+        self.app.puid = puid
+        self.app.pgid = pgid
+        self.app.timezone = self.query_one("#timezone-input", Input).value
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+
+        if event.button.id not in ("continue", "customize"):
+            return
+
+        parsed = self._parse_puid_pgid()
+
+        if parsed is None:
+            return
+
+        puid, pgid = parsed
+
+        if event.button.id == "customize":
+
+            self._store_common_fields(puid, pgid)
+            self.app.push_screen(ServiceSelectionScreen())
             return
 
         tier_id = self._current_tier_id()
@@ -107,11 +135,9 @@ class TierConfigScreen(Screen):
         ):
             gpu_vendor_to_use = self.app.system_info.gpu_vendor
 
-        self.app.tier_name = tier_id
+        self._store_common_fields(puid, pgid)
         self.app.enabled_optional = enabled_optional
         self.app.gpu_vendor = gpu_vendor_to_use
-        self.app.puid = puid
-        self.app.pgid = pgid
-        self.app.timezone = self.query_one("#timezone-input", Input).value
+        self.app.custom_services = None
 
         self.app.push_screen(ReviewScreen())
