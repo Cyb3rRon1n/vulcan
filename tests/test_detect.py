@@ -161,7 +161,7 @@ def test_detect_docker_when_installed_and_running():
     with patch(
         "installer.detect.shutil.which", return_value="/usr/bin/docker"
     ), patch(
-        "installer.detect.subprocess.run",
+        "installer.shell.subprocess.run",
         return_value=MagicMock(returncode=0)
     ):
 
@@ -179,7 +179,7 @@ def test_detect_docker_when_installed_but_daemon_not_running():
     with patch(
         "installer.detect.shutil.which", return_value="/usr/bin/docker"
     ), patch(
-        "installer.detect.subprocess.run",
+        "installer.shell.subprocess.run",
         return_value=MagicMock(returncode=1)
     ):
 
