@@ -1,8 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from installer.generate import (
     GenerationConfig,
     default_puid_pgid,
+    default_timezone,
     enabled_service_keys,
     render_compose,
     render_env,
@@ -158,3 +159,50 @@ def test_write_stack_warns_when_gluetun_enabled(tmp_path):
 
     assert result["warnings"] != []
     assert "gluetun" in result["warnings"][0].lower()
+
+
+def test_default_timezone_reads_etc_timezone():
+
+    with patch("installer.generate.Path") as mock_path_cls:
+
+        mock_path_cls.return_value.read_text.return_value = "America/New_York\n"
+
+        assert default_timezone() == "America/New_York"
+
+
+def test_default_timezone_falls_back_to_localtime_symlink():
+
+    def path_side_effect(arg):
+
+        mock = MagicMock()
+
+        if arg == "/etc/timezone":
+            mock.read_text.side_effect = OSError("no such file")
+        elif arg == "/etc/localtime":
+            mock.resolve.return_value = MagicMock(
+                __str__=lambda self: "/usr/share/zoneinfo/Europe/London"
+            )
+
+        return mock
+
+    with patch("installer.generate.Path", side_effect=path_side_effect):
+
+        assert default_timezone() == "Europe/London"
+
+
+def test_default_timezone_falls_back_to_utc():
+
+    def path_side_effect(arg):
+
+        mock = MagicMock()
+
+        if arg == "/etc/timezone":
+            mock.read_text.side_effect = OSError("no such file")
+        elif arg == "/etc/localtime":
+            mock.resolve.side_effect = OSError("no such file")
+
+        return mock
+
+    with patch("installer.generate.Path", side_effect=path_side_effect):
+
+        assert default_timezone() == "UTC"
