@@ -1,0 +1,181 @@
+services:
+{% if 'jellyfin' in enabled %}
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/jellyfin:/config
+      - ${MEDIA_PATH}/media:/data/media:ro
+    ports:
+      - "8096:8096"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.jellyfin.cpus }}"
+          memory: "{{ limits.jellyfin.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'radarr' in enabled %}
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/radarr:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "7878:7878"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.radarr.cpus }}"
+          memory: "{{ limits.radarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'sonarr' in enabled %}
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/sonarr:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "8989:8989"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.sonarr.cpus }}"
+          memory: "{{ limits.sonarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'prowlarr' in enabled %}
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.prowlarr.cpus }}"
+          memory: "{{ limits.prowlarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'qbittorrent' in enabled %}
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/qbittorrent:/config
+      - ${MEDIA_PATH}:/data
+{% if 'gluetun' in enabled %}
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+{% else %}
+    ports:
+      - "8080:8080"
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.qbittorrent.cpus }}"
+          memory: "{{ limits.qbittorrent.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'jellyseerr' in enabled %}
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/jellyseerr:/app/config
+    ports:
+      - "5055:5055"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.jellyseerr.cpus }}"
+          memory: "{{ limits.jellyseerr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'bazarr' in enabled %}
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/bazarr:/config
+      - ${MEDIA_PATH}/media:/data/media
+    ports:
+      - "6767:6767"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.bazarr.cpus }}"
+          memory: "{{ limits.bazarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'flaresolverr' in enabled %}
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    ports:
+      - "8191:8191"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.flaresolverr.cpus }}"
+          memory: "{{ limits.flaresolverr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'gluetun' in enabled %}
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - TZ=${TZ}
+    volumes:
+      - ./config/gluetun:/gluetun
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.gluetun.cpus }}"
+          memory: "{{ limits.gluetun.memory }}"
+    restart: unless-stopped
+{% endif %}
