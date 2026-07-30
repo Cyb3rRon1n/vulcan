@@ -28,6 +28,7 @@ class VulcanApp(App):
         self.puid: int | None = None
         self.pgid: int | None = None
         self.timezone: str | None = None
+        self.custom_services: set[str] | None = None
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())

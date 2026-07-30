@@ -3,13 +3,14 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from textual.widgets import Button, Checkbox, Input, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, RadioSet, SelectionList, Static
 
 from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
 from installer.tui.docker_screen import DockerReadyScreen
 from installer.tui.media_path_screen import MediaPathScreen
 from installer.tui.review_screen import ReviewScreen
+from installer.tui.service_selection_screen import ServiceSelectionScreen
 from installer.tui.tier_config_screen import TierConfigScreen
 from installer.tui.welcome_screen import WelcomeScreen
 
@@ -637,6 +638,249 @@ async def test_tier_config_screen_invalid_puid_shows_error_and_does_not_exit():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_continue_leaves_custom_services_none():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ReviewScreen)
+        assert app.custom_services is None
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_customize_navigates_to_service_selection_screen():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#customize")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ServiceSelectionScreen)
+        assert app.tier_name == "medium"
+        assert app.puid is not None
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def _launch_at_service_selection_screen(
+    info: SystemInfo,
+    tier_name: str = "light",
+    previous: dict | None = None,
+):
+
+    app, pilot, ctx = await _launch_at_media_path_screen(info, previous)
+
+    app.tier_name = tier_name
+    app.push_screen(ServiceSelectionScreen())
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def test_service_selection_screen_prechecks_tier_default_without_previous():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="medium"
+    )
+
+    try:
+
+        selected = set(app.screen.query_one("#service-list", SelectionList).selected)
+        assert selected == {
+            "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
+            "jellyseerr", "bazarr", "flaresolverr"
+        }
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_prechecks_previous_custom_selection():
+
+    previous = {
+        "tier": "light", "media_path": "/mnt/x", "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": [], "gpu_vendor": None,
+        "custom_services": ["jellyfin", "homepage"],
+        "generated_at": "2026-01-01T00:00:00+00:00"
+    }
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light", previous=previous
+    )
+
+    try:
+
+        selected = set(app.screen.query_one("#service-list", SelectionList).selected)
+        assert selected == {"jellyfin", "homepage"}
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_gpu_hidden_without_gpu_detected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor=None), tier_name="light"
+    )
+
+    try:
+
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_gpu_hidden_when_jellyfin_not_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("jellyfin")
+        await pilot.pause()
+
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_gpu_shown_when_jellyfin_selected_and_gpu_detected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="light"
+    )
+
+    try:
+
+        assert app.screen.query_one("#gpu-check", Checkbox).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_toggling_jellyfin_back_on_reshows_gpu():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+
+        service_list.toggle("jellyfin")
+        await pilot.pause()
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+        service_list.toggle("jellyfin")
+        await pilot.pause()
+        assert app.screen.query_one("#gpu-check", Checkbox).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_stores_services_and_gpu():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("radarr")
+        service_list.toggle("homepage")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ReviewScreen)
+        assert app.custom_services == {"jellyfin", "sonarr", "prowlarr", "qbittorrent", "homepage"}
+        assert app.gpu_vendor == "amd"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_no_gpu_vendor_when_unchecked():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="light"
+    )
+
+    try:
+
+        await pilot.click("#gpu-check")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.gpu_vendor is None
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_summary_includes_services_when_custom():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), custom_services={"jellyfin", "homepage"}
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Services: homepage, jellyfin" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_summary_omits_services_line_when_not_custom():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info(), custom_services=None)
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Services:" not in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_build_config_includes_custom_services():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), custom_services={"jellyfin", "homepage"}
+    )
+
+    try:
+
+        config = app.screen._build_config()
+        assert config.custom_services == {"jellyfin", "homepage"}
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def _launch_at_review_screen(
     info: SystemInfo,
     tier_name: str = "light",
@@ -646,6 +890,7 @@ async def _launch_at_review_screen(
     timezone: str = "UTC",
     enabled_optional: set | None = None,
     gpu_vendor: str | None = None,
+    custom_services: set | None = None,
 ):
 
     app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None, media_path=media_path)
@@ -656,6 +901,7 @@ async def _launch_at_review_screen(
     app.timezone = timezone
     app.enabled_optional = enabled_optional if enabled_optional is not None else set()
     app.gpu_vendor = gpu_vendor
+    app.custom_services = custom_services
 
     app.push_screen(ReviewScreen())
     await pilot.pause()
