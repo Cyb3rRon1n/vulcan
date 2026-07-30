@@ -1,3 +1,6 @@
+import shutil
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from textual.widgets import Button, Checkbox, Input, RadioSet, Static
@@ -6,6 +9,7 @@ from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
 from installer.tui.docker_screen import DockerReadyScreen
 from installer.tui.media_path_screen import MediaPathScreen
+from installer.tui.review_screen import ReviewScreen
 from installer.tui.tier_config_screen import TierConfigScreen
 from installer.tui.welcome_screen import WelcomeScreen
 
@@ -585,13 +589,13 @@ async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
 
         assert app.tier_name == "medium"
         assert app.enabled_optional == {"gluetun"}
-        assert app.is_running is False
+        assert isinstance(app.screen, ReviewScreen)
 
     finally:
         await ctx.__aexit__(None, None, None)
 
 
-async def test_tier_config_screen_continue_stores_config_and_exits():
+async def test_tier_config_screen_continue_navigates_to_review_screen():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
 
@@ -608,7 +612,7 @@ async def test_tier_config_screen_continue_stores_config_and_exits():
         assert app.puid is not None
         assert app.pgid is not None
         assert app.timezone is not None
-        assert app.is_running is False
+        assert isinstance(app.screen, ReviewScreen)
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -628,6 +632,221 @@ async def test_tier_config_screen_invalid_puid_shows_error_and_does_not_exit():
         error = app.screen.query_one("#tier-error", Static).content
         assert "PUID and PGID must both be numbers" in error
         assert app.is_running is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def _launch_at_review_screen(
+    info: SystemInfo,
+    tier_name: str = "light",
+    media_path: str = "/mnt/media",
+    puid: int = 1000,
+    pgid: int = 1000,
+    timezone: str = "UTC",
+    enabled_optional: set | None = None,
+    gpu_vendor: str | None = None,
+):
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None, media_path=media_path)
+
+    app.tier_name = tier_name
+    app.puid = puid
+    app.pgid = pgid
+    app.timezone = timezone
+    app.enabled_optional = enabled_optional if enabled_optional is not None else set()
+    app.gpu_vendor = gpu_vendor
+
+    app.push_screen(ReviewScreen())
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
+REVIEW_WRITE_RESULT = {
+    "success": True,
+    "compose_path": "/scratch/stack/docker-compose.yml",
+    "env_path": "/scratch/stack/.env",
+    "warnings": []
+}
+
+
+async def test_review_screen_shows_correct_summary():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        puid=1000, pgid=1000, timezone="America/New_York",
+        enabled_optional={"gluetun"}, gpu_vendor=None
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Tier: Medium" in summary
+        assert "Media path: /mnt/media" in summary
+        assert "PUID/PGID: 1000/1000" in summary
+        assert "Timezone: America/New_York" in summary
+        assert "Gluetun VPN: enabled" in summary
+        assert "GPU passthrough: disabled" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_generate_success_reveals_start_and_finish_buttons():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        result = app.screen.query_one("#result", Static).content
+        assert "Stack written to" in result
+
+        assert app.screen.query_one("#start", Button).display is True
+        assert app.screen.query_one("#finish", Button).display is True
+        assert app.screen.query_one("#generate", Button).disabled is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_generate_shows_warnings():
+
+    result_with_warning = {**REVIEW_WRITE_RESULT, "warnings": ["fill in your VPN credentials"]}
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=result_with_warning
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        result = app.screen.query_one("#result", Static).content
+        assert "fill in your VPN credentials" in result
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_generate_failure_shows_error_no_buttons():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack",
+            side_effect=OSError("permission denied")
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        result = app.screen.query_one("#result", Static).content
+        assert "Failed to write the stack" in result
+
+        assert app.screen.query_one("#start", Button).display is False
+        assert app.screen.query_one("#finish", Button).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_finish_without_starting_exits_with_command_message():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+            await pilot.click("#finish")
+            await pilot.pause()
+
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_start_stack_success_exits_cleanly():
+
+    mock_proc = MagicMock(returncode=0)
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+    app.group_just_added = True
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ) as mock_run_docker:
+
+            await pilot.click("#start")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        args, kwargs = mock_run_docker.call_args
+        command = args[0]
+
+        assert command[:2] == ["docker", "compose"]
+        assert "up" in command and "-d" in command
+        assert kwargs["use_group_workaround"] is True
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_start_stack_failure_exits_with_failure_message():
+
+    mock_proc = MagicMock(returncode=1)
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert app.is_running is False
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -684,6 +903,41 @@ async def test_real_detection_and_docker_ready_end_to_end(tmp_path):
         await pilot.click("#continue")
         await pilot.pause()
 
+        assert isinstance(app.screen, ReviewScreen)
         assert app.tier_name in ("light", "medium", "heavy")
         assert app.puid is not None
-        assert app.is_running is False
+
+        # Real write_stack() call - lands in the real repo's stack/ dir
+        # (write_stack()'s own default), same as a real `./install --tui`
+        # run would produce. Removed in the finally block below so the
+        # test suite stays side-effect-free across repeated runs.
+        try:
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+            result = app.screen.query_one("#result", Static).content
+            assert "Stack written to" in result
+
+            stack_dir = Path("stack")
+            assert (stack_dir / "docker-compose.yml").exists()
+            assert (stack_dir / ".env").exists()
+
+            validation = subprocess.run(
+                [
+                    "docker", "compose",
+                    "-f", str(stack_dir / "docker-compose.yml"),
+                    "--env-file", str(stack_dir / ".env"),
+                    "config"
+                ],
+                capture_output=True
+            )
+            assert validation.returncode == 0, validation.stderr.decode()
+
+            await pilot.click("#finish")
+            await pilot.pause()
+
+            assert app.is_running is False
+
+        finally:
+            shutil.rmtree(Path("stack"), ignore_errors=True)
