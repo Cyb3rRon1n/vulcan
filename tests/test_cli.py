@@ -72,6 +72,44 @@ def test_non_interactive_requires_tier_and_media_path_without_previous_state():
     assert "--tier and --media-path are required" in result.output
 
 
+def test_tui_flag_launches_tui_instead_of_run_install():
+
+    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+        "installer.cli.run_install"
+    ) as mock_run_install:
+
+        result = runner.invoke(app, ["--tui"])
+
+    assert result.exit_code == 0, result.output
+    mock_run_tui.assert_called_once()
+    mock_run_install.assert_not_called()
+
+
+def test_tui_flag_ignored_in_non_interactive_mode(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tui", "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_run_tui.assert_not_called()
+
+
 def test_non_interactive_rerun_uses_previous_state_when_flags_omitted(tmp_path):
 
     previous_state = {**PREVIOUS_STATE, "media_path": str(tmp_path / "previous-media")}

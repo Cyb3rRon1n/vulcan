@@ -56,9 +56,17 @@ def main(
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
-    timezone: str | None = typer.Option(None, "--timezone")
+    timezone: str | None = typer.Option(None, "--timezone"),
+    tui: bool = typer.Option(False, "--tui", help="Launch the in-progress Textual UI")
 ):
     if ctx.invoked_subcommand is not None:
+        return
+
+    if tui and not non_interactive:
+
+        from installer.tui import run_tui
+
+        run_tui()
         return
 
     run_install(
