@@ -25,7 +25,7 @@ python -m pytest tests/ --cov=installer --cov-report=term-missing   # 187 tests,
 #   exec .venv/bin/python -m installer update / backup "$@"
 ```
 
-No linter/formatter is configured - nothing enforces style automatically; see "Code style" below for the convention to match by hand. There is no CI workflow yet and no GitHub remote configured for this repo (local-only development so far; **do not push** unless explicitly asked - see the git-push note under Project status).
+No linter/formatter is configured - nothing enforces style automatically; see "Code style" below for the convention to match by hand. `.github/workflows/ci.yml` exists (mirrors `atlas`'s own CI structure - checkout, a 3.11/3.12 matrix, `pip install -e ".[dev]"`, then the full test suite) but **has never actually run** - there's still no GitHub remote configured for this repo (local-only development so far; **do not push** unless explicitly asked - see the git-push note under Project status). GitHub-hosted `ubuntu-latest` runners ship Docker + Compose v2 pre-installed with the runner user already in the `docker` group, which is why the workflow needs no extra setup for `test_real_detection_and_docker_ready_end_to_end` (the one deliberately-unmocked, real-Docker-dependent test) - but that expectation is unconfirmed against a real execution until this workflow's first run post-push.
 
 ## Architecture
 
