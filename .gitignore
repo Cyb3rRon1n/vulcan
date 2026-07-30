@@ -6,6 +6,10 @@
 # the end user's machine by the installer, never committed here.
 stack/
 
+# Backup archives (vulcan backup) - may contain real credentials from
+# stack/.env, never committed here.
+backups/
+
 # ==========================
 # Python
 # ==========================
