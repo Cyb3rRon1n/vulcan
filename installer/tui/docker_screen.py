@@ -14,6 +14,7 @@ from installer.docker_setup import (
     install_plan_for,
     start_docker_service,
 )
+from installer.tui.media_path_screen import MediaPathScreen
 
 
 class DockerReadyScreen(Screen):
@@ -97,13 +98,7 @@ class DockerReadyScreen(Screen):
             self.run_fix()
 
         elif event.button.id == "continue":
-
-            self.app.exit(
-                message=(
-                    "Tier selection isn't built yet - re-run with --plain "
-                    "for the complete flow."
-                )
-            )
+            self.app.push_screen(MediaPathScreen())
 
     @work(thread=True)
     def run_fix(self) -> None:
