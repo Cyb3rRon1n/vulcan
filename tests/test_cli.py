@@ -880,3 +880,129 @@ def test_declining_generate_confirm_aborts(tmp_path):
     assert result.exit_code == 0
     assert "Aborted" in result.output
     mock_write_stack.assert_not_called()
+
+
+def test_update_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_update_non_interactive_without_yes_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir):
+
+        result = runner.invoke(app, ["update", "--non-interactive"])
+
+    assert result.exit_code == 1
+    assert "--yes is required" in result.output
+
+
+def test_update_confirm_declined_aborts(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.update_stack"
+    ) as mock_update:
+
+        result = runner.invoke(app, ["update"], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+    mock_update.assert_not_called()
+
+
+def test_update_confirm_accepted_calls_update_stack(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.update_stack", return_value={"success": True, "error": None}
+    ) as mock_update:
+
+        result = runner.invoke(app, ["update"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Stack updated" in result.output
+
+    args = mock_update.call_args[0]
+    assert args[0] == str(stack_dir / "docker-compose.yml")
+    assert args[1] == str(stack_dir / ".env")
+
+
+def test_update_non_interactive_yes_skips_confirm_and_reports_failure(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.update_stack",
+        return_value={"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+    ):
+
+        result = runner.invoke(app, ["update", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Failed to pull images" in result.output
+
+
+def test_backup_success_prints_path_and_warnings():
+
+    result_dict = {
+        "success": True,
+        "error": None,
+        "backup_path": "/scratch/backups/vulcan-backup-20260101T000000Z.tar.gz",
+        "warnings": ["This backup includes stack/.env, which may contain real credentials"]
+    }
+
+    with patch("installer.cli.backup_stack", return_value=result_dict):
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 0, result.output
+    assert "vulcan-backup-20260101T000000Z.tar.gz" in result.output
+    assert "may contain real credentials" in result.output
+
+
+def test_backup_failure_exits_1():
+
+    with patch(
+        "installer.cli.backup_stack",
+        return_value={
+            "success": False, "error": "No stack found to back up.",
+            "backup_path": None, "warnings": []
+        }
+    ):
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 1
+    assert "No stack found to back up" in result.output
+
+
+def test_backup_never_prompts_for_confirmation():
+
+    result_dict = {
+        "success": True, "error": None,
+        "backup_path": "/scratch/backups/x.tar.gz", "warnings": []
+    }
+
+    with patch("installer.cli.backup_stack", return_value=result_dict):
+
+        result = runner.invoke(app, ["backup"], input="")
+
+    assert result.exit_code == 0, result.output

@@ -22,6 +22,7 @@ from installer.generate import (
     load_previous_state,
     write_stack,
 )
+from installer.post_install import backup_stack, update_stack
 from installer.tiers import TIERS, recommend_tier
 
 
@@ -42,6 +43,58 @@ def version():
     console.print(
         f"[bold red]Vulcan[/bold red] version {__version__}"
     )
+
+
+@app.command()
+def update(
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes")
+):
+    """
+    Pull the latest images for the generated stack and recreate containers.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+
+    if not compose_path.exists():
+        console.print("[red]No stack found - run `vulcan` first to generate one.[/red]")
+        raise typer.Exit(code=1)
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"This will pull the latest images and recreate containers for {compose_path}.")
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = update_stack(str(compose_path), str(STACK_DIR / ".env"))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Stack updated.[/green]")
+
+
+@app.command()
+def backup():
+    """
+    Archive the generated stack's config directories and compose files.
+    """
+
+    result = backup_stack()
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Backup written to {result['backup_path']}[/green]")
+
+    for warning in result["warnings"]:
+        console.print(f"[yellow]! {warning}[/yellow]")
 
 
 @app.callback(invoke_without_command=True)

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Pull the latest images for the generated stack and recreate containers.
-# Not yet implemented - Phase 3 work.
+# Thin wrapper - the real logic lives in installer/post_install.py,
+# reached the same way ./install reaches installer/cli.py.
 
-echo "Not yet implemented." >&2
-exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/../.venv/bin/python" -m installer update "$@"
