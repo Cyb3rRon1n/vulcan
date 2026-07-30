@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 import psutil
 
+from installer.shell import run_ok
+
 
 @dataclass
 class SystemInfo:
@@ -131,22 +133,6 @@ def detect_gpu() -> str | None:
     return None
 
 
-def _run_ok(command: list[str]) -> bool:
-
-    try:
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=10
-        )
-
-        return result.returncode == 0
-
-    except (subprocess.SubprocessError, OSError):
-        return False
-
-
 def detect_docker() -> dict:
 
     installed = shutil.which("docker") is not None
@@ -161,8 +147,8 @@ def detect_docker() -> dict:
 
     return {
         "docker_installed": True,
-        "docker_running": _run_ok(["docker", "info"]),
-        "docker_compose_v2": _run_ok(["docker", "compose", "version"])
+        "docker_running": run_ok(["docker", "info"]),
+        "docker_compose_v2": run_ok(["docker", "compose", "version"])
     }
 
 
