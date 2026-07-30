@@ -36,6 +36,20 @@ def default_puid_pgid() -> tuple[int, int]:
     return os.getuid(), os.getgid()
 
 
+def default_timezone() -> str:
+
+    try:
+        return Path("/etc/timezone").read_text().strip()
+    except OSError:
+        pass
+
+    try:
+        target = Path("/etc/localtime").resolve()
+        return str(target).split("zoneinfo/", 1)[1]
+    except (OSError, IndexError):
+        return "UTC"
+
+
 def enabled_service_keys(config: GenerationConfig) -> set[str]:
 
     return {
