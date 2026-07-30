@@ -50,7 +50,7 @@ All tiers share the same directory layout and volume naming, so re-running the i
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
 ```
 
-Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) - picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. Custom mode isn't in the TUI yet - `--plain` or `--non-interactive --services` are the way to use it today.
+Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) - picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. In the default TUI, click "Customize Services" on the tier screen instead of "Continue" to get the same free-pick checklist.
 
 ---
 
