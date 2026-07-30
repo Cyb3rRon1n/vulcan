@@ -17,7 +17,8 @@ from installer.tiers import TIERS
 def make_config(
     tier_name: str,
     enabled_optional: set[str] | None = None,
-    gpu_vendor: str | None = None
+    gpu_vendor: str | None = None,
+    custom_services: set[str] | None = None
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -27,7 +28,8 @@ def make_config(
         pgid=1000,
         timezone="America/New_York",
         enabled_optional=enabled_optional or set(),
-        gpu_vendor=gpu_vendor
+        gpu_vendor=gpu_vendor,
+        custom_services=custom_services
     )
 
 
@@ -63,6 +65,21 @@ def test_enabled_service_keys_medium_with_gluetun():
 
     assert "gluetun" in keys
     assert len(keys) == 9
+
+
+def test_enabled_service_keys_custom_services_overrides_tier_entirely():
+
+    custom = {"jellyfin", "homepage", "watchtower"}
+    keys = enabled_service_keys(make_config("light", custom_services=custom))
+
+    assert keys == custom
+
+
+def test_enabled_service_keys_custom_services_none_falls_back_to_tier():
+
+    keys = enabled_service_keys(make_config("light", custom_services=None))
+
+    assert keys == {"jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent"}
 
 
 def test_render_compose_light_only_includes_light_services():
@@ -352,7 +369,25 @@ def test_save_and_load_previous_state_round_trip(tmp_path):
     assert state["timezone"] == "America/New_York"
     assert sorted(state["enabled_optional"]) == ["lidarr", "traefik"]
     assert state["gpu_vendor"] == "amd"
+    assert state["custom_services"] is None
     assert "generated_at" in state
+
+
+def test_save_and_load_previous_state_round_trips_custom_services(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path="/mnt/media",
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        custom_services={"jellyfin", "homepage", "watchtower"}
+    )
+
+    save_state(config, tmp_path)
+    state = load_previous_state(tmp_path)
+
+    assert sorted(state["custom_services"]) == ["homepage", "jellyfin", "watchtower"]
 
 
 def test_load_previous_state_missing_file_returns_none(tmp_path):

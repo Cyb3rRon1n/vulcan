@@ -170,7 +170,7 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
         # enter to accept their (previous-state-derived) defaults; the
         # generate confirm has no default so needs an explicit "y", then
         # decline the final start confirm with "n".
-        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\ny\nn\n")
+        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\n\ny\nn\n")
 
     assert result.exit_code == 0, result.output
     assert "Found an existing" in result.output
@@ -209,7 +209,7 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="n\n"
+            input="\nn\n"
         )
 
     assert result.exit_code == 0
@@ -240,7 +240,7 @@ def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="n\n"
+            input="\nn\n"
         )
 
     assert result.exit_code == 0
@@ -351,7 +351,7 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\ny\n"
+            input="\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -381,7 +381,7 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
-            input="y\n"
+            input="\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -513,7 +513,7 @@ def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
                 "--timezone", "UTC",
                 "--no-start"
             ],
-            input="y\ny\n"
+            input="y\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -582,7 +582,7 @@ def test_interactive_full_run_with_prompts(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\nn\ny\nn\n"
+            input="\n\nn\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -625,7 +625,7 @@ def test_docker_installed_but_not_running_starts_service(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\ny\n"
+            input="y\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -661,7 +661,7 @@ def test_docker_running_but_missing_compose_v2(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\ny\n"
+            input="y\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -691,7 +691,7 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\ny\nn\n"
+            input="\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -719,7 +719,7 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="nonsense\nlight\ny\nn\n"
+            input="nonsense\nlight\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -826,7 +826,7 @@ def test_media_path_prompted_when_not_passed(tmp_path):
                 "--plain", "--tier", "light",
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input=f"{prompted_path}\ny\nn\n"
+            input=f"{prompted_path}\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -874,7 +874,7 @@ def test_declining_generate_confirm_aborts(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="n\n"
+            input="\nn\n"
         )
 
     assert result.exit_code == 0
@@ -1006,3 +1006,192 @@ def test_backup_never_prompts_for_confirmation():
         result = runner.invoke(app, ["backup"], input="")
 
     assert result.exit_code == 0, result.output
+
+
+def test_services_unknown_key_rejected_before_detection():
+
+    with patch("installer.cli.detect_system") as mock_detect:
+
+        result = runner.invoke(
+            app,
+            [
+                "--services", "jellyfin,notreal",
+                "--non-interactive", "--yes", "--tier", "light", "--media-path", "/tmp/x"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "Unknown service(s)" in result.output
+    assert "notreal" in result.output
+    mock_detect.assert_not_called()
+
+
+def test_services_non_interactive_sets_custom_services(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--services", "jellyfin,homepage,watchtower",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.custom_services == {"jellyfin", "homepage", "watchtower"}
+    assert config.tier.name == "light"
+
+
+def test_non_interactive_rerun_reuses_previous_custom_services(tmp_path):
+
+    previous_state = {
+        "tier": "light", "media_path": str(tmp_path / "previous-media"),
+        "puid": 1000, "pgid": 1000, "timezone": "UTC",
+        "enabled_optional": [], "gpu_vendor": None,
+        "custom_services": ["jellyfin", "homepage"],
+        "generated_at": "2026-01-01T00:00:00+00:00"
+    }
+
+    with patch(
+        "installer.cli.load_previous_state", return_value=previous_state
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": previous_state["media_path"]}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.custom_services == {"jellyfin", "homepage"}
+
+
+def test_interactive_customize_accepted_with_edited_service_list(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,homepage,watchtower\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.custom_services == {"jellyfin", "homepage", "watchtower"}
+
+
+def test_interactive_customize_reprompts_on_unknown_service_key(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,notreal\njellyfin,homepage\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Unknown service(s): notreal" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.custom_services == {"jellyfin", "homepage"}
+
+
+def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,radarr\ny\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Enable hardware transcoding" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.gpu_vendor == "amd"
+
+
+def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Enable hardware transcoding" not in result.output
+    assert mock_write_stack.call_args[0][0].gpu_vendor is None

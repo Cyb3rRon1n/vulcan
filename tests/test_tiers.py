@@ -1,5 +1,5 @@
 from installer.detect import SystemInfo
-from installer.tiers import TIERS, recommend_tier
+from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
 
 
 def make_system_info(
@@ -115,3 +115,17 @@ def test_gluetun_and_lidarr_and_traefik_are_optional():
     assert heavy_by_key["lidarr"].optional is True
     assert heavy_by_key["traefik"].optional is True
     assert heavy_by_key["homepage"].optional is False
+
+
+def test_all_services_is_exactly_the_union_of_every_tier():
+
+    all_keys = {service.key for service in ALL_SERVICES}
+    union_keys = {
+        service.key
+        for tier in TIERS.values()
+        for service in tier.services
+    }
+
+    assert all_keys == union_keys
+    assert len(all_keys) == 14
+    assert len(ALL_SERVICES) == len(all_keys)
