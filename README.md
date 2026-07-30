@@ -74,6 +74,12 @@ vulcan backup    # archive stack/config/ + docker-compose.yml/.env to backups/
 
 ---
 
+## Contributing
+
+Contributions are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth.
+
+---
+
 ## License
 
 Vulcan is released under the [MIT License](LICENSE).
