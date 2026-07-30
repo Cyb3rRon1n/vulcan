@@ -36,6 +36,7 @@ class GenerationConfig:
     timezone: str
     enabled_optional: set[str] = field(default_factory=set)
     gpu_vendor: str | None = None
+    custom_services: set[str] | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -59,6 +60,9 @@ def default_timezone() -> str:
 
 def enabled_service_keys(config: GenerationConfig) -> set[str]:
 
+    if config.custom_services is not None:
+        return config.custom_services
+
     return {
         service.key for service in config.tier.services
         if not service.optional or service.key in config.enabled_optional
@@ -75,6 +79,9 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "timezone": config.timezone,
         "enabled_optional": sorted(config.enabled_optional),
         "gpu_vendor": config.gpu_vendor,
+        "custom_services": (
+            sorted(config.custom_services) if config.custom_services is not None else None
+        ),
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 

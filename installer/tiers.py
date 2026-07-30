@@ -58,6 +58,11 @@ TIERS: dict[str, TierDefinition] = {
     "heavy": TierDefinition("heavy", "Heavy", 6, 16, 1000, _HEAVY_SERVICES),
 }
 
+# Heavy's own list is already the flat union of all three tiers (Medium =
+# Light + 4, Heavy = Medium + 5) - this is the full catalog custom-mode
+# service selection picks from, not a separate registry.
+ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES
+
 _ORDERED_HIGH_TO_LOW = ["heavy", "medium", "light"]
 
 

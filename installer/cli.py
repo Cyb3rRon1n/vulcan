@@ -23,7 +23,7 @@ from installer.generate import (
     write_stack,
 )
 from installer.post_install import backup_stack, update_stack
-from installer.tiers import TIERS, recommend_tier
+from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
 
 
 app = typer.Typer(
@@ -110,6 +110,10 @@ def main(
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     timezone: str | None = typer.Option(None, "--timezone"),
+    services: str | None = typer.Option(
+        None, "--services",
+        help="Comma-separated service keys for a custom selection, overriding the tier's default set"
+    ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI")
 ):
     if ctx.invoked_subcommand is not None:
@@ -132,7 +136,8 @@ def main(
         gpu=gpu,
         puid=puid,
         pgid=pgid,
-        timezone=timezone
+        timezone=timezone,
+        services=services
     )
 
 
@@ -146,7 +151,8 @@ def run_install(
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
-    timezone: str | None
+    timezone: str | None,
+    services: str | None
 ):
 
     if non_interactive and not yes:
@@ -166,6 +172,24 @@ def run_install(
         console.print(f"[red]--tier '{tier}' must be 'light', 'medium', or 'heavy'.[/red]")
         raise typer.Exit(code=1)
 
+    custom_services_from_flag = None
+
+    if services is not None:
+
+        requested = {key.strip() for key in services.split(",") if key.strip()}
+        valid_keys = {service.key for service in ALL_SERVICES}
+        unknown = requested - valid_keys
+
+        if unknown:
+
+            console.print(
+                f"[red]Unknown service(s) in --services: {', '.join(sorted(unknown))}. "
+                f"Valid keys: {', '.join(sorted(valid_keys))}[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        custom_services_from_flag = requested
+
     console.print("[bold]Detecting your system...[/bold]")
     info = detect_system()
 
@@ -183,7 +207,8 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive, previous
+        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive, previous,
+        custom_services_from_flag
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -257,7 +282,8 @@ def _gather_generation_config(
     pgid: int | None,
     timezone: str | None,
     non_interactive: bool,
-    previous: dict | None
+    previous: dict | None,
+    custom_services_from_flag: set[str] | None
 ) -> GenerationConfig:
 
     if previous is not None:
@@ -319,9 +345,55 @@ def _gather_generation_config(
 
     chosen_tier = TIERS[chosen_tier_name]
 
+    previous_custom = previous.get("custom_services") if previous else None
+
+    if custom_services_from_flag is not None:
+
+        custom_services_selected = custom_services_from_flag
+
+    elif non_interactive:
+
+        custom_services_selected = set(previous_custom) if previous_custom is not None else None
+
+    else:
+
+        wants_custom = typer.confirm(
+            "Customize which services are included?",
+            default=previous_custom is not None
+        )
+
+        if wants_custom:
+
+            starting_set = (
+                set(previous_custom) if previous_custom is not None
+                else {service.key for service in chosen_tier.services if not service.optional}
+            )
+            valid_keys = {service.key for service in ALL_SERVICES}
+
+            console.print(f"Available services: {', '.join(sorted(valid_keys))}")
+
+            while True:
+
+                raw = typer.prompt(
+                    "Services to include (comma-separated)",
+                    default=",".join(sorted(starting_set))
+                )
+                requested = {key.strip() for key in raw.split(",") if key.strip()}
+                unknown = requested - valid_keys
+
+                if unknown:
+                    console.print(f"[red]Unknown service(s): {', '.join(sorted(unknown))}[/red]")
+                    continue
+
+                custom_services_selected = requested
+                break
+
+        else:
+            custom_services_selected = None
+
     enabled_optional = set()
 
-    if chosen_tier_name == "medium":
+    if custom_services_selected is None and chosen_tier_name == "medium":
 
         vpn_default = "gluetun" in previous["enabled_optional"] if previous else False
 
@@ -341,7 +413,17 @@ def _gather_generation_config(
 
     gpu_vendor_to_use = None
 
-    if chosen_tier_name == "heavy" and info.gpu_vendor:
+    jellyfin_included = "jellyfin" in (
+        custom_services_selected if custom_services_selected is not None
+        else {service.key for service in chosen_tier.services}
+    )
+
+    show_gpu_question = (
+        jellyfin_included and info.gpu_vendor and
+        (chosen_tier_name == "heavy" or custom_services_selected is not None)
+    )
+
+    if show_gpu_question:
 
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
@@ -388,7 +470,8 @@ def _gather_generation_config(
         pgid=final_pgid,
         timezone=final_tz,
         enabled_optional=enabled_optional,
-        gpu_vendor=gpu_vendor_to_use
+        gpu_vendor=gpu_vendor_to_use,
+        custom_services=custom_services_selected
     )
 
 
@@ -407,6 +490,9 @@ def _generate_and_maybe_start(
     console.print(f"  Timezone: {config.timezone}")
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
+
+    if config.custom_services is not None:
+        console.print(f"  Services: {', '.join(sorted(config.custom_services))}")
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 
