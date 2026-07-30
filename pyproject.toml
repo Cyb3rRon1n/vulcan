@@ -45,10 +45,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio"]
 
 [project.scripts]
 vulcan = "installer.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["installer"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
