@@ -21,5 +21,13 @@ class VulcanApp(App):
         self.previous_state: dict | None = None
         self.group_just_added: bool = False
 
+        self.media_path: str | None = None
+        self.tier_name: str | None = None
+        self.enabled_optional: set[str] = set()
+        self.gpu_vendor: str | None = None
+        self.puid: int | None = None
+        self.pgid: int | None = None
+        self.timezone: str | None = None
+
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())

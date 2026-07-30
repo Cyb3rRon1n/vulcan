@@ -1,10 +1,12 @@
 from unittest.mock import MagicMock, patch
 
-from textual.widgets import Button, Static
+from textual.widgets import Button, Checkbox, Input, RadioSet, Static
 
 from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
 from installer.tui.docker_screen import DockerReadyScreen
+from installer.tui.media_path_screen import MediaPathScreen
+from installer.tui.tier_config_screen import TierConfigScreen
 from installer.tui.welcome_screen import WelcomeScreen
 
 
@@ -337,7 +339,7 @@ async def test_docker_ready_screen_no_compose_only_installs_compose():
             await ctx.__aexit__(None, None, None)
 
 
-async def test_docker_ready_screen_continue_exits_the_app():
+async def test_docker_ready_screen_continue_navigates_to_media_path_screen():
 
     app, pilot, ctx = await _launch_at_docker_screen(make_system_info())
 
@@ -346,19 +348,300 @@ async def test_docker_ready_screen_continue_exits_the_app():
         await pilot.click("#continue")
         await pilot.pause()
 
+        assert isinstance(app.screen, MediaPathScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def _launch_at_media_path_screen(info: SystemInfo, previous: dict | None = None):
+
+    with patch(
+        "installer.tui.welcome_screen.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.tui.welcome_screen.load_previous_state", return_value=None
+    ):
+
+        app = VulcanApp()
+        ctx = app.run_test()
+        pilot = await ctx.__aenter__()
+
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    app.system_info = info
+    app.previous_state = previous
+    app.push_screen(MediaPathScreen())
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def _launch_at_tier_config_screen(
+    info: SystemInfo, previous: dict | None = None, media_path: str = "/mnt/media"
+):
+
+    app, pilot, ctx = await _launch_at_media_path_screen(info, previous)
+
+    app.media_path = media_path
+    app.push_screen(TierConfigScreen())
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def test_media_path_screen_default_value_from_previous_state():
+
+    previous = {"media_path": "/mnt/previous-media"}
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), previous)
+
+    try:
+
+        value = app.screen.query_one("#media-path-input", Input).value
+        assert value == "/mnt/previous-media"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_media_path_screen_default_value_fallback_to_home_media():
+
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
+
+    try:
+
+        value = app.screen.query_one("#media-path-input", Input).value
+        assert value.endswith("media")
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_media_path_screen_continue_success_navigates_and_updates_disk_info(tmp_path):
+
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
+
+    try:
+
+        media_path = str(tmp_path / "media")
+        app.screen.query_one("#media-path-input", Input).value = media_path
+
+        with patch(
+            "installer.tui.media_path_screen.detect_disk",
+            return_value={"disk_free_gb": 500.0, "disk_path_checked": media_path}
+        ):
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+        assert isinstance(app.screen, TierConfigScreen)
+        assert app.media_path == media_path
+        assert app.system_info.disk_free_gb == 500.0
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_media_path_screen_mkdir_failure_shows_error_and_stays():
+
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
+
+    try:
+
+        app.screen.query_one("#media-path-input", Input).value = "/root/no-access-here"
+
+        with patch(
+            "installer.tui.media_path_screen.Path.mkdir",
+            side_effect=OSError("permission denied")
+        ):
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+        error = app.screen.query_one("#media-path-error", Static).content
+        assert "Can't create media path" in error
+        assert isinstance(app.screen, MediaPathScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_recommended_tier_preselected_without_previous():
+
+    info = make_system_info(
+        disk_free_gb=600.0, ram_total_gb=16.0, cpu_cores_logical=6, cpu_cores_physical=6
+    )
+    app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None)
+
+    try:
+
+        radio_set = app.screen.query_one("#tier-set", RadioSet)
+        assert radio_set.pressed_button.id == "medium"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_previous_tier_preselected_when_present():
+
+    previous = {
+        "tier": "light", "media_path": "/mnt/x", "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": [], "gpu_vendor": None,
+        "generated_at": "2026-01-01T00:00:00+00:00"
+    }
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(), previous)
+
+    try:
+
+        radio_set = app.screen.query_one("#tier-set", RadioSet)
+        assert radio_set.pressed_button.id == "light"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_selecting_light_hides_both_checkboxes():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        assert app.screen.query_one("#gluetun-check", Checkbox).display is False
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_selecting_medium_shows_only_gluetun():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        await pilot.click("#medium")
+        await pilot.pause()
+
+        assert app.screen.query_one("#gluetun-check", Checkbox).display is True
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_selecting_heavy_with_gpu_shows_only_gpu_checked_by_default():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        await pilot.click("#heavy")
+        await pilot.pause()
+
+        gluetun = app.screen.query_one("#gluetun-check", Checkbox)
+        gpu = app.screen.query_one("#gpu-check", Checkbox)
+
+        assert gluetun.display is False
+        assert gpu.display is True
+        assert gpu.value is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_selecting_heavy_without_gpu_shows_neither():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor=None))
+
+    try:
+
+        await pilot.click("#heavy")
+        await pilot.pause()
+
+        assert app.screen.query_one("#gluetun-check", Checkbox).display is False
+        assert app.screen.query_one("#gpu-check", Checkbox).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#medium")
+        await pilot.pause()
+
+        await pilot.click("#gluetun-check")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "medium"
+        assert app.enabled_optional == {"gluetun"}
         assert app.is_running is False
 
     finally:
         await ctx.__aexit__(None, None, None)
 
 
-async def test_real_detection_and_docker_ready_end_to_end():
+async def test_tier_config_screen_continue_stores_config_and_exits():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        await pilot.click("#heavy")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "heavy"
+        assert app.gpu_vendor == "amd"
+        assert app.puid is not None
+        assert app.pgid is not None
+        assert app.timezone is not None
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_invalid_puid_shows_error_and_does_not_exit():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        app.screen.query_one("#puid-input", Input).value = ""
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        error = app.screen.query_one("#tier-error", Static).content
+        assert "PUID and PGID must both be numbers" in error
+        assert app.is_running is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_real_detection_and_docker_ready_end_to_end(tmp_path):
     """
     Genuinely unmocked - real detect_system(), real load_previous_state(),
-    real detect_docker() against this actual machine, where Docker is
-    already fully installed and running. Confirms the whole scaffold
-    (worker thread -> call_from_thread -> screen update -> navigation)
-    works against real system state, not just mocks.
+    real detect_docker(), real detect_disk(), real recommend_tier()
+    against this actual machine, where Docker is already fully installed
+    and running. Confirms the whole scaffold (worker thread ->
+    call_from_thread -> screen update -> navigation) works against real
+    system state, not just mocks - all the way through every screen this
+    slice adds.
     """
 
     app = VulcanApp()
@@ -379,3 +662,28 @@ async def test_real_detection_and_docker_ready_end_to_end():
         status = app.screen.query_one("#docker-status", Static).content
         assert status == "Docker is ready."
         assert app.screen.query_one("#action", Button).display is False
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, MediaPathScreen)
+
+        real_media_path = str(tmp_path / "real-media")
+        app.screen.query_one("#media-path-input", Input).value = real_media_path
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, TierConfigScreen)
+        assert app.media_path == real_media_path
+        assert app.system_info.disk_free_gb > 0
+
+        recommendation_text = app.screen.query_one("#recommendation", Static).content
+        assert "Recommended tier:" in recommendation_text
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name in ("light", "medium", "heavy")
+        assert app.puid is not None
+        assert app.is_running is False
