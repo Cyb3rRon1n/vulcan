@@ -57,12 +57,12 @@ def main(
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     timezone: str | None = typer.Option(None, "--timezone"),
-    tui: bool = typer.Option(False, "--tui", help="Launch the in-progress Textual UI")
+    plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI")
 ):
     if ctx.invoked_subcommand is not None:
         return
 
-    if tui and not non_interactive:
+    if not non_interactive and not plain:
 
         from installer.tui import run_tui
 

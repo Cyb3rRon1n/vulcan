@@ -72,20 +72,33 @@ def test_non_interactive_requires_tier_and_media_path_without_previous_state():
     assert "--tier and --media-path are required" in result.output
 
 
-def test_tui_flag_launches_tui_instead_of_run_install():
+def test_default_interactive_mode_launches_tui():
 
     with patch("installer.tui.run_tui") as mock_run_tui, patch(
         "installer.cli.run_install"
     ) as mock_run_install:
 
-        result = runner.invoke(app, ["--tui"])
+        result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.output
     mock_run_tui.assert_called_once()
     mock_run_install.assert_not_called()
 
 
-def test_tui_flag_ignored_in_non_interactive_mode(tmp_path):
+def test_plain_flag_launches_run_install_instead_of_tui():
+
+    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+        "installer.cli.run_install"
+    ) as mock_run_install:
+
+        result = runner.invoke(app, ["--plain"])
+
+    assert result.exit_code == 0, result.output
+    mock_run_tui.assert_not_called()
+    mock_run_install.assert_called_once()
+
+
+def test_non_interactive_mode_never_launches_tui_with_or_without_plain(tmp_path):
 
     media_path = str(tmp_path / "media")
 
@@ -101,7 +114,7 @@ def test_tui_flag_ignored_in_non_interactive_mode(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tui", "--tier", "light", "--media-path", media_path,
+                "--tier", "light", "--media-path", media_path,
                 "--non-interactive", "--yes"
             ]
         )
@@ -157,7 +170,7 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
         # enter to accept their (previous-state-derived) defaults; the
         # generate confirm has no default so needs an explicit "y", then
         # decline the final start confirm with "n".
-        result = runner.invoke(app, [], input="\n\n\n\n\n\ny\nn\n")
+        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\ny\nn\n")
 
     assert result.exit_code == 0, result.output
     assert "Found an existing" in result.output
@@ -193,7 +206,7 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "light", "--media-path", str(tmp_path / "media"),
+                "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
             input="n\n"
@@ -224,7 +237,7 @@ def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "light", "--media-path", str(tmp_path / "media"),
+                "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
             input="n\n"
@@ -262,7 +275,7 @@ def test_tier_heavy_accepted_non_interactive(tmp_path):
 
 def test_tier_invalid_value_rejected():
 
-    result = runner.invoke(app, ["--tier", "extreme"])
+    result = runner.invoke(app, ["--plain", "--tier", "extreme"])
 
     assert result.exit_code == 1
     assert "must be 'light', 'medium', or 'heavy'" in result.output
@@ -335,7 +348,7 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "heavy", "--media-path", media_path,
+                "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
             input="y\ny\n"
@@ -364,7 +377,7 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "heavy", "--media-path", media_path,
+                "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
@@ -492,6 +505,7 @@ def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
         result = runner.invoke(
             app,
             [
+                "--plain",
                 "--tier", "light",
                 "--media-path", media_path,
                 "--puid", "1000",
@@ -564,7 +578,10 @@ def test_interactive_full_run_with_prompts(tmp_path):
 
         result = runner.invoke(
             app,
-            ["--media-path", media_path, "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
+            [
+                "--plain", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
             input="\nn\ny\nn\n"
         )
 
@@ -605,7 +622,7 @@ def test_docker_installed_but_not_running_starts_service(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "light", "--media-path", media_path,
+                "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
             input="y\ny\n"
@@ -641,7 +658,7 @@ def test_docker_running_but_missing_compose_v2(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "light", "--media-path", media_path,
+                "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
             input="y\ny\n"
@@ -670,7 +687,10 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
 
         result = runner.invoke(
             app,
-            ["--media-path", media_path, "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
+            [
+                "--plain", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
             input="\ny\nn\n"
         )
 
@@ -695,7 +715,10 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path):
 
         result = runner.invoke(
             app,
-            ["--media-path", media_path, "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
+            [
+                "--plain", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
             input="nonsense\nlight\ny\nn\n"
         )
 
@@ -799,7 +822,10 @@ def test_media_path_prompted_when_not_passed(tmp_path):
 
         result = runner.invoke(
             app,
-            ["--tier", "light", "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
+            [
+                "--plain", "--tier", "light",
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
             input=f"{prompted_path}\ny\nn\n"
         )
 
@@ -845,7 +871,7 @@ def test_declining_generate_confirm_aborts(tmp_path):
         result = runner.invoke(
             app,
             [
-                "--tier", "light", "--media-path", media_path,
+                "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
             input="n\n"

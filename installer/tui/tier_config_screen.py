@@ -5,6 +5,7 @@ from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Stat
 
 from installer.generate import default_puid_pgid, default_timezone
 from installer.tiers import recommend_tier
+from installer.tui.review_screen import ReviewScreen
 
 
 class TierConfigScreen(Screen):
@@ -113,9 +114,4 @@ class TierConfigScreen(Screen):
         self.app.pgid = pgid
         self.app.timezone = self.query_one("#timezone-input", Input).value
 
-        self.app.exit(
-            message=(
-                "Review & generate isn't built yet - re-run with --plain "
-                "for the complete flow."
-            )
-        )
+        self.app.push_screen(ReviewScreen())
