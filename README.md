@@ -10,7 +10,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ## Status
 
-Phases 1 and 2 are both complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` now launches the full Security Onion-style guided TUI by default — detection, Docker readiness, tier/configuration, and review/generate/start as five real screens; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way.
+All three planned phases are complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` launches the full Security Onion-style guided TUI by default — detection, Docker readiness, tier/configuration, and review/generate/start as five real screens; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way. `vulcan update`/`vulcan backup` round out ongoing maintenance of an already-generated stack.
 
 ---
 
@@ -43,6 +43,17 @@ Non-interactive / scripted use is also supported:
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Lidarr (optional), reverse proxy, Homarr/Homepage, Uptime Kuma, Watchtower | Hardware transcoding if a GPU is detected |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
+
+---
+
+## Maintaining an existing stack
+
+```bash
+vulcan update    # pull the latest images and recreate containers
+vulcan backup    # archive stack/config/ + docker-compose.yml/.env to backups/
+```
+
+`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) - useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan backup` needs no confirmation - it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) - but the archive includes `stack/.env`, which may hold real credentials, so store it securely.
 
 ---
 
