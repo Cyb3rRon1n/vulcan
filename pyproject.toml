@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vulcan-forge"
+version = "0.1.0-alpha"
+description = "An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
+readme = "README.md"
+requires-python = ">=3.11"
+
+authors = [
+{name = "Vulcan Contributors"}
+]
+
+license = {file = "LICENSE"}
+
+keywords = [
+"homelab",
+"jellyfin",
+"arr-stack",
+"docker",
+"self-hosted",
+"media-server"
+]
+
+classifiers = [
+"Development Status :: 2 - Pre-Alpha",
+"Intended Audience :: End Users/Desktop",
+"License :: OSI Approved :: MIT License",
+"Programming Language :: Python :: 3",
+"Programming Language :: Python :: 3.11",
+"Programming Language :: Python :: 3.12",
+"Operating System :: POSIX :: Linux",
+"Topic :: System :: Installation/Setup"
+]
+
+dependencies = [
+    "typer",
+    "rich",
+    "textual",
+    "psutil",
+    "jinja2",
+    "pyyaml"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+vulcan = "installer.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["installer"]
