@@ -10,11 +10,11 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ## Status
 
-Early scaffolding. Phase 1 (detection + scoring, a basic TUI, Light/Medium tiers, Compose/`.env` generation, CLI flags) is in progress — nothing here is usable yet.
+Phase 1 is complete and usable: real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, Light/Medium stack generation, and a guided (or scripted) `./install` flow are all implemented, tested, and verified against real infrastructure. Heavy tier is scored and displayed honestly but not yet buildable. The guided flow is plain interactive CLI prompts today, not yet the Security Onion-style TUI — that's Phase 2.
 
 ---
 
-## Quick Start (target experience)
+## Quick Start
 
 ```bash
 git clone https://github.com/<you>/vulcan.git
@@ -22,13 +22,15 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then launches an interactive, Security Onion-style guided flow: detects your system, recommends a tier, asks only the questions that matter, and generates a ready-to-run stack.
+`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately.
 
-Non-interactive / scripted use will also be supported:
+Non-interactive / scripted use is also supported:
 
 ```bash
-./install --tier medium --media-path /mnt/media --non-interactive --yes
+./install --tier medium --media-path /mnt/media --non-interactive --yes --start
 ```
+
+`--non-interactive` requires both `--yes` and an explicit `--tier`/`--media-path` — nothing is inferred silently in scripted mode. `--start` is likewise opt-in on every path: generating a stack never launches it without being asked (interactively) or told to (`--start`).
 
 ---
 
