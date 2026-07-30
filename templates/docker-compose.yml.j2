@@ -12,11 +12,26 @@ services:
       - ${MEDIA_PATH}/media:/data/media:ro
     ports:
       - "8096:8096"
+{% if gpu_vendor in ('amd', 'intel') %}
+    devices:
+      - /dev/dri:/dev/dri
+{% if render_gid %}
+    group_add:
+      - "{{ render_gid }}"
+{% endif %}
+{% endif %}
     deploy:
       resources:
         limits:
           cpus: "{{ limits.jellyfin.cpus }}"
           memory: "{{ limits.jellyfin.memory }}"
+{% if gpu_vendor == 'nvidia' %}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+{% endif %}
     restart: unless-stopped
 {% endif %}
 {% if 'radarr' in enabled %}
@@ -177,5 +192,94 @@ services:
         limits:
           cpus: "{{ limits.gluetun.cpus }}"
           memory: "{{ limits.gluetun.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'lidarr' in enabled %}
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/lidarr:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "8686:8686"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.lidarr.cpus }}"
+          memory: "{{ limits.lidarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'traefik' in enabled %}
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik:/etc/traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.traefik.cpus }}"
+          memory: "{{ limits.traefik.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'homepage' in enabled %}
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    volumes:
+      - ./config/homepage:/app/config
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.homepage.cpus }}"
+          memory: "{{ limits.homepage.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'uptime-kuma' in enabled %}
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    volumes:
+      - ./config/uptime-kuma:/app/data
+    ports:
+      - "3001:3001"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits['uptime-kuma'].cpus }}"
+          memory: "{{ limits['uptime-kuma'].memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'watchtower' in enabled %}
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - TZ=${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.watchtower.cpus }}"
+          memory: "{{ limits.watchtower.memory }}"
     restart: unless-stopped
 {% endif %}

@@ -18,6 +18,11 @@ RESOURCE_PROFILES: dict[str, str] = {
     "bazarr": "light",
     "flaresolverr": "light",
     "gluetun": "light",
+    "lidarr": "standard",
+    "traefik": "light",
+    "homepage": "light",
+    "uptime-kuma": "light",
+    "watchtower": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {
