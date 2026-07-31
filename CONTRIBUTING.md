@@ -39,13 +39,13 @@ If the answer is "yes," it likely aligns with the project's goals.
 * Improve the TUI
 * Refactor for readability
 
-See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points - aarch64 verification is the one real, scoped gap left as of this writing, not a hypothetical idea.
+See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points - real end-to-end aarch64/ARM verification (a static readiness audit exists, but nothing has actually been run on real ARM hardware yet) is the one real, scoped gap left as of this writing, not a hypothetical idea.
 
 ---
 
 ## Testing
 
-Vulcan's automatic Docker install currently targets Ubuntu, Debian, Raspbian, Fedora (via `get.docker.com`), and Arch (via `pacman`) - help test on distros beyond whichever one a given change was verified against. Real-hardware testing matters even more here: different GPU vendors (only AMD has been verified against real hardware in this project's history; Intel and NVIDIA are implemented per documented convention but unverified), aarch64/ARM (a stated design goal, never actually run), and different filesystem layouts all genuinely affect whether a generated stack works.
+Vulcan's automatic Docker install currently targets Ubuntu, Debian, Raspbian, Fedora (via `get.docker.com`), and Arch (via `pacman`) - help test on distros beyond whichever one a given change was verified against. Real-hardware testing matters even more here: different GPU vendors (only AMD has been verified against real hardware in this project's history; Intel and NVIDIA are implemented per documented convention but unverified), aarch64/ARM (a static readiness audit exists - see `CLAUDE.md` - every referenced Docker image confirmed to publish a real `linux/arm64` manifest, but nothing has actually been run end-to-end on real ARM hardware yet; a real Raspberry Pi or ARM VPS run is exactly the kind of contribution this gap needs), and different filesystem layouts all genuinely affect whether a generated stack works.
 
 ---
 
