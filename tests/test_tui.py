@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1341,6 +1342,218 @@ async def test_review_screen_start_stack_failure_exits_with_failure_message():
             await pilot.pause()
 
         assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_back_returns_to_welcome_screen():
+
+    app, pilot, ctx = await _launch_at_docker_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, WelcomeScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_back_disabled_while_fix_running():
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False
+    )
+
+    def slow_install_docker(*args, **kwargs):
+        time.sleep(0.2)
+        return {"success": True, "error": None}
+
+    with patch(
+        "installer.tui.docker_screen.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh"}
+    ), patch(
+        "installer.tui.docker_screen.install_docker", side_effect=slow_install_docker
+    ), patch(
+        "installer.tui.docker_screen.start_docker_service"
+    ), patch(
+        "installer.tui.docker_screen.add_user_to_docker_group"
+    ), patch(
+        "installer.tui.docker_screen.ensure_compose_v2"
+    ), patch(
+        "installer.tui.docker_screen.detect_docker",
+        return_value={"docker_installed": True, "docker_running": True, "docker_compose_v2": True}
+    ):
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            await pilot.click("#action")
+            await pilot.pause()
+
+            assert app.screen.query_one("#back", Button).disabled is True
+
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert app.screen.query_one("#back", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_media_path_screen_back_returns_to_docker_ready_screen():
+
+    with patch(
+        "installer.tui.welcome_screen.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.tui.welcome_screen.load_previous_state", return_value=None
+    ):
+
+        app = VulcanApp()
+
+        async with app.run_test() as pilot:
+
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#continue")
+            await pilot.pause()
+            assert isinstance(app.screen, DockerReadyScreen)
+
+            await pilot.click("#continue")
+            await pilot.pause()
+            assert isinstance(app.screen, MediaPathScreen)
+
+            await pilot.click("#back")
+            await pilot.pause()
+
+            assert isinstance(app.screen, DockerReadyScreen)
+
+
+async def test_tier_config_screen_back_returns_to_media_path_screen():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, MediaPathScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_back_preserves_previously_entered_values():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        app.screen.query_one("#puid-input", Input).value = "1234"
+
+        await pilot.click("#continue")
+        await pilot.pause()
+        assert isinstance(app.screen, ReviewScreen)
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, TierConfigScreen)
+        assert app.screen.query_one("#puid-input", Input).value == "1234"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_back_returns_to_tier_config_screen():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#customize")
+        await pilot.pause()
+        assert isinstance(app.screen, ServiceSelectionScreen)
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, TierConfigScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_back_returns_to_tier_config_screen():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, TierConfigScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_back_returns_to_service_selection_screen():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#customize")
+        await pilot.pause()
+        assert isinstance(app.screen, ServiceSelectionScreen)
+
+        await pilot.click("#continue")
+        await pilot.pause()
+        assert isinstance(app.screen, ReviewScreen)
+
+        await pilot.click("#back")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ServiceSelectionScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_back_disabled_after_start_stack_clicked():
+
+    def slow_run_docker_command(*args, **kwargs):
+        time.sleep(0.2)
+        return MagicMock(returncode=0)
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.run_docker_command", side_effect=slow_run_docker_command
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            assert app.screen.query_one("#back", Button).disabled is True
 
     finally:
         await ctx.__aexit__(None, None, None)

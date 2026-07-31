@@ -1,5 +1,5 @@
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, SelectionList, Static
 from textual.widgets.selection_list import Selection
@@ -47,7 +47,10 @@ class ServiceSelectionScreen(Screen):
                 placeholder="Base domain, e.g. media.example.com",
                 id="domain-input"
             ),
-            Button("Continue", id="continue"),
+            Horizontal(
+                Button("Back", id="back"),
+                Button("Continue", id="continue"),
+            ),
         )
 
     def on_mount(self) -> None:
@@ -72,6 +75,10 @@ class ServiceSelectionScreen(Screen):
         self.query_one("#domain-input", Input).display = "traefik" in selected
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+
+        if event.button.id == "back":
+            self.app.pop_screen()
+            return
 
         if event.button.id != "continue":
             return

@@ -71,6 +71,7 @@ class TierConfigScreen(Screen):
             Input(value=default_tz, placeholder="Timezone", id="timezone-input"),
             Static("", id="tier-error"),
             Horizontal(
+                Button("Back", id="back"),
                 Button("Continue", id="continue"),
                 Button("Customize Services", id="customize"),
             ),
@@ -113,6 +114,10 @@ class TierConfigScreen(Screen):
         self.app.timezone = self.query_one("#timezone-input", Input).value
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+
+        if event.button.id == "back":
+            self.app.pop_screen()
+            return
 
         if event.button.id not in ("continue", "customize"):
             return

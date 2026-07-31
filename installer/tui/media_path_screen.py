@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Input, Static
 
@@ -32,10 +32,17 @@ class MediaPathScreen(Screen):
             Static("Where should your media library live?", id="title"),
             Input(value=default_path, id="media-path-input"),
             Static("", id="media-path-error"),
-            Button("Continue", id="continue"),
+            Horizontal(
+                Button("Back", id="back"),
+                Button("Continue", id="continue"),
+            ),
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+
+        if event.button.id == "back":
+            self.app.pop_screen()
+            return
 
         if event.button.id != "continue":
             return

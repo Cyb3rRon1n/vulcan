@@ -1,6 +1,6 @@
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
@@ -58,7 +58,10 @@ class ReviewScreen(Screen):
 
         yield Vertical(
             Static(summary, id="summary"),
-            Button("Generate", id="generate"),
+            Horizontal(
+                Button("Back", id="back"),
+                Button("Generate", id="generate"),
+            ),
             Static("", id="result"),
             LoadingIndicator(id="loading"),
             Button("Start Stack Now", id="start", disabled=True),
@@ -79,6 +82,8 @@ class ReviewScreen(Screen):
             self._finish_without_starting()
         elif event.button.id == "start":
             self._start_stack()
+        elif event.button.id == "back":
+            self.app.pop_screen()
 
     def _generate(self) -> None:
 
@@ -117,6 +122,7 @@ class ReviewScreen(Screen):
 
         self.query_one("#start", Button).disabled = True
         self.query_one("#finish", Button).disabled = True
+        self.query_one("#back", Button).disabled = True
         self.query_one("#loading", LoadingIndicator).display = True
 
         self._run_start()
