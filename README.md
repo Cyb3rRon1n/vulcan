@@ -17,7 +17,7 @@ All three planned phases are complete. Real hardware detection, deterministic ti
 ## Quick Start
 
 ```bash
-git clone https://github.com/<you>/vulcan.git
+git clone https://github.com/Cyb3rRon1n/vulcan.git
 cd vulcan
 ./install
 ```
