@@ -6,6 +6,7 @@ from installer.detect import (
     detect_disk,
     detect_docker,
     detect_gpu,
+    detect_host_ip,
     detect_memory,
     detect_os,
     detect_render_group_gid,
@@ -180,6 +181,28 @@ def test_detect_render_group_gid_returns_none_when_neither_exists():
     with patch("installer.detect.grp.getgrnam", side_effect=KeyError):
 
         assert detect_render_group_gid() is None
+
+
+def test_detect_host_ip_returns_a_real_address():
+    """
+    Genuinely unmocked - this machine has a real route out, so this
+    exercises the real socket call rather than assuming the technique
+    works, matching this project's existing precedent of exercising
+    real syscalls where safe (e.g. detect_render_group_gid()'s own
+    real-grp.getgrnam tests elsewhere in this project's history).
+    """
+
+    result = detect_host_ip()
+
+    assert result is not None
+    assert result.count(".") == 3
+
+
+def test_detect_host_ip_returns_none_on_failure():
+
+    with patch("installer.detect.socket.socket", side_effect=OSError("network unreachable")):
+
+        assert detect_host_ip() is None
 
 
 def test_detect_docker_when_not_installed():

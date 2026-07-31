@@ -14,16 +14,44 @@ from datetime import datetime
 from datetime import timezone as dt_timezone
 from pathlib import Path
 
+import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from installer.detect import detect_render_group_gid
+from installer.detect import detect_host_ip, detect_render_group_gid
 from installer.services import resource_limits_for
-from installer.tiers import TIERS, TierDefinition
+from installer.tiers import ALL_SERVICES, TIERS, TierDefinition
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 STACK_DIR = Path("stack")
 STATE_FILENAME = ".vulcan-state.json"
+
+# Homepage tile groups/ports - deliberately mirrors the same web-facing
+# service set the Traefik template's per-service labels already target
+# (minus Homepage itself), not a shared constant with that template -
+# see CLAUDE.md for why. Ports here are each service's own host-published
+# port (what a browser actually hits), not the container-internal port
+# Traefik's labels use - the opposite convention, and it matters for
+# SABnzbd specifically (8081 here, not its internal 8080).
+_HOMEPAGE_GROUPS: dict[str, list[str]] = {
+    "Media": ["jellyfin", "jellyseerr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "prowlarr", "bazarr"],
+    "Downloads": ["qbittorrent", "sabnzbd"],
+    "Monitoring": ["uptime-kuma"],
+}
+
+_HOMEPAGE_PORTS: dict[str, int] = {
+    "jellyfin": 8096,
+    "radarr": 7878,
+    "sonarr": 8989,
+    "prowlarr": 9696,
+    "qbittorrent": 8080,
+    "sabnzbd": 8081,
+    "jellyseerr": 5055,
+    "bazarr": 6767,
+    "lidarr": 8686,
+    "uptime-kuma": 3001,
+}
 
 
 @dataclass
@@ -170,6 +198,36 @@ def render_env(
     )
 
 
+def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> str:
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+    routed = "traefik" in enabled and config.domain
+
+    groups = []
+
+    for group_name, keys in _HOMEPAGE_GROUPS.items():
+
+        items = []
+
+        for key in keys:
+
+            if key not in enabled:
+                continue
+
+            if routed:
+                href = f"https://{key}.{config.domain}"
+            else:
+                href = f"http://{host_ip or 'localhost'}:{_HOMEPAGE_PORTS[key]}"
+
+            items.append({display_names[key]: {"href": href, "icon": f"{key}.png"}})
+
+        if items:
+            groups.append({group_name: items})
+
+    return yaml.safe_dump(groups, sort_keys=False)
+
+
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     output_dir = Path(output_dir)
@@ -202,6 +260,20 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "music").mkdir(parents=True, exist_ok=True)
 
     warnings = []
+
+    if "homepage" in enabled_service_keys(config):
+
+        services_yaml_path = output_dir / "config" / "homepage" / "services.yaml"
+
+        if not services_yaml_path.exists():
+
+            services_yaml_path.write_text(render_homepage_services(config, detect_host_ip()))
+
+            warnings.append(
+                "Homepage was pre-seeded with tiles for your enabled services at "
+                "stack/config/homepage/services.yaml - edit it directly to customize "
+                "further; Vulcan won't overwrite it on a later regenerate."
+            )
 
     if "gluetun" in config.enabled_optional:
 
