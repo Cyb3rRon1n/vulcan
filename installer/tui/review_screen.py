@@ -31,7 +31,8 @@ class ReviewScreen(Screen):
             timezone=self.app.timezone,
             enabled_optional=self.app.enabled_optional,
             gpu_vendor=self.app.gpu_vendor,
-            custom_services=self.app.custom_services
+            custom_services=self.app.custom_services,
+            domain=self.app.domain
         )
 
     def compose(self) -> ComposeResult:
@@ -51,6 +52,9 @@ class ReviewScreen(Screen):
 
         if self.app.custom_services is not None:
             summary += f"\nServices: {', '.join(sorted(self.app.custom_services))}"
+
+        if self.app.domain:
+            summary += f"\nDomain: {self.app.domain}"
 
         yield Vertical(
             Static(summary, id="summary"),

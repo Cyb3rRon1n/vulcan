@@ -18,7 +18,8 @@ def make_config(
     tier_name: str,
     enabled_optional: set[str] | None = None,
     gpu_vendor: str | None = None,
-    custom_services: set[str] | None = None
+    custom_services: set[str] | None = None,
+    domain: str | None = None
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -29,7 +30,8 @@ def make_config(
         timezone="America/New_York",
         enabled_optional=enabled_optional or set(),
         gpu_vendor=gpu_vendor,
-        custom_services=custom_services
+        custom_services=custom_services,
+        domain=domain
     )
 
 
@@ -196,6 +198,116 @@ def test_render_compose_heavy_without_optional_extras_excludes_lidarr_and_traefi
 def _jellyfin_block(output: str) -> str:
 
     return output.split("jellyfin:", 1)[1].split("  radarr:", 1)[0]
+
+
+def _service_block(output: str, name: str, next_name: str) -> str:
+
+    return output.split(f"{name}:", 1)[1].split(f"{next_name}:", 1)[0]
+
+
+def test_render_compose_no_domain_omits_traefik_labels_even_when_enabled():
+
+    output = render_compose(make_config("heavy", enabled_optional={"traefik"}))
+
+    assert "traefik.enable" not in output
+    assert "traefik.http.routers" not in output
+
+
+def test_render_compose_domain_without_traefik_omits_labels():
+
+    output = render_compose(make_config("heavy", domain="media.example.com"))
+
+    assert "traefik.enable" not in output
+
+
+def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_service():
+
+    output = render_compose(
+        make_config(
+            "heavy",
+            enabled_optional={"traefik", "lidarr"},
+            domain="media.example.com"
+        )
+    )
+
+    expected_ports = {
+        "jellyfin": 8096,
+        "radarr": 7878,
+        "sonarr": 8989,
+        "prowlarr": 9696,
+        "jellyseerr": 5055,
+        "bazarr": 6767,
+        "lidarr": 8686,
+        "homepage": 3000,
+        "uptime-kuma": 3001,
+    }
+
+    for name, port in expected_ports.items():
+
+        assert f"traefik.http.routers.{name}.rule=Host(`{name}.media.example.com`)" in output
+        assert f"traefik.http.services.{name}.loadbalancer.server.port={port}" in output
+
+
+def test_render_compose_domain_does_not_route_internal_only_services():
+
+    output = render_compose(
+        make_config(
+            "heavy",
+            enabled_optional={"traefik", "flaresolverr", "lidarr"},
+            domain="media.example.com"
+        )
+    )
+
+    for name in ("flaresolverr", "recyclarr", "watchtower", "gluetun"):
+        assert f"traefik.http.routers.{name}." not in output
+
+
+def test_render_compose_qbittorrent_routed_when_gluetun_disabled():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    qbittorrent_block = _service_block(output, "qbittorrent", "jellyseerr")
+    assert "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.media.example.com`)" in qbittorrent_block
+    assert "traefik.http.services.qbittorrent.loadbalancer.server.port=8080" in qbittorrent_block
+
+
+def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik", "gluetun"}, domain="media.example.com"
+        )
+    )
+
+    qbittorrent_block = _service_block(output, "qbittorrent", "jellyseerr")
+    assert "traefik" not in qbittorrent_block
+
+    # every other enabled service still gets routed
+    assert "traefik.http.routers.jellyfin.rule" in output
+
+
+def test_render_compose_sabnzbd_uses_internal_port_not_remapped_host_port():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik", "sabnzbd"}, domain="media.example.com")
+    )
+
+    sabnzbd_block = _service_block(output, "sabnzbd", "jellyseerr")
+    assert "traefik.http.services.sabnzbd.loadbalancer.server.port=8080" in sabnzbd_block
+    assert "loadbalancer.server.port=8081" not in sabnzbd_block
+
+
+def test_render_compose_traefik_redirects_http_to_https_only_with_domain():
+
+    without_domain = render_compose(make_config("heavy", enabled_optional={"traefik"}))
+    with_domain = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    assert "redirections.entrypoint.to=websecure" not in without_domain
+    assert "redirections.entrypoint.to=websecure" in with_domain
 
 
 def test_render_compose_amd_gpu_adds_device_and_group(tmp_path):
@@ -453,6 +565,59 @@ def test_write_stack_no_recyclarr_warning_when_disabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert result["warnings"] == []
+
+
+def test_write_stack_warns_when_traefik_domain_configured(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("media.example.com" in warning for warning in result["warnings"])
+    assert any("self-signed certificate" in warning for warning in result["warnings"])
+    assert not any("qbittorrent" in warning.lower() for warning in result["warnings"])
+
+
+def test_write_stack_no_traefik_warning_without_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
+
+
+def test_write_stack_warns_about_qbittorrent_when_traefik_domain_and_gluetun_combined(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "gluetun"},
+        domain="media.example.com"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("qbittorrent" in warning.lower() for warning in result["warnings"])
+    assert any("network_mode" in warning for warning in result["warnings"])
 
 
 def test_default_timezone_reads_etc_timezone():

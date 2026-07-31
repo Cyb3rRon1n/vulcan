@@ -12,6 +12,14 @@ services:
       - ${MEDIA_PATH}/media:/data/media:ro
     ports:
       - "8096:8096"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.{{ domain }}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin.tls=true"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+{% endif %}
 {% if gpu_vendor in ('amd', 'intel') %}
     devices:
       - /dev/dri:/dev/dri
@@ -47,6 +55,14 @@ services:
       - ${MEDIA_PATH}:/data
     ports:
       - "7878:7878"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.{{ domain }}`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls=true"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -67,6 +83,14 @@ services:
       - ${MEDIA_PATH}:/data
     ports:
       - "8989:8989"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.{{ domain }}`)"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls=true"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -86,6 +110,14 @@ services:
       - ./config/prowlarr:/config
     ports:
       - "9696:9696"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.{{ domain }}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls=true"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -111,6 +143,14 @@ services:
 {% else %}
     ports:
       - "8080:8080"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.{{ domain }}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.tls=true"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+{% endif %}
 {% endif %}
     deploy:
       resources:
@@ -132,6 +172,14 @@ services:
       - ${MEDIA_PATH}:/data
     ports:
       - "8081:8080"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{ domain }}`)"
+      - "traefik.http.routers.sabnzbd.entrypoints=websecure"
+      - "traefik.http.routers.sabnzbd.tls=true"
+      - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -167,6 +215,14 @@ services:
       - ./config/jellyseerr:/app/config
     ports:
       - "5055:5055"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{ domain }}`)"
+      - "traefik.http.routers.jellyseerr.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr.tls=true"
+      - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -187,6 +243,14 @@ services:
       - ${MEDIA_PATH}/media:/data/media
     ports:
       - "6767:6767"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.{{ domain }}`)"
+      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.tls=true"
+      - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -245,6 +309,14 @@ services:
       - ${MEDIA_PATH}:/data
     ports:
       - "8686:8686"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.{{ domain }}`)"
+      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.tls=true"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -261,6 +333,10 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+{% if domain %}
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+{% endif %}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik:/etc/traefik
@@ -282,6 +358,14 @@ services:
       - ./config/homepage:/app/config
     ports:
       - "3000:3000"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage.rule=Host(`homepage.{{ domain }}`)"
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls=true"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+{% endif %}
     deploy:
       resources:
         limits:
@@ -297,6 +381,14 @@ services:
       - ./config/uptime-kuma:/app/data
     ports:
       - "3001:3001"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.uptime-kuma.rule=Host(`uptime-kuma.{{ domain }}`)"
+      - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
+      - "traefik.http.routers.uptime-kuma.tls=true"
+      - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
+{% endif %}
     deploy:
       resources:
         limits:

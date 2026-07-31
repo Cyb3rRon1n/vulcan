@@ -1369,6 +1369,151 @@ def test_interactive_customize_reprompts_on_unknown_service_key(tmp_path):
     assert config.custom_services == {"jellyfin", "homepage"}
 
 
+def test_non_interactive_custom_services_with_traefik_and_domain_flag(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--services", "jellyfin,radarr,traefik",
+                "--domain", "media.example.com",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.domain == "media.example.com"
+
+
+def test_domain_flag_ignored_when_traefik_not_in_custom_selection(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--services", "jellyfin,homepage",
+                "--domain", "media.example.com",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.domain is None
+
+
+def test_non_interactive_rerun_reuses_previous_domain(tmp_path):
+
+    previous_state = {
+        "tier": "heavy", "media_path": str(tmp_path / "previous-media"),
+        "puid": 1000, "pgid": 1000, "timezone": "UTC",
+        "enabled_optional": [], "gpu_vendor": None,
+        "custom_services": ["jellyfin", "traefik"],
+        "domain": "media.example.com",
+        "generated_at": "2026-01-01T00:00:00+00:00"
+    }
+
+    with patch(
+        "installer.cli.load_previous_state", return_value=previous_state
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": previous_state["media_path"]}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.domain == "media.example.com"
+
+
+def test_interactive_customize_with_traefik_prompts_for_domain(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,radarr,traefik\nmedia.example.com\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Base domain for Traefik routing" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.domain == "media.example.com"
+
+
+def test_interactive_customize_with_traefik_domain_left_blank_skips_routing(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,radarr,traefik\n\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.domain is None
+
+
 def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):
 
     media_path = str(tmp_path / "media")

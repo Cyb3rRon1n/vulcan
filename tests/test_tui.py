@@ -918,6 +918,109 @@ async def test_service_selection_screen_continue_no_gpu_vendor_when_unchecked():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_service_selection_screen_domain_hidden_without_traefik_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        assert app.screen.query_one("#domain-input", Input).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_domain_shown_when_traefik_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("traefik")
+        await pilot.pause()
+
+        assert app.screen.query_one("#domain-input", Input).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_domain_hidden_again_when_traefik_deselected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+
+        service_list.toggle("traefik")
+        await pilot.pause()
+        assert app.screen.query_one("#domain-input", Input).display is True
+
+        service_list.toggle("traefik")
+        await pilot.pause()
+        assert app.screen.query_one("#domain-input", Input).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_stores_domain_when_traefik_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("traefik")
+        await pilot.pause()
+
+        app.screen.query_one("#domain-input", Input).value = "media.example.com"
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.domain == "media.example.com"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_ignores_domain_when_traefik_deselected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+
+        service_list.toggle("traefik")
+        await pilot.pause()
+        app.screen.query_one("#domain-input", Input).value = "media.example.com"
+
+        service_list.toggle("traefik")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.domain is None
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_review_screen_summary_includes_services_when_custom():
 
     app, pilot, ctx = await _launch_at_review_screen(
@@ -941,6 +1044,34 @@ async def test_review_screen_summary_omits_services_line_when_not_custom():
 
         summary = app.screen.query_one("#summary", Static).content
         assert "Services:" not in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_summary_includes_domain_when_set():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), custom_services={"jellyfin", "traefik"}, domain="media.example.com"
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Domain: media.example.com" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_summary_omits_domain_line_when_not_set():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info(), domain=None)
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Domain:" not in summary
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -971,6 +1102,7 @@ async def _launch_at_review_screen(
     enabled_optional: set | None = None,
     gpu_vendor: str | None = None,
     custom_services: set | None = None,
+    domain: str | None = None,
 ):
 
     app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None, media_path=media_path)
@@ -982,6 +1114,7 @@ async def _launch_at_review_screen(
     app.enabled_optional = enabled_optional if enabled_optional is not None else set()
     app.gpu_vendor = gpu_vendor
     app.custom_services = custom_services
+    app.domain = domain
 
     app.push_screen(ReviewScreen())
     await pilot.pause()
