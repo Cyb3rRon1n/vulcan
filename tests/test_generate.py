@@ -67,6 +67,14 @@ def test_enabled_service_keys_medium_with_gluetun():
     assert len(keys) == 9
 
 
+def test_enabled_service_keys_light_with_sabnzbd():
+
+    keys = enabled_service_keys(make_config("light", {"sabnzbd"}))
+
+    assert "sabnzbd" in keys
+    assert len(keys) == 6
+
+
 def test_enabled_service_keys_custom_services_overrides_tier_entirely():
 
     custom = {"jellyfin", "homepage", "watchtower"}
@@ -113,6 +121,24 @@ def test_render_compose_medium_with_gluetun_routes_qbittorrent_through_it():
     qbittorrent_block = output.split("qbittorrent:", 1)[1].split("jellyseerr:", 1)[0]
     assert 'network_mode: "service:gluetun"' in qbittorrent_block
     assert "ports:" not in qbittorrent_block
+
+
+def test_render_compose_medium_without_sabnzbd_omits_it():
+
+    output = render_compose(make_config("medium"))
+
+    assert "container_name: sabnzbd" not in output
+
+
+def test_render_compose_medium_with_sabnzbd_uses_remapped_port():
+
+    output = render_compose(make_config("medium", {"sabnzbd"}))
+
+    assert "container_name: sabnzbd" in output
+
+    sabnzbd_block = output.split("sabnzbd:", 1)[1].split("jellyseerr:", 1)[0]
+    assert '"8081:8080"' in sabnzbd_block
+    assert "${MEDIA_PATH}:/data" in sabnzbd_block
 
 
 def test_render_compose_heavy_includes_all_new_services():
@@ -298,6 +324,57 @@ def test_write_stack_warns_when_gluetun_enabled(tmp_path):
 
     assert result["warnings"] != []
     assert "gluetun" in result["warnings"][0].lower()
+
+
+def test_write_stack_warns_when_sabnzbd_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"sabnzbd"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] != []
+    assert any("sabnzbd" in warning.lower() for warning in result["warnings"])
+    assert (tmp_path / "stack" / "config" / "sabnzbd").is_dir()
+
+
+def test_write_stack_warns_when_sabnzbd_enabled_via_custom_services(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin", "sabnzbd"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("sabnzbd" in warning.lower() for warning in result["warnings"])
+
+
+def test_write_stack_no_sabnzbd_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
 
 
 def test_default_timezone_reads_etc_timezone():

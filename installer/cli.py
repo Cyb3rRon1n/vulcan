@@ -105,6 +105,7 @@ def main(
     non_interactive: bool = typer.Option(False, "--non-interactive"),
     yes: bool = typer.Option(False, "--yes"),
     vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
+    sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -132,6 +133,7 @@ def main(
         non_interactive=non_interactive,
         yes=yes,
         vpn=vpn,
+        sabnzbd=sabnzbd,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -147,6 +149,7 @@ def run_install(
     non_interactive: bool,
     yes: bool,
     vpn: bool | None,
+    sabnzbd: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -207,7 +210,7 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, gpu, puid, pgid, timezone, non_interactive, previous,
+        info, tier, media_path, vpn, sabnzbd, gpu, puid, pgid, timezone, non_interactive, previous,
         custom_services_from_flag
     )
 
@@ -277,6 +280,7 @@ def _gather_generation_config(
     tier: str | None,
     media_path: str | None,
     vpn: bool | None,
+    sabnzbd: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -411,6 +415,23 @@ def _gather_generation_config(
         if enable_vpn:
             enabled_optional.add("gluetun")
 
+    if custom_services_selected is None:
+
+        sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
+
+        if sabnzbd is None:
+
+            enable_sabnzbd = sabnzbd_default if non_interactive else typer.confirm(
+                "Enable SABnzbd (Usenet downloader) alongside qBittorrent?",
+                default=sabnzbd_default
+            )
+
+        else:
+            enable_sabnzbd = sabnzbd
+
+        if enable_sabnzbd:
+            enabled_optional.add("sabnzbd")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -489,6 +510,7 @@ def _generate_and_maybe_start(
     console.print(f"  PUID/PGID: {config.puid}/{config.pgid}")
     console.print(f"  Timezone: {config.timezone}")
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
+    console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:

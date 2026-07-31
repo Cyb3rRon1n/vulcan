@@ -117,6 +117,15 @@ def test_gluetun_and_lidarr_and_traefik_are_optional():
     assert heavy_by_key["homepage"].optional is False
 
 
+def test_sabnzbd_is_optional_starting_at_light():
+
+    light_by_key = {s.key: s for s in TIERS["light"].services}
+
+    assert "sabnzbd" in light_by_key
+    assert light_by_key["sabnzbd"].optional is True
+    assert light_by_key["qbittorrent"].optional is False
+
+
 def test_all_services_is_exactly_the_union_of_every_tier():
 
     all_keys = {service.key for service in ALL_SERVICES}
@@ -127,5 +136,5 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 14
+    assert len(all_keys) == 15
     assert len(ALL_SERVICES) == len(all_keys)

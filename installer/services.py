@@ -14,6 +14,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "sonarr": "standard",
     "prowlarr": "light",
     "qbittorrent": "standard",
+    "sabnzbd": "standard",
     "jellyseerr": "light",
     "bazarr": "light",
     "flaresolverr": "light",

@@ -119,6 +119,26 @@ services:
           memory: "{{ limits.qbittorrent.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'sabnzbd' in enabled %}
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/sabnzbd:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "8081:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.sabnzbd.cpus }}"
+          memory: "{{ limits.sabnzbd.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'jellyseerr' in enabled %}
   jellyseerr:
     image: fallenbagel/jellyseerr:latest

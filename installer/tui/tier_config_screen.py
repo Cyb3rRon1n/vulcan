@@ -37,6 +37,7 @@ class TierConfigScreen(Screen):
             default_tz = previous["timezone"]
 
         gluetun_default = "gluetun" in previous["enabled_optional"] if previous else False
+        sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
@@ -54,8 +55,13 @@ class TierConfigScreen(Screen):
                 RadioButton("Heavy", id="heavy", value=default_tier == "heavy"),
                 id="tier-set"
             ),
-            Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
-            Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
+            Horizontal(
+                Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
+                Checkbox(
+                    "Enable SABnzbd (Usenet downloader)", value=sabnzbd_default, id="sabnzbd-check"
+                ),
+                Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
+            ),
             Input(value=str(default_puid), type="integer", placeholder="PUID", id="puid-input"),
             Input(value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input"),
             Input(value=default_tz, placeholder="Timezone", id="timezone-input"),
@@ -125,6 +131,9 @@ class TierConfigScreen(Screen):
 
         if tier_id == "medium" and self.query_one("#gluetun-check", Checkbox).value:
             enabled_optional.add("gluetun")
+
+        if self.query_one("#sabnzbd-check", Checkbox).value:
+            enabled_optional.add("sabnzbd")
 
         gpu_vendor_to_use = None
 
