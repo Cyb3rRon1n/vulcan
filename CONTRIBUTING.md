@@ -56,7 +56,7 @@ Suggestions are always welcome. Examples:
 * Additional services or a different default set for a tier
 * Better resource-limit tuning based on real-world usage
 * CLI or TUI ergonomics improvements
-* New post-install operations alongside `vulcan update`/`vulcan backup`
+* New post-install operations alongside `vulcan update`/`vulcan backup`/`vulcan restore`
 
 ---
 
