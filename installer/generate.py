@@ -207,6 +207,13 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "before it will connect - see the TODO comments there."
         )
 
+    if "sabnzbd" in enabled_service_keys(config):
+
+        warnings.append(
+            "SABnzbd needs your Usenet provider's server details entered through "
+            "its own setup wizard on first login before it can download anything."
+        )
+
     if config.gpu_vendor == "nvidia":
 
         warnings.append(

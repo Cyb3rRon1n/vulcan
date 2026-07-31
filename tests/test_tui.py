@@ -573,6 +573,46 @@ async def test_tier_config_screen_selecting_heavy_without_gpu_shows_neither():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_sabnzbd_checkbox_visible_in_every_tier():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        for tier_id in ("#light", "#medium", "#heavy"):
+
+            await pilot.click(tier_id)
+            await pilot.pause()
+
+            assert app.screen.query_one("#sabnzbd-check", Checkbox).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_sabnzbd_checked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        await pilot.click("#sabnzbd-check")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "light"
+        assert app.enabled_optional == {"sabnzbd"}
+        assert isinstance(app.screen, ReviewScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
@@ -933,7 +973,25 @@ async def test_review_screen_shows_correct_summary():
         assert "PUID/PGID: 1000/1000" in summary
         assert "Timezone: America/New_York" in summary
         assert "Gluetun VPN: enabled" in summary
+        assert "SABnzbd: disabled" in summary
         assert "GPU passthrough: disabled" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_shows_sabnzbd_enabled_in_summary():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="light", media_path="/mnt/media",
+        puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional={"sabnzbd"}, gpu_vendor=None
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "SABnzbd: enabled" in summary
 
     finally:
         await ctx.__aexit__(None, None, None)
