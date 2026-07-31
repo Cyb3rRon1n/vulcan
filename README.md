@@ -10,7 +10,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ## Status
 
-All three planned phases are complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` launches the full Security Onion-style guided TUI by default — detection, Docker readiness, tier/configuration, and review/generate/start as five real screens; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way. `vulcan update`/`vulcan backup` round out ongoing maintenance of an already-generated stack.
+All three planned phases are complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` launches the full Security Onion-style guided TUI by default — detection, Docker readiness, media path, tier/configuration, and review/generate/start as five real screens in the primary flow, plus a sixth (custom service selection) on the branch off the tier screen; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way. `vulcan update`/`vulcan backup`/`vulcan restore` round out ongoing maintenance of an already-generated stack.
 
 ---
 
@@ -40,7 +40,7 @@ Non-interactive / scripted use is also supported:
 |---|---|---|---|
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet), Recyclarr (TRaSH sync) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Optional Gluetun (VPN) |
-| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Lidarr (optional), reverse proxy, Homarr/Homepage, Uptime Kuma, Watchtower | Hardware transcoding if a GPU is detected |
+| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | Hardware transcoding if a GPU is detected; Lidarr and Traefik (with domain-based routing) available via custom mode |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
