@@ -8,6 +8,18 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 ---
 
+## Screenshots
+
+The guided TUI (`./install`'s default), screen by screen:
+
+| | |
+|---|---|
+| ![Detection](docs/screenshots/01-welcome.svg) System detection | ![Docker readiness](docs/screenshots/02-docker-ready.svg) Docker readiness |
+| ![Media path](docs/screenshots/03-media-path.svg) Media library path | ![Tier configuration](docs/screenshots/04-tier-config.svg) Tier & configuration |
+| ![Custom service selection](docs/screenshots/05-service-selection.svg) Custom service selection | ![Review and generate](docs/screenshots/06-review.svg) Review & generate |
+
+---
+
 ## Status
 
 All three planned phases are complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` launches the full Security Onion-style guided TUI by default — detection, Docker readiness, media path, tier/configuration, and review/generate/start as five real screens in the primary flow, plus a sixth (custom service selection) on the branch off the tier screen; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way. `vulcan update`/`vulcan backup`/`vulcan restore` round out ongoing maintenance of an already-generated stack.
