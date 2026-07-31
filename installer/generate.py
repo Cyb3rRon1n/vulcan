@@ -37,6 +37,7 @@ class GenerationConfig:
     enabled_optional: set[str] = field(default_factory=set)
     gpu_vendor: str | None = None
     custom_services: set[str] | None = None
+    domain: str | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -82,6 +83,7 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "custom_services": (
             sorted(config.custom_services) if config.custom_services is not None else None
         ),
+        "domain": config.domain,
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -142,7 +144,8 @@ def render_compose(config: GenerationConfig) -> str:
         gpu_vendor=config.gpu_vendor,
         render_gid=(
             detect_render_group_gid() if config.gpu_vendor in ("amd", "intel") else None
-        )
+        ),
+        domain=config.domain
     )
 
 
@@ -223,6 +226,24 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "Settings > General in that app's web UI and http://radarr:7878 / http://sonarr:8989 "
             "before it can sync anything."
         )
+
+    if "traefik" in enabled_service_keys(config) and config.domain:
+
+        warnings.append(
+            f"Traefik is configured to route *.{config.domain} to your services, but Vulcan "
+            f"doesn't create any DNS records for you - point each subdomain (e.g. "
+            f"jellyfin.{config.domain}) at this host yourself. HTTPS uses Traefik's own "
+            f"self-signed certificate by default (browsers will warn on first visit) - "
+            f"Vulcan doesn't configure Let's Encrypt/ACME."
+        )
+
+        if "gluetun" in enabled_service_keys(config):
+
+            warnings.append(
+                "qBittorrent isn't routed through Traefik - it shares Gluetun's network "
+                "namespace (network_mode: service:gluetun), which Traefik's Docker service "
+                "discovery can't reliably resolve. Access it directly instead."
+            )
 
     if config.gpu_vendor == "nvidia":
 

@@ -184,6 +184,10 @@ def main(
         None, "--services",
         help="Comma-separated service keys for a custom selection, overriding the tier's default set"
     ),
+    domain: str | None = typer.Option(
+        None, "--domain",
+        help="Base domain for Traefik routing (e.g. media.example.com) - only used if traefik is enabled"
+    ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI")
 ):
     if ctx.invoked_subcommand is not None:
@@ -209,7 +213,8 @@ def main(
         puid=puid,
         pgid=pgid,
         timezone=timezone,
-        services=services
+        services=services,
+        domain=domain
     )
 
 
@@ -226,7 +231,8 @@ def run_install(
     puid: int | None,
     pgid: int | None,
     timezone: str | None,
-    services: str | None
+    services: str | None,
+    domain: str | None
 ):
 
     if non_interactive and not yes:
@@ -282,7 +288,7 @@ def run_install(
 
     config = _gather_generation_config(
         info, tier, media_path, vpn, sabnzbd, recyclarr, gpu, puid, pgid, timezone,
-        non_interactive, previous, custom_services_from_flag
+        non_interactive, previous, custom_services_from_flag, domain
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -359,7 +365,8 @@ def _gather_generation_config(
     timezone: str | None,
     non_interactive: bool,
     previous: dict | None,
-    custom_services_from_flag: set[str] | None
+    custom_services_from_flag: set[str] | None,
+    domain: str | None
 ) -> GenerationConfig:
 
     if previous is not None:
@@ -466,6 +473,22 @@ def _gather_generation_config(
 
         else:
             custom_services_selected = None
+
+    domain_value = None
+
+    if custom_services_selected is not None and "traefik" in custom_services_selected:
+
+        previous_domain = previous.get("domain") if previous else None
+
+        if domain is not None:
+            domain_value = domain
+        elif non_interactive:
+            domain_value = previous_domain
+        else:
+            domain_value = typer.prompt(
+                "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip)",
+                default=previous_domain or ""
+            ) or None
 
     enabled_optional = set()
 
@@ -581,7 +604,8 @@ def _gather_generation_config(
         timezone=final_tz,
         enabled_optional=enabled_optional,
         gpu_vendor=gpu_vendor_to_use,
-        custom_services=custom_services_selected
+        custom_services=custom_services_selected,
+        domain=domain_value
     )
 
 
@@ -605,6 +629,9 @@ def _generate_and_maybe_start(
 
     if config.custom_services is not None:
         console.print(f"  Services: {', '.join(sorted(config.custom_services))}")
+
+    if config.domain:
+        console.print(f"  Domain: {config.domain}")
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 
