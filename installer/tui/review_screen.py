@@ -45,6 +45,7 @@ class ReviewScreen(Screen):
             f"Timezone: {self.app.timezone}\n"
             f"Gluetun VPN: {'enabled' if 'gluetun' in self.app.enabled_optional else 'disabled'}\n"
             f"SABnzbd: {'enabled' if 'sabnzbd' in self.app.enabled_optional else 'disabled'}\n"
+            f"Recyclarr: {'enabled' if 'recyclarr' in self.app.enabled_optional else 'disabled'}\n"
             f"GPU passthrough: {self.app.gpu_vendor or 'disabled'}"
         )
 

@@ -139,6 +139,24 @@ services:
           memory: "{{ limits.sabnzbd.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'recyclarr' in enabled %}
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:8
+    container_name: recyclarr
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - CRON_SCHEDULE=@daily
+      - RECYCLARR_CREATE_CONFIG=true
+    volumes:
+      - ./config/recyclarr:/config
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.recyclarr.cpus }}"
+          memory: "{{ limits.recyclarr.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'jellyseerr' in enabled %}
   jellyseerr:
     image: fallenbagel/jellyseerr:latest

@@ -36,6 +36,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("prowlarr", "Prowlarr"),
     ServiceDefinition("qbittorrent", "qBittorrent"),
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
+    ServiceDefinition("recyclarr", "Recyclarr", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

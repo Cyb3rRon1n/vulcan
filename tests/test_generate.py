@@ -75,6 +75,14 @@ def test_enabled_service_keys_light_with_sabnzbd():
     assert len(keys) == 6
 
 
+def test_enabled_service_keys_light_with_recyclarr():
+
+    keys = enabled_service_keys(make_config("light", {"recyclarr"}))
+
+    assert "recyclarr" in keys
+    assert len(keys) == 6
+
+
 def test_enabled_service_keys_custom_services_overrides_tier_entirely():
 
     custom = {"jellyfin", "homepage", "watchtower"}
@@ -139,6 +147,25 @@ def test_render_compose_medium_with_sabnzbd_uses_remapped_port():
     sabnzbd_block = output.split("sabnzbd:", 1)[1].split("jellyseerr:", 1)[0]
     assert '"8081:8080"' in sabnzbd_block
     assert "${MEDIA_PATH}:/data" in sabnzbd_block
+
+
+def test_render_compose_medium_without_recyclarr_omits_it():
+
+    output = render_compose(make_config("medium"))
+
+    assert "container_name: recyclarr" not in output
+
+
+def test_render_compose_medium_with_recyclarr_uses_pinned_image_and_user():
+
+    output = render_compose(make_config("medium", {"recyclarr"}))
+
+    assert "container_name: recyclarr" in output
+
+    recyclarr_block = output.split("recyclarr:", 1)[1].split("jellyseerr:", 1)[0]
+    assert "image: ghcr.io/recyclarr/recyclarr:8" in recyclarr_block
+    assert 'user: "${PUID}:${PGID}"' in recyclarr_block
+    assert "PUID=${PUID}" not in recyclarr_block
 
 
 def test_render_compose_heavy_includes_all_new_services():
@@ -362,6 +389,57 @@ def test_write_stack_warns_when_sabnzbd_enabled_via_custom_services(tmp_path):
 
 
 def test_write_stack_no_sabnzbd_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
+
+
+def test_write_stack_warns_when_recyclarr_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"recyclarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] != []
+    assert any("recyclarr" in warning.lower() for warning in result["warnings"])
+    assert (tmp_path / "stack" / "config" / "recyclarr").is_dir()
+
+
+def test_write_stack_warns_when_recyclarr_enabled_via_custom_services(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin", "radarr", "sonarr", "recyclarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("recyclarr" in warning.lower() for warning in result["warnings"])
+
+
+def test_write_stack_no_recyclarr_warning_when_disabled(tmp_path):
 
     config = GenerationConfig(
         tier=TIERS["light"],

@@ -38,6 +38,7 @@ class TierConfigScreen(Screen):
 
         gluetun_default = "gluetun" in previous["enabled_optional"] if previous else False
         sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
+        recyclarr_default = "recyclarr" in previous["enabled_optional"] if previous else False
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
@@ -59,6 +60,9 @@ class TierConfigScreen(Screen):
                 Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
                 Checkbox(
                     "Enable SABnzbd (Usenet downloader)", value=sabnzbd_default, id="sabnzbd-check"
+                ),
+                Checkbox(
+                    "Enable Recyclarr (TRaSH Guides sync)", value=recyclarr_default, id="recyclarr-check"
                 ),
                 Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
             ),
@@ -134,6 +138,9 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#sabnzbd-check", Checkbox).value:
             enabled_optional.add("sabnzbd")
+
+        if self.query_one("#recyclarr-check", Checkbox).value:
+            enabled_optional.add("recyclarr")
 
         gpu_vendor_to_use = None
 
