@@ -2,7 +2,7 @@ import getpass
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
@@ -36,7 +36,10 @@ class DockerReadyScreen(Screen):
             Static("", id="docker-status"),
             LoadingIndicator(id="loading"),
             Button("", id="action", disabled=True),
-            Button("Continue", id="continue", disabled=True),
+            Horizontal(
+                Button("Back", id="back"),
+                Button("Continue", id="continue", disabled=True),
+            ),
         )
 
     def on_mount(self) -> None:
@@ -94,11 +97,15 @@ class DockerReadyScreen(Screen):
         if event.button.id == "action":
 
             self.query_one("#action", Button).disabled = True
+            self.query_one("#back", Button).disabled = True
             self.query_one("#loading", LoadingIndicator).display = True
             self.run_fix()
 
         elif event.button.id == "continue":
             self.app.push_screen(MediaPathScreen())
+
+        elif event.button.id == "back":
+            self.app.pop_screen()
 
     @work(thread=True)
     def run_fix(self) -> None:
@@ -134,4 +141,5 @@ class DockerReadyScreen(Screen):
             self.app.group_just_added = True
 
         self.query_one("#loading", LoadingIndicator).display = False
+        self.query_one("#back", Button).disabled = False
         self.render_state()
