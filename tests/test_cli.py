@@ -1067,6 +1067,175 @@ def test_backup_never_prompts_for_confirmation():
     assert result.exit_code == 0, result.output
 
 
+def test_restore_no_backup_found_exits_1():
+
+    with patch("installer.cli.latest_backup", return_value=None):
+
+        result = runner.invoke(app, ["restore"])
+
+    assert result.exit_code == 1
+    assert "No backup archives found" in result.output
+
+
+def test_restore_explicit_path_not_found_exits_1(tmp_path):
+
+    result = runner.invoke(app, ["restore", str(tmp_path / "nope.tar.gz")])
+
+    assert result.exit_code == 1
+    assert "Backup file not found" in result.output
+
+
+def test_restore_non_interactive_without_yes_exits_1(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+
+    result = runner.invoke(app, ["restore", str(backup_path), "--non-interactive"])
+
+    assert result.exit_code == 1
+    assert "--yes is required" in result.output
+
+
+def test_restore_confirm_declined_aborts(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.restore_stack"
+    ) as mock_restore:
+
+        result = runner.invoke(app, ["restore", str(backup_path)], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+    mock_restore.assert_not_called()
+
+
+def test_restore_confirm_accepted_calls_restore_stack(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+    stack_dir = tmp_path / "stack"
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ) as mock_restore:
+
+        result = runner.invoke(app, ["restore", str(backup_path)], input="y\nn\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Stack restored" in result.output
+
+    args = mock_restore.call_args[0]
+    assert args[0] == backup_path
+    assert args[1] == str(stack_dir / "docker-compose.yml")
+    assert args[2] == str(stack_dir / ".env")
+
+
+def test_restore_non_interactive_yes_reports_failure(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.restore_stack",
+        return_value={"success": False, "error": "'fake.tar.gz' isn't a valid backup archive"}
+    ):
+
+        result = runner.invoke(
+            app, ["restore", str(backup_path), "--non-interactive", "--yes"]
+        )
+
+    assert result.exit_code == 1
+    assert "isn't a valid backup archive" in result.output
+
+
+def test_restore_uses_explicit_backup_file_instead_of_latest(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.latest_backup"
+    ) as mock_latest, patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ):
+
+        result = runner.invoke(
+            app, ["restore", str(backup_path), "--non-interactive", "--yes"]
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_latest.assert_not_called()
+
+
+def test_restore_defaults_to_latest_backup_when_no_path_given(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.latest_backup", return_value=backup_path
+    ), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ) as mock_restore:
+
+        result = runner.invoke(app, ["restore", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert mock_restore.call_args[0][0] == backup_path
+
+
+def test_restore_start_flag_starts_stack(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+    stack_dir = tmp_path / "stack"
+
+    up_proc = MagicMock(returncode=0)
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ) as mock_run_docker:
+
+        result = runner.invoke(
+            app, ["restore", str(backup_path), "--non-interactive", "--yes", "--start"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+    mock_run_docker.assert_called_once()
+
+    command = mock_run_docker.call_args[0][0]
+    assert command[:2] == ["docker", "compose"]
+    assert "up" in command and "-d" in command
+
+
+def test_restore_start_failure_exits_1(tmp_path):
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    backup_path.write_text("fake")
+    stack_dir = tmp_path / "stack"
+
+    up_proc = MagicMock(returncode=1)
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ):
+
+        result = runner.invoke(
+            app, ["restore", str(backup_path), "--non-interactive", "--yes", "--start"]
+        )
+
+    assert result.exit_code == 1
+    assert "Failed to start the stack" in result.output
+
+
 def test_services_unknown_key_rejected_before_detection():
 
     with patch("installer.cli.detect_system") as mock_detect:

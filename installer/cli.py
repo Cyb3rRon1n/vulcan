@@ -22,7 +22,7 @@ from installer.generate import (
     load_previous_state,
     write_stack,
 )
-from installer.post_install import backup_stack, update_stack
+from installer.post_install import backup_stack, latest_backup, restore_stack, update_stack
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
 
 
@@ -95,6 +95,74 @@ def backup():
 
     for warning in result["warnings"]:
         console.print(f"[yellow]! {warning}[/yellow]")
+
+
+@app.command()
+def restore(
+    backup_file: str = typer.Argument(
+        None, help="Path to a backup archive; defaults to the most recent file in backups/"
+    ),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    start: bool | None = typer.Option(None, "--start/--no-start")
+):
+    """
+    Restore stack/config, docker-compose.yml, and .env from a backup archive,
+    stopping the current stack first if one is running.
+    """
+
+    chosen = Path(backup_file) if backup_file is not None else latest_backup()
+
+    if chosen is None:
+        console.print("[red]No backup archives found in backups/ - pass a path explicitly.[/red]")
+        raise typer.Exit(code=1)
+
+    if not chosen.exists():
+        console.print(f"[red]Backup file not found: {chosen}[/red]")
+        raise typer.Exit(code=1)
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+    env_path = STACK_DIR / ".env"
+    stack_exists = compose_path.exists()
+
+    console.print(
+        f"This will restore config/, docker-compose.yml, and .env in {STACK_DIR} from "
+        f"[bold]{chosen}[/bold], overwriting what's there now"
+        + (", and stop the currently running stack first." if stack_exists else ".")
+    )
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = restore_stack(chosen, str(compose_path), str(env_path))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Stack restored.[/green]")
+
+    if start is None:
+        do_start = False if non_interactive else typer.confirm("Start the restored stack now?", default=True)
+    else:
+        do_start = start
+
+    if do_start:
+
+        proc = run_docker_command(
+            ["docker", "compose", "-f", str(compose_path), "--env-file", str(env_path), "up", "-d"]
+        )
+
+        if proc.returncode == 0:
+            console.print("[green]Stack is up.[/green]")
+        else:
+            console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
+            raise typer.Exit(code=1)
 
 
 @app.callback(invoke_without_command=True)
