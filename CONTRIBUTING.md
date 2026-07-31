@@ -39,7 +39,7 @@ If the answer is "yes," it likely aligns with the project's goals.
 * Improve the TUI
 * Refactor for readability
 
-See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points - Recyclarr integration, real Traefik routing, a `vulcan restore` command, and aarch64 verification are all real, scoped gaps as of this writing, not hypothetical ideas.
+See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points - real Traefik routing, a `vulcan restore` command, and aarch64 verification are all real, scoped gaps as of this writing, not hypothetical ideas.
 
 ---
 

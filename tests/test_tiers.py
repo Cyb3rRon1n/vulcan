@@ -126,6 +126,14 @@ def test_sabnzbd_is_optional_starting_at_light():
     assert light_by_key["qbittorrent"].optional is False
 
 
+def test_recyclarr_is_optional_starting_at_light():
+
+    light_by_key = {s.key: s for s in TIERS["light"].services}
+
+    assert "recyclarr" in light_by_key
+    assert light_by_key["recyclarr"].optional is True
+
+
 def test_all_services_is_exactly_the_union_of_every_tier():
 
     all_keys = {service.key for service in ALL_SERVICES}
@@ -136,5 +144,5 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 15
+    assert len(all_keys) == 16
     assert len(ALL_SERVICES) == len(all_keys)

@@ -22,7 +22,7 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately.
+`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately.
 
 Non-interactive / scripted use is also supported:
 
@@ -38,13 +38,13 @@ Non-interactive / scripted use is also supported:
 
 | Tier | Target Hardware | Core Services | Extras |
 |---|---|---|---|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet) |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet), Recyclarr (TRaSH sync) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Optional Gluetun (VPN) |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Lidarr (optional), reverse proxy, Homarr/Homepage, Uptime Kuma, Watchtower | Hardware transcoding if a GPU is detected |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
-**Custom mode** lets you pick exactly which services to include, from all 15 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+**Custom mode** lets you pick exactly which services to include, from all 16 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media

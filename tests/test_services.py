@@ -4,7 +4,7 @@ from installer.services import RESOURCE_PROFILES, resource_limits_for
 def test_all_known_services_have_a_resource_profile():
 
     expected = {
-        "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
+        "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"
     }
@@ -15,6 +15,11 @@ def test_all_known_services_have_a_resource_profile():
 def test_sabnzbd_has_same_profile_as_qbittorrent():
 
     assert RESOURCE_PROFILES["sabnzbd"] == RESOURCE_PROFILES["qbittorrent"] == "standard"
+
+
+def test_recyclarr_has_light_profile():
+
+    assert RESOURCE_PROFILES["recyclarr"] == "light"
 
 
 def test_heavy_only_services_get_expected_profiles():

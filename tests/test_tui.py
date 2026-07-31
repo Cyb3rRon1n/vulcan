@@ -613,6 +613,46 @@ async def test_tier_config_screen_continue_with_sabnzbd_checked():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_recyclarr_checkbox_visible_in_every_tier():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        for tier_id in ("#light", "#medium", "#heavy"):
+
+            await pilot.click(tier_id)
+            await pilot.pause()
+
+            assert app.screen.query_one("#recyclarr-check", Checkbox).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_recyclarr_checked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        await pilot.click("#recyclarr-check")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "light"
+        assert app.enabled_optional == {"recyclarr"}
+        assert isinstance(app.screen, ReviewScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
@@ -992,6 +1032,23 @@ async def test_review_screen_shows_sabnzbd_enabled_in_summary():
 
         summary = app.screen.query_one("#summary", Static).content
         assert "SABnzbd: enabled" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_shows_recyclarr_enabled_in_summary():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="light", media_path="/mnt/media",
+        puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional={"recyclarr"}, gpu_vendor=None
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Recyclarr: enabled" in summary
 
     finally:
         await ctx.__aexit__(None, None, None)

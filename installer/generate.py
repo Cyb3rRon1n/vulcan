@@ -214,6 +214,16 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "its own setup wizard on first login before it can download anything."
         )
 
+    if "recyclarr" in enabled_service_keys(config):
+
+        warnings.append(
+            "Recyclarr will scaffold a starter config at stack/config/recyclarr/recyclarr.yml "
+            "on first start with only a sonarr: section and placeholder values - add a radarr: "
+            "section alongside it, then set each base_url/api_key to the real API key from "
+            "Settings > General in that app's web UI and http://radarr:7878 / http://sonarr:8989 "
+            "before it can sync anything."
+        )
+
     if config.gpu_vendor == "nvidia":
 
         warnings.append(

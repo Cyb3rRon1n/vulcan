@@ -106,6 +106,7 @@ def main(
     yes: bool = typer.Option(False, "--yes"),
     vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
     sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
+    recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -134,6 +135,7 @@ def main(
         yes=yes,
         vpn=vpn,
         sabnzbd=sabnzbd,
+        recyclarr=recyclarr,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -150,6 +152,7 @@ def run_install(
     yes: bool,
     vpn: bool | None,
     sabnzbd: bool | None,
+    recyclarr: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -210,8 +213,8 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, gpu, puid, pgid, timezone, non_interactive, previous,
-        custom_services_from_flag
+        info, tier, media_path, vpn, sabnzbd, recyclarr, gpu, puid, pgid, timezone,
+        non_interactive, previous, custom_services_from_flag
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -281,6 +284,7 @@ def _gather_generation_config(
     media_path: str | None,
     vpn: bool | None,
     sabnzbd: bool | None,
+    recyclarr: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -432,6 +436,23 @@ def _gather_generation_config(
         if enable_sabnzbd:
             enabled_optional.add("sabnzbd")
 
+    if custom_services_selected is None:
+
+        recyclarr_default = "recyclarr" in previous["enabled_optional"] if previous else False
+
+        if recyclarr is None:
+
+            enable_recyclarr = recyclarr_default if non_interactive else typer.confirm(
+                "Enable Recyclarr (TRaSH Guides config sync for Radarr/Sonarr)?",
+                default=recyclarr_default
+            )
+
+        else:
+            enable_recyclarr = recyclarr
+
+        if enable_recyclarr:
+            enabled_optional.add("recyclarr")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -511,6 +532,7 @@ def _generate_and_maybe_start(
     console.print(f"  Timezone: {config.timezone}")
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
     console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
