@@ -10,6 +10,7 @@ just means "not present," not an error.
 import grp
 import platform
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 
@@ -151,6 +152,27 @@ def detect_render_group_gid() -> int | None:
             continue
 
     return None
+
+
+def detect_host_ip() -> str | None:
+    """
+    Best-effort LAN-facing address for links a dashboard viewed from
+    another device needs - not a secret the way a VPN key is, so a real
+    detected default beats a placeholder. A UDP "connect" sends no
+    actual packets (UDP has no handshake); it only asks the kernel's
+    routing table which local address it would use to reach that
+    destination, which is exactly the address other devices on the
+    same network can reach this host at.
+    """
+
+    try:
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+
+    except OSError:
+        return None
 
 
 def detect_docker() -> dict:

@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import yaml
+
 from installer.generate import (
     GenerationConfig,
     default_puid_pgid,
@@ -8,6 +10,7 @@ from installer.generate import (
     load_previous_state,
     render_compose,
     render_env,
+    render_homepage_services,
     save_state,
     write_stack,
 )
@@ -376,6 +379,112 @@ def test_render_env_includes_vpn_placeholders_when_gluetun_enabled():
     assert "WIREGUARD_PRIVATE_KEY=changeme" in output
 
 
+def _homepage_groups(output: str) -> dict[str, dict[str, dict]]:
+
+    parsed = yaml.safe_load(output)
+
+    return {
+        list(group.keys())[0]: {
+            list(item.keys())[0]: list(item.values())[0] for item in list(group.values())[0]
+        }
+        for group in parsed
+    }
+
+
+def test_render_homepage_services_creates_tiles_for_enabled_services():
+
+    output = render_homepage_services(
+        make_config("heavy", custom_services={"jellyfin", "radarr", "qbittorrent", "homepage"}),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    assert groups["Media"]["Jellyfin"]["href"] == "http://localhost:8096"
+    assert groups["Media"]["Jellyfin"]["icon"] == "jellyfin.png"
+    assert groups["Media Management"]["Radarr"]["href"] == "http://localhost:7878"
+    assert groups["Downloads"]["qBittorrent"]["href"] == "http://localhost:8080"
+    assert "Monitoring" not in groups
+
+
+def test_render_homepage_services_uses_host_ip_when_provided():
+
+    output = render_homepage_services(
+        make_config("light", custom_services={"jellyfin"}),
+        host_ip="192.168.1.50"
+    )
+
+    assert "http://192.168.1.50:8096" in output
+
+
+def test_render_homepage_services_sabnzbd_uses_host_published_port():
+
+    output = render_homepage_services(
+        make_config("light", custom_services={"sabnzbd"}),
+        host_ip=None
+    )
+
+    assert "http://localhost:8081" in output
+    assert ":8080" not in output
+
+
+def test_render_homepage_services_qbittorrent_reachable_even_with_gluetun():
+
+    output = render_homepage_services(
+        make_config("medium", custom_services={"qbittorrent", "gluetun"}),
+        host_ip=None
+    )
+
+    assert "http://localhost:8080" in output
+
+
+def test_render_homepage_services_uses_traefik_domain_when_routed():
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={"jellyfin", "traefik"},
+            domain="media.example.com"
+        ),
+        host_ip=None
+    )
+
+    assert "https://jellyfin.media.example.com" in output
+    assert "http://localhost" not in output
+
+
+def test_render_homepage_services_omits_empty_groups():
+
+    output = render_homepage_services(
+        make_config("light", custom_services={"jellyfin"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    group_names = [list(group.keys())[0] for group in parsed]
+
+    assert group_names == ["Media"]
+
+
+def test_render_homepage_services_output_is_valid_yaml():
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={
+                "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
+                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "uptime-kuma"
+            }
+        ),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+
+    assert isinstance(parsed, list)
+    assert len(parsed) == 4
+
+
 def test_write_stack_writes_files_and_creates_directories(tmp_path):
 
     media_path = tmp_path / "media-root"
@@ -425,8 +534,7 @@ def test_write_stack_warns_for_nvidia_gpu(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] != []
-    assert "nvidia-container-toolkit" in result["warnings"][0]
+    assert any("nvidia-container-toolkit" in warning for warning in result["warnings"])
 
 
 def test_write_stack_no_gpu_warning_for_amd(tmp_path):
@@ -445,7 +553,7 @@ def test_write_stack_no_gpu_warning_for_amd(tmp_path):
 
         result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("nvidia" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_warns_when_gluetun_enabled(tmp_path):
@@ -599,7 +707,7 @@ def test_write_stack_no_traefik_warning_without_domain(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("traefik" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_warns_about_qbittorrent_when_traefik_domain_and_gluetun_combined(tmp_path):
@@ -618,6 +726,70 @@ def test_write_stack_warns_about_qbittorrent_when_traefik_domain_and_gluetun_com
 
     assert any("qbittorrent" in warning.lower() for warning in result["warnings"])
     assert any("network_mode" in warning for warning in result["warnings"])
+
+
+def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    services_yaml_path = tmp_path / "stack" / "config" / "homepage" / "services.yaml"
+
+    assert services_yaml_path.is_file()
+    assert "192.168.1.50" in services_yaml_path.read_text()
+    assert any("pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    services_yaml_path = tmp_path / "stack" / "config" / "homepage" / "services.yaml"
+
+    assert not services_yaml_path.exists()
+    assert not any("pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_never_overwrites_existing_homepage_services_yaml(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        write_stack(config, output_dir=tmp_path / "stack")
+
+    services_yaml_path = tmp_path / "stack" / "config" / "homepage" / "services.yaml"
+    services_yaml_path.write_text("# hand-edited by the user\n- My Group: []\n")
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert services_yaml_path.read_text() == "# hand-edited by the user\n- My Group: []\n"
+    assert not any("pre-seeded" in warning for warning in result["warnings"])
 
 
 def test_default_timezone_reads_etc_timezone():

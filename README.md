@@ -60,6 +60,8 @@ Resource limits still scale using whichever tier you choose (`--tier` here, or t
 
 HTTPS uses Traefik's own auto-generated self-signed certificate by default - real routing and encryption with zero external setup, at the cost of a browser trust warning on first visit. Vulcan doesn't create DNS records or configure Let's Encrypt/ACME for you; point each subdomain at this host yourself. qBittorrent isn't routed when Gluetun is also enabled, since it shares Gluetun's network namespace in a way Traefik can't discover.
 
+**Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack - correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address) - instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
+
 ---
 
 ## Maintaining an existing stack
