@@ -6,7 +6,19 @@ Vulcan inspects your system's resources and automatically builds a tailored Jell
 
 Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/GPU, no LLM involved.
 
+*Pre-alpha, actively developed. Every feature below has been verified against real infrastructure as it was built, not just exercised in isolation — see [CONTRIBUTING.md](CONTRIBUTING.md) for what's genuinely finished versus still open.*
+
 ---
+
+## Features
+
+- **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
+- **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
+- **Custom mode** — free-pick any of Vulcan's 16 known services regardless of tier, pre-checked from what your hardware qualifies for.
+- **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default), no manual reverse-proxy config.
+- **Pre-seeded dashboard** — Homepage boots with real tiles for your actual stack instead of a blank page.
+- **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
+- **Full lifecycle, not just first install** — `vulcan update`/`backup`/`restore` round out an already-generated stack.
 
 ## Screenshots
 
@@ -20,11 +32,11 @@ The guided TUI (`./install`'s default), screen by screen:
 
 ---
 
-## Status
+## Requirements
 
-All three planned phases are complete. Real hardware detection, deterministic tier scoring, Docker/Compose bootstrap, stack generation, and re-run/upgrade safety are all implemented, tested, and verified against real infrastructure. All three tiers — Light, Medium, and Heavy, including GPU-aware hardware transcoding when a GPU is detected — are fully buildable. Re-running the installer against an existing stack is safe: it picks up your previous settings as defaults and never resets real credentials (like Gluetun VPN keys) back to placeholders. `./install` launches the full Security Onion-style guided TUI by default — detection, Docker readiness, media path, tier/configuration, and review/generate/start as five real screens in the primary flow, plus a sixth (custom service selection) on the branch off the tier screen; `--plain` falls back to the original interactive CLI prompts (useful over a limited terminal, or for scripting-adjacent debugging), and `--non-interactive` remains the fully scripted path either way. `vulcan update`/`vulcan backup`/`vulcan restore` round out ongoing maintenance of an already-generated stack.
-
----
+- Linux (Ubuntu, Debian, Raspbian, Fedora, and Arch all have an automatic Docker install path; other distros need Docker installed manually first)
+- Python 3.11+
+- Docker — installed and started automatically on supported distros if it isn't already there
 
 ## Quick Start
 
@@ -52,7 +64,7 @@ Non-interactive / scripted use is also supported:
 |---|---|---|---|
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet), Recyclarr (TRaSH sync) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Optional Gluetun (VPN) |
-| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | Hardware transcoding if a GPU is detected; Lidarr and Traefik (with domain-based routing) available via custom mode |
+| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | GPU transcoding if detected; Lidarr and Traefik via custom mode |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
@@ -62,7 +74,7 @@ All tiers share the same directory layout and volume naming, so re-running the i
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
 ```
 
-Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) - picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. In the default TUI, click "Customize Services" on the tier screen instead of "Continue" to get the same free-pick checklist.
+Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) — picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. In the default TUI, click "Customize Services" on the tier screen instead of "Continue" to get the same free-pick checklist.
 
 **Domain-based routing.** If `traefik` is part of your custom selection, pass `--domain` to get real `<service>.<domain>` routing (e.g. `jellyfin.media.example.com`) for every included web-facing service, instead of Traefik's default do-nothing skeleton:
 
@@ -70,9 +82,9 @@ Resource limits still scale using whichever tier you choose (`--tier` here, or t
 ./install --plain --tier heavy --services jellyfin,radarr,sonarr,traefik --domain media.example.com --non-interactive --yes --media-path /mnt/media
 ```
 
-HTTPS uses Traefik's own auto-generated self-signed certificate by default - real routing and encryption with zero external setup, at the cost of a browser trust warning on first visit. Vulcan doesn't create DNS records or configure Let's Encrypt/ACME for you; point each subdomain at this host yourself. qBittorrent isn't routed when Gluetun is also enabled, since it shares Gluetun's network namespace in a way Traefik can't discover.
+HTTPS uses Traefik's own auto-generated self-signed certificate by default — real routing and encryption with zero external setup, at the cost of a browser trust warning on first visit. Vulcan doesn't create DNS records or configure Let's Encrypt/ACME for you; point each subdomain at this host yourself. qBittorrent isn't routed when Gluetun is also enabled, since it shares Gluetun's network namespace in a way Traefik can't discover.
 
-**Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack - correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address) - instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
+**Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address) — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
 
 ---
 
@@ -84,7 +96,7 @@ vulcan backup              # archive stack/config/ + docker-compose.yml/.env to 
 vulcan restore [file]      # restore config/, docker-compose.yml, and .env from a backup archive
 ```
 
-`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) - useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan backup` needs no confirmation - it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) - but the archive includes `stack/.env`, which may hold real credentials, so store it securely. `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now - genuinely destructive, so it confirms before touching anything, same as every other mutating command.
+`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan backup` needs no confirmation — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) — but the archive includes `stack/.env`, which may hold real credentials, so store it securely. `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
 
 ---
 
@@ -99,7 +111,7 @@ vulcan restore [file]      # restore config/, docker-compose.yml, and .env from 
 
 ## Contributing
 
-Contributions are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth.
 
 ---
 
