@@ -10,7 +10,7 @@ Vulcan exists so that spinning up a Jellyfin + *arr homelab doesn't mean either 
 
 # Our Mission
 
-Vulcan inspects a machine's real hardware and generates a Docker Compose stack genuinely sized to what it can handle - deterministically, not by guessing or by asking an AI to decide.
+Vulcan inspects a machine's real hardware and generates a Docker Compose stack genuinely sized to what it can handle — deterministically, not by guessing or by asking an AI to decide.
 
 Before proposing a feature, ask yourself:
 
@@ -39,13 +39,13 @@ If the answer is "yes," it likely aligns with the project's goals.
 * Improve the TUI
 * Refactor for readability
 
-See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points - real end-to-end aarch64/ARM verification (a static readiness audit exists, but nothing has actually been run on real ARM hardware yet) is the one real, scoped gap left as of this writing, not a hypothetical idea.
+See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points — real end-to-end aarch64/ARM verification (a static readiness audit exists, but nothing has actually been run on real ARM hardware yet) is the one real, scoped gap left as of this writing, not a hypothetical idea.
 
 ---
 
 ## Testing
 
-Vulcan's automatic Docker install currently targets Ubuntu, Debian, Raspbian, Fedora (via `get.docker.com`), and Arch (via `pacman`) - help test on distros beyond whichever one a given change was verified against. Real-hardware testing matters even more here: different GPU vendors (only AMD has been verified against real hardware in this project's history; Intel and NVIDIA are implemented per documented convention but unverified), aarch64/ARM (a static readiness audit exists - see `CLAUDE.md` - every referenced Docker image confirmed to publish a real `linux/arm64` manifest, but nothing has actually been run end-to-end on real ARM hardware yet; a real Raspberry Pi or ARM VPS run is exactly the kind of contribution this gap needs), and different filesystem layouts all genuinely affect whether a generated stack works.
+Vulcan's automatic Docker install currently targets Ubuntu, Debian, Raspbian, Fedora (via `get.docker.com`), and Arch (via `pacman`) — help test on distros beyond whichever one a given change was verified against. Real-hardware testing matters even more here: different GPU vendors (only AMD has been verified against real hardware in this project's history; Intel and NVIDIA are implemented per documented convention but unverified), aarch64/ARM (a static readiness audit exists — see `CLAUDE.md` — every referenced Docker image confirmed to publish a real `linux/arm64` manifest, but nothing has actually been run end-to-end on real ARM hardware yet; a real Raspberry Pi or ARM VPS run is exactly the kind of contribution this gap needs), and different filesystem layouts all genuinely affect whether a generated stack works.
 
 ---
 
@@ -62,7 +62,7 @@ Suggestions are always welcome. Examples:
 
 # Before You Start
 
-Please check existing issues, pull requests, and `CLAUDE.md`'s architecture notes first - a lot of "why does it work this way" questions are already answered there, and checking avoids duplicate work.
+Please check existing issues, pull requests, and `CLAUDE.md`'s architecture notes first — a lot of "why does it work this way" questions are already answered there, and checking avoids duplicate work.
 
 ---
 
@@ -70,13 +70,13 @@ Please check existing issues, pull requests, and `CLAUDE.md`'s architecture note
 
 ## Deterministic, Not AI-Driven
 
-Tier recommendations come from fixed rules over detected CPU/RAM/disk/GPU - there is no LLM anywhere in the decision path, and there shouldn't be. A user should be able to read `tiers.py` top to bottom and know exactly why their machine got the recommendation it did.
+Tier recommendations come from fixed rules over detected CPU/RAM/disk/GPU — there is no LLM anywhere in the decision path, and there shouldn't be. A user should be able to read `tiers.py` top to bottom and know exactly why their machine got the recommendation it did.
 
 ---
 
 ## Observe, Then Act
 
-Vulcan shows what it detected and what it's about to generate before doing anything. Nothing is silently overwritten - re-running against an existing stack makes the overwrite explicit rather than assuming it's fine.
+Vulcan shows what it detected and what it's about to generate before doing anything. Nothing is silently overwritten — re-running against an existing stack makes the overwrite explicit rather than assuming it's fine.
 
 ---
 
@@ -88,13 +88,13 @@ Running Vulcan again against an existing stack should offer to upgrade or reconf
 
 ## Never Invent a Secret
 
-When something needs a credential Vulcan can't know (a VPN provider's private key), it generates an honest, clearly-labeled placeholder and says so - never a fake-looking value that could be mistaken for real.
+When something needs a credential Vulcan can't know (a VPN provider's private key), it generates an honest, clearly-labeled placeholder and says so — never a fake-looking value that could be mistaken for real.
 
 ---
 
 ## Verify Against Real Infrastructure
 
-A mocked test suite passing is necessary but not sufficient. Changes touching Docker, the filesystem, or GPU passthrough should be checked against a real machine wherever practical - a real container started, a real generated compose file validated with `docker compose config`, a real archive inspected. This has been true of nearly every piece of this project so far, and it's expected to stay true.
+A mocked test suite passing is necessary but not sufficient. Changes touching Docker, the filesystem, or GPU passthrough should be checked against a real machine wherever practical — a real container started, a real generated compose file validated with `docker compose config`, a real archive inspected. This has been true of nearly every piece of this project so far, and it's expected to stay true.
 
 ---
 
@@ -121,7 +121,7 @@ Run the test suite:
 python -m pytest tests/ --cov=installer --cov-report=term-missing
 ```
 
-There's no `requirements.txt` lockfile to keep in sync - `pyproject.toml` is the single source of truth for dependencies.
+There's no `requirements.txt` lockfile to keep in sync — `pyproject.toml` is the single source of truth for dependencies.
 
 ---
 
@@ -165,7 +165,7 @@ refactor: extract shared service-selection logic
 ci: add GitHub Actions workflow
 ```
 
-Commit messages in this project tend to explain *why*, not just *what* - a decision's reasoning (and what was actually verified, if anything touched real infrastructure) belongs in the commit body. Future readers - including you, months later - benefit far more from "why" than from a restatement of the diff.
+Commit messages in this project tend to explain *why*, not just *what* — a decision's reasoning (and what was actually verified, if anything touched real infrastructure) belongs in the commit body. Future readers — including you, months later — benefit far more from "why" than from a restatement of the diff.
 
 ---
 
@@ -176,7 +176,7 @@ Good pull requests typically:
 * Focus on one logical change
 * Include a clear description of what changed and why
 * Update `CLAUDE.md` if the change affects architecture, and the README if it affects user-facing behavior
-* Include or update tests - both the mocked unit tests and, for anything touching real Docker/filesystem/GPU behavior, a description of what was verified against real infrastructure and how
+* Include or update tests — both the mocked unit tests and, for anything touching real Docker/filesystem/GPU behavior, a description of what was verified against real infrastructure and how
 * Keep changes as small and reviewable as practical
 
 If your change affects generated output (a new service, a changed volume mount, a different resource limit), say so explicitly and show a real generated example if you can.
@@ -186,9 +186,9 @@ If your change affects generated output (a new service, a changed volume mount, 
 # Coding Standards
 
 * Favor readability over cleverness.
-* Keep functions focused; the engine layer (`detect.py`, `docker_setup.py`, `tiers.py`, `services.py`, `generate.py`, `post_install.py`) stays pure/near-pure and never prompts or confirms - that belongs in the CLI/TUI layer only. See `CLAUDE.md` for the full split.
+* Keep functions focused; the engine layer (`detect.py`, `docker_setup.py`, `tiers.py`, `services.py`, `generate.py`, `post_install.py`) stays pure/near-pure and never prompts or confirms — that belongs in the CLI/TUI layer only. See `CLAUDE.md` for the full split.
 * Match the file you're editing: heavy vertical spacing (blank line after `def ...():`, one argument per line in multi-arg calls) is the established convention here, not an accident.
-* Don't add a docstring that just restates the function name - a comment or module docstring earns its place by explaining a non-obvious *why*.
+* Don't add a docstring that just restates the function name — a comment or module docstring earns its place by explaining a non-obvious *why*.
 * Remove unused code before submitting; don't leave commented-out blocks or dead branches "just in case."
 
 ---
@@ -199,7 +199,7 @@ Documentation is a core feature of Vulcan, not an afterthought. Whenever appropr
 
 * What the feature does and why it exists
 * Any real hardware/OS/GPU requirements or limitations
-* What's been verified against real infrastructure, and what hasn't (be honest about the difference - `CLAUDE.md` deliberately says "not hardware-verified" for the NVIDIA GPU passthrough path, for exactly this reason)
+* What's been verified against real infrastructure, and what hasn't (be honest about the difference — `CLAUDE.md` deliberately says "not hardware-verified" for the NVIDIA GPU passthrough path, for exactly this reason)
 * Examples of real generated output where relevant
 
 ---
@@ -214,7 +214,7 @@ When reporting an issue, please include:
 * Python version
 * The tier and any custom service selection involved
 * Steps to reproduce, expected behavior, actual behavior
-* Relevant output - Vulcan's own console output is usually enough; Docker logs (`docker compose logs`) if the issue is with a running container rather than generation itself
+* Relevant output — Vulcan's own console output is usually enough; Docker logs (`docker compose logs`) if the issue is with a running container rather than generation itself
 
 ---
 
@@ -227,7 +227,7 @@ Feature requests should explain:
 * A proposed approach, if you have one
 * Whether it changes what gets generated, how it's detected, or just how it's presented
 
-Discussion is encouraged before implementation for anything that touches the tier model, the resource-limit matrix, or the volume layout - those are foundational enough that getting them right matters more than getting them fast.
+Discussion is encouraged before implementation for anything that touches the tier model, the resource-limit matrix, or the volume layout — those are foundational enough that getting them right matters more than getting them fast.
 
 ---
 
@@ -239,26 +239,6 @@ Be respectful, constructive, and welcoming to others. Vulcan is intended to be a
 
 # Recognition
 
-Every contribution matters - whether it's fixing a typo, testing on a distro nobody's verified yet, or adding a whole new service. Thank you for contributing.
-
----
-
-# Our Philosophy
-
-Vulcan is guided by a few simple ideas:
-
-**Size it to the real machine.**
-
-No guessing, no LLM in the decision path - fixed rules over real detected hardware.
-
-**Show your work.**
-
-What was detected, what's about to be generated, and why - always visible before anything happens.
-
-**Never assume it's fine to overwrite.**
-
-A re-run should make things better, never lose what was already there.
-
-If your contribution supports those ideas, you're helping move Vulcan in the right direction.
+Every contribution matters — whether it's fixing a typo, testing on a distro nobody's verified yet, or adding a whole new service. Thank you for contributing.
 
 Welcome aboard!
