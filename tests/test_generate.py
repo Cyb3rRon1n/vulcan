@@ -733,7 +733,7 @@ def test_write_stack_warns_when_traefik_domain_configured(tmp_path):
 
     assert any("media.example.com" in warning for warning in result["warnings"])
     assert any("self-signed certificate" in warning for warning in result["warnings"])
-    assert not any("qbittorrent" in warning.lower() for warning in result["warnings"])
+    assert not any("isn't routed through Traefik" in warning for warning in result["warnings"])
 
 
 def test_write_stack_no_traefik_warning_without_domain(tmp_path):
@@ -832,6 +832,69 @@ def test_write_stack_never_overwrites_existing_homepage_services_yaml(tmp_path):
 
     assert services_yaml_path.read_text() == "# hand-edited by the user\n- My Group: []\n"
     assert not any("pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_uptime_kuma_reference_lists_enabled_services(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    kuma_warnings = [w for w in result["warnings"] if "one-time setup" in w]
+    assert len(kuma_warnings) == 1
+
+    reference = kuma_warnings[0]
+    assert "http://192.168.1.50:3001" in reference
+    assert "Radarr: http://192.168.1.50:7878" in reference
+    assert "Sonarr: http://192.168.1.50:8989" in reference
+    assert "Uptime Kuma: " not in reference
+
+
+def test_write_stack_uptime_kuma_reference_uses_traefik_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    kuma_warnings = [w for w in result["warnings"] if "one-time setup" in w]
+    assert len(kuma_warnings) == 1
+
+    reference = kuma_warnings[0]
+    assert "https://uptime-kuma.media.example.com" in reference
+    assert "Radarr: https://radarr.media.example.com" in reference
+    assert "http://" not in reference
+
+
+def test_write_stack_no_uptime_kuma_reference_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("one-time setup" in warning for warning in result["warnings"])
 
 
 def test_default_timezone_reads_etc_timezone():

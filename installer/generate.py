@@ -199,11 +199,21 @@ def render_env(
     )
 
 
+def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str:
+
+    enabled = enabled_service_keys(config)
+    routed = "traefik" in enabled and config.domain
+
+    if routed:
+        return f"https://{key}.{config.domain}"
+
+    return f"http://{host_ip or 'localhost'}:{_HOMEPAGE_PORTS[key]}"
+
+
 def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> str:
 
     enabled = enabled_service_keys(config)
     display_names = {service.key: service.display_name for service in ALL_SERVICES}
-    routed = "traefik" in enabled and config.domain
 
     groups = []
 
@@ -216,17 +226,34 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
             if key not in enabled:
                 continue
 
-            if routed:
-                href = f"https://{key}.{config.domain}"
-            else:
-                href = f"http://{host_ip or 'localhost'}:{_HOMEPAGE_PORTS[key]}"
-
+            href = _service_href(key, config, host_ip)
             items.append({display_names[key]: {"href": href, "icon": f"{key}.png"}})
 
         if items:
             groups.append({group_name: items})
 
     return yaml.safe_dump(groups, sort_keys=False)
+
+
+def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str:
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+
+    lines = [
+        f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
+        for keys in _HOMEPAGE_GROUPS.values()
+        for key in keys
+        if key in enabled and key != "uptime-kuma"
+    ]
+
+    kuma_href = _service_href("uptime-kuma", config, host_ip)
+
+    return (
+        f"Uptime Kuma needs one-time setup: visit {kuma_href}, create an account, "
+        "then add a monitor for each service you want to track. Your enabled services:\n"
+        + "\n".join(lines)
+    )
 
 
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
@@ -262,6 +289,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "books").mkdir(parents=True, exist_ok=True)
 
     warnings = []
+    host_ip = detect_host_ip()
 
     if "homepage" in enabled_service_keys(config):
 
@@ -269,13 +297,16 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
         if not services_yaml_path.exists():
 
-            services_yaml_path.write_text(render_homepage_services(config, detect_host_ip()))
+            services_yaml_path.write_text(render_homepage_services(config, host_ip))
 
             warnings.append(
                 "Homepage was pre-seeded with tiles for your enabled services at "
                 "stack/config/homepage/services.yaml - edit it directly to customize "
                 "further; Vulcan won't overwrite it on a later regenerate."
             )
+
+    if "uptime-kuma" in enabled_service_keys(config):
+        warnings.append(_uptime_kuma_reference(config, host_ip))
 
     if "gluetun" in config.enabled_optional:
 
