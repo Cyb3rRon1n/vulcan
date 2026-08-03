@@ -2,19 +2,24 @@
 Post-install operations on an already-generated stack: pulling images
 without starting anything (pull_stack), pulling fresh images and
 recreating containers (update_stack, which just calls pull_stack for
-its own pull step), archiving config for safekeeping (backup_stack),
-reversing that archive back onto disk (restore_stack), and bundling a
-stack's already-pulled images into a transferable tarball for a
-machine that never touches the network (export_images/import_images).
-All of these reuse the same real Docker/file primitives generation
-already does - run_docker_command() for the subprocess calls, the
-same STACK_DIR every other command reads from - no new machinery,
-just more things to do with a stack that already exists.
+its own pull step), archiving config for safekeeping (backup_stack -
+which snapshots any live SQLite database it finds via sqlite3's own
+online-backup API rather than archiving a possibly-mid-write file
+directly), reversing that archive back onto disk (restore_stack), and
+bundling a stack's already-pulled images into a transferable tarball
+for a machine that never touches the network (export_images/
+import_images). All of these reuse the same real Docker/file
+primitives generation already does - run_docker_command() for the
+subprocess calls, the same STACK_DIR every other command reads from -
+no new machinery, just more things to do with a stack that already
+exists.
 """
 
 import shutil
+import sqlite3
 import subprocess
 import tarfile
+import tempfile
 from datetime import datetime
 from datetime import timezone as dt_timezone
 from pathlib import Path
@@ -126,6 +131,44 @@ def import_images(tar_path: str) -> dict:
     return {"success": True, "error": None}
 
 
+def _is_sqlite_file(path: Path) -> bool:
+
+    try:
+        with open(path, "rb") as f:
+            return f.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
+
+
+def _snapshot_sqlite_database(live_path: Path, staged_path: Path) -> bool:
+    """
+    Writes a consistent point-in-time copy of a live SQLite database
+    to staged_path via sqlite3's own online-backup API - safe to run
+    against a database another process (e.g. Radarr) is actively
+    writing to, confirmed against a real concurrent-write scenario
+    before this was built. Opens the live file read-only so this
+    process never takes a write lock or creates a stray -wal/-shm file
+    of its own. Returns False (never raises) on any sqlite3.Error, so
+    the caller can fall back to a plain copy rather than losing data.
+    """
+
+    try:
+
+        src = sqlite3.connect(f"file:{live_path}?mode=ro", uri=True)
+        dst = sqlite3.connect(staged_path)
+
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
+        return True
+
+    except sqlite3.Error:
+        return False
+
+
 def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")) -> dict:
 
     compose_path = stack_dir / "docker-compose.yml"
@@ -144,20 +187,60 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
     timestamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"vulcan-backup-{timestamp}.tar.gz"
 
-    with tarfile.open(backup_path, "w:gz") as tar:
+    config_dir = stack_dir / "config"
+    unsafe_snapshots = []
 
-        tar.add(stack_dir / "config", arcname="config")
-        tar.add(compose_path, arcname="docker-compose.yml")
-        tar.add(stack_dir / ".env", arcname=".env")
+    with tempfile.TemporaryDirectory() as tmp:
+
+        staged_config = Path(tmp) / "config"
+
+        # SQLite files are skipped here, not copied - each one gets a
+        # proper consistent snapshot written into place below instead
+        # of a possibly-torn raw copy.
+        shutil.copytree(
+            config_dir,
+            staged_config,
+            ignore=lambda directory, names: {
+                name for name in names
+                if (Path(directory) / name).is_file() and _is_sqlite_file(Path(directory) / name)
+            }
+        )
+
+        for live_path in config_dir.rglob("*"):
+
+            if not live_path.is_file() or not _is_sqlite_file(live_path):
+                continue
+
+            staged_path = staged_config / live_path.relative_to(config_dir)
+
+            if not _snapshot_sqlite_database(live_path, staged_path):
+
+                shutil.copy2(live_path, staged_path)
+                unsafe_snapshots.append(str(live_path.relative_to(config_dir)))
+
+        with tarfile.open(backup_path, "w:gz") as tar:
+
+            tar.add(staged_config, arcname="config")
+            tar.add(compose_path, arcname="docker-compose.yml")
+            tar.add(stack_dir / ".env", arcname=".env")
+
+    warnings = [
+        "This backup includes stack/.env, which may contain real credentials "
+        "(e.g. Gluetun VPN keys) - store the archive securely."
+    ]
+
+    if unsafe_snapshots:
+
+        warnings.append(
+            "Could not safely snapshot while running, copied directly instead "
+            f"(may be inconsistent if it was mid-write): {', '.join(unsafe_snapshots)}"
+        )
 
     return {
         "success": True,
         "error": None,
         "backup_path": str(backup_path),
-        "warnings": [
-            "This backup includes stack/.env, which may contain real credentials "
-            "(e.g. Gluetun VPN keys) - store the archive securely."
-        ]
+        "warnings": warnings
     }
 
 
