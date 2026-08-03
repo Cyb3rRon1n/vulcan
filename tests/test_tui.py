@@ -1476,6 +1476,47 @@ async def test_review_screen_start_stack_success_exits_cleanly():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_review_screen_start_stack_success_exit_message_lists_service_urls():
+
+    mock_proc = MagicMock(returncode=0)
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={"available": True, "conflicts": []}
+        ), patch(
+            "installer.tui.review_screen.detect_host_ip", return_value="192.168.1.50"
+        ), patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ), patch.object(
+            app, "exit"
+        ) as mock_exit:
+
+            await pilot.click("#start")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        message = mock_exit.call_args[1]["message"]
+
+        assert "Stack is up" in message
+        assert "Jellyfin: http://192.168.1.50:8096" in message
+        assert "Radarr: http://192.168.1.50:7878" in message
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_review_screen_start_stack_failure_exits_with_failure_message():
 
     mock_proc = MagicMock(returncode=1)

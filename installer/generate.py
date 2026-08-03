@@ -52,6 +52,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "lidarr": 8686,
     "readarr": 8787,
     "uptime-kuma": 3001,
+    "homepage": 3000,
 }
 
 
@@ -254,6 +255,26 @@ def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str
         "then add a monitor for each service you want to track. Your enabled services:\n"
         + "\n".join(lines)
     )
+
+
+def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+
+    lines = []
+
+    if "homepage" in enabled:
+        lines.append(f"  Homepage (dashboard): {_service_href('homepage', config, host_ip)}")
+
+    lines.extend(
+        f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
+        for keys in _HOMEPAGE_GROUPS.values()
+        for key in keys
+        if key in enabled
+    )
+
+    return "\n".join(lines)
 
 
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
