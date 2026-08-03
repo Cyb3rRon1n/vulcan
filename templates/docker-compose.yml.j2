@@ -324,6 +324,34 @@ services:
           memory: "{{ limits.lidarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'readarr' in enabled %}
+  readarr:
+    image: lscr.io/linuxserver/readarr:0.4.19-nightly
+    container_name: readarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/readarr:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "8787:8787"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.readarr.rule=Host(`readarr.{{ domain }}`)"
+      - "traefik.http.routers.readarr.entrypoints=websecure"
+      - "traefik.http.routers.readarr.tls=true"
+      - "traefik.http.services.readarr.loadbalancer.server.port=8787"
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.readarr.cpus }}"
+          memory: "{{ limits.readarr.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'traefik' in enabled %}
   traefik:
     image: traefik:latest

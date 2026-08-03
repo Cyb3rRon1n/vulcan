@@ -35,7 +35,7 @@ STATE_FILENAME = ".vulcan-state.json"
 # SABnzbd specifically (8081 here, not its internal 8080).
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "jellyseerr"],
-    "Media Management": ["radarr", "sonarr", "lidarr", "prowlarr", "bazarr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr"],
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
 }
@@ -50,6 +50,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "jellyseerr": 5055,
     "bazarr": 6767,
     "lidarr": 8686,
+    "readarr": 8787,
     "uptime-kuma": 3001,
 }
 
@@ -258,6 +259,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "movies").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "tv").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "music").mkdir(parents=True, exist_ok=True)
+    (media_path / "media" / "books").mkdir(parents=True, exist_ok=True)
 
     warnings = []
 
@@ -297,6 +299,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "section alongside it, then set each base_url/api_key to the real API key from "
             "Settings > General in that app's web UI and http://radarr:7878 / http://sonarr:8989 "
             "before it can sync anything."
+        )
+
+    if "readarr" in enabled_service_keys(config):
+
+        warnings.append(
+            "Readarr is pinned to a pre-release nightly build (lscr.io/linuxserver/readarr:0.4.19-nightly) "
+            "since the project has never cut a stable release and LinuxServer's floating develop/nightly "
+            "tags are currently dead - expect rougher edges than the rest of the stack. Recyclarr does not "
+            "support Readarr, so its config isn't synced by Recyclarr even if you have it enabled."
         )
 
     if "traefik" in enabled_service_keys(config) and config.domain:

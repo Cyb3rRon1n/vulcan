@@ -6,7 +6,7 @@ def test_all_known_services_have_a_resource_profile():
     expected = {
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "jellyseerr", "bazarr", "flaresolverr", "gluetun",
-        "lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"
+        "lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
@@ -25,6 +25,7 @@ def test_recyclarr_has_light_profile():
 def test_heavy_only_services_get_expected_profiles():
 
     assert RESOURCE_PROFILES["lidarr"] == "standard"
+    assert RESOURCE_PROFILES["readarr"] == "standard"
     assert RESOURCE_PROFILES["traefik"] == "light"
     assert RESOURCE_PROFILES["homepage"] == "light"
     assert RESOURCE_PROFILES["uptime-kuma"] == "light"
