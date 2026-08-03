@@ -515,6 +515,37 @@ async def test_media_path_screen_continue_success_navigates_and_updates_disk_inf
         await ctx.__aexit__(None, None, None)
 
 
+async def test_media_path_screen_continue_sets_media_redundancy(tmp_path):
+
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
+
+    try:
+
+        media_path = str(tmp_path / "media")
+        app.screen.query_one("#media-path-input", Input).value = media_path
+
+        redundancy = {
+            "device": "/dev/sda1", "filesystem": "ext4", "redundant": False,
+            "redundancy_type": None, "device_count": 1
+        }
+
+        with patch(
+            "installer.tui.media_path_screen.detect_disk",
+            return_value={"disk_free_gb": 500.0, "disk_path_checked": media_path}
+        ), patch(
+            "installer.tui.media_path_screen.detect_media_redundancy",
+            return_value=redundancy
+        ):
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+        assert app.media_redundancy == redundancy
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_media_path_screen_mkdir_failure_shows_error_and_stays():
 
     app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
@@ -1171,6 +1202,7 @@ async def _launch_at_review_screen(
     gpu_vendor: str | None = None,
     custom_services: set | None = None,
     domain: str | None = None,
+    media_redundancy: dict | None = None,
 ):
 
     app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None, media_path=media_path)
@@ -1183,6 +1215,7 @@ async def _launch_at_review_screen(
     app.gpu_vendor = gpu_vendor
     app.custom_services = custom_services
     app.domain = domain
+    app.media_redundancy = media_redundancy
 
     app.push_screen(ReviewScreen())
     await pilot.pause()
@@ -1216,6 +1249,62 @@ async def test_review_screen_shows_correct_summary():
         assert "Gluetun VPN: enabled" in summary
         assert "SABnzbd: disabled" in summary
         assert "GPU passthrough: disabled" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_shows_media_storage_warning_when_not_redundant():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        media_redundancy={
+            "device": "/dev/sda1", "filesystem": "ext4", "redundant": False,
+            "redundancy_type": None, "device_count": 1
+        }
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Media storage: /dev/sda1 (ext4, single device - no redundancy)" in summary
+        assert "No drive-level redundancy" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_shows_media_storage_without_warning_when_redundant():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        media_redundancy={
+            "device": "/dev/md0", "filesystem": "ext4", "redundant": True,
+            "redundancy_type": "raid1", "device_count": 2
+        }
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Media storage: /dev/md0 (ext4, raid1, 2 devices)" in summary
+        assert "No drive-level redundancy" not in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_omits_media_storage_line_when_unknown():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        media_redundancy=None
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "Media storage" not in summary
 
     finally:
         await ctx.__aexit__(None, None, None)

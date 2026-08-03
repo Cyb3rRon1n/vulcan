@@ -4,6 +4,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
+from installer.detect import describe_media_redundancy
 from installer.docker_setup import run_docker_command
 from installer.generate import GenerationConfig, write_stack
 from installer.post_install import pull_stack
@@ -56,6 +57,17 @@ class ReviewScreen(Screen):
 
         if self.app.domain:
             summary += f"\nDomain: {self.app.domain}"
+
+        if self.app.media_redundancy is not None:
+
+            description = describe_media_redundancy(self.app.media_redundancy)
+
+            if description is not None:
+
+                summary += f"\nMedia storage: {description}"
+
+                if self.app.media_redundancy["redundant"] is False:
+                    summary += "\n! No drive-level redundancy - a single drive failure would mean data loss."
 
         yield Vertical(
             Static(summary, id="summary"),

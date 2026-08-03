@@ -5,7 +5,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Input, Static
 
-from installer.detect import detect_disk
+from installer.detect import detect_disk, detect_media_redundancy
 from installer.tui.tier_config_screen import TierConfigScreen
 
 
@@ -61,5 +61,6 @@ class MediaPathScreen(Screen):
         self.app.system_info.disk_free_gb = disk_info["disk_free_gb"]
         self.app.system_info.disk_path_checked = disk_info["disk_path_checked"]
         self.app.media_path = media_path
+        self.app.media_redundancy = detect_media_redundancy(media_path)
 
         self.app.push_screen(TierConfigScreen())
