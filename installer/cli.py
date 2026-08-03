@@ -10,6 +10,7 @@ from installer.detect import (
     describe_media_redundancy,
     detect_disk,
     detect_docker,
+    detect_host_ip,
     detect_media_redundancy,
     detect_system,
 )
@@ -27,6 +28,7 @@ from installer.generate import (
     default_puid_pgid,
     default_timezone,
     load_previous_state,
+    render_stack_summary,
     write_stack,
 )
 from installer.post_install import (
@@ -813,7 +815,14 @@ def _generate_and_maybe_start(
         )
 
         if proc.returncode == 0:
-            console.print("[green]Stack is up.[/green]")
+
+            console.print("[green]Stack is up:[/green]")
+
+            summary = render_stack_summary(config, detect_host_ip())
+
+            if summary:
+                console.print(summary)
+
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
             raise typer.Exit(code=1)

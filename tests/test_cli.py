@@ -469,6 +469,44 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
     assert kwargs["use_group_workaround"] is False
 
 
+def test_start_success_prints_service_url_summary(tmp_path):
+
+    media_path = str(tmp_path / "media")
+    mock_proc = MagicMock(returncode=0)
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available",
+        return_value={"available": True, "conflicts": []}
+    ), patch(
+        "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ), patch(
+        "installer.cli.run_docker_command", return_value=mock_proc
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light",
+                "--media-path", media_path,
+                "--non-interactive",
+                "--yes",
+                "--start"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+    assert "Jellyfin: http://192.168.1.50:8096" in result.output
+    assert "Radarr: http://192.168.1.50:7878" in result.output
+
+
 def test_start_aborts_cleanly_on_port_conflict(tmp_path):
 
     media_path = str(tmp_path / "media")

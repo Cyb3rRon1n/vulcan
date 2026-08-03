@@ -11,6 +11,7 @@ from installer.generate import (
     render_compose,
     render_env,
     render_homepage_services,
+    render_stack_summary,
     save_state,
     write_stack,
 )
@@ -895,6 +896,65 @@ def test_write_stack_no_uptime_kuma_reference_when_disabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("one-time setup" in warning for warning in result["warnings"])
+
+
+def test_render_stack_summary_lists_homepage_first_when_enabled():
+
+    output = render_stack_summary(
+        make_config("heavy", custom_services={"homepage", "jellyfin", "radarr"}),
+        host_ip="192.168.1.50"
+    )
+
+    lines = output.splitlines()
+
+    assert lines[0] == "  Homepage (dashboard): http://192.168.1.50:3000"
+    assert "  Jellyfin: http://192.168.1.50:8096" in lines
+    assert "  Radarr: http://192.168.1.50:7878" in lines
+
+
+def test_render_stack_summary_omits_homepage_when_disabled():
+
+    output = render_stack_summary(
+        make_config("heavy", custom_services={"jellyfin", "radarr"}),
+        host_ip="192.168.1.50"
+    )
+
+    assert "Homepage" not in output
+    assert "  Jellyfin: http://192.168.1.50:8096" in output
+    assert "  Radarr: http://192.168.1.50:7878" in output
+
+
+def test_render_stack_summary_uses_traefik_domain():
+
+    output = render_stack_summary(
+        make_config(
+            "heavy",
+            custom_services={"homepage", "jellyfin", "traefik"},
+            domain="media.example.com"
+        ),
+        host_ip="192.168.1.50"
+    )
+
+    assert "Homepage (dashboard): https://homepage.media.example.com" in output
+    assert "Jellyfin: https://jellyfin.media.example.com" in output
+    assert "http://" not in output
+
+
+def test_render_stack_summary_excludes_non_web_facing_services():
+
+    output = render_stack_summary(
+        make_config(
+            "heavy",
+            custom_services={"jellyfin", "recyclarr", "watchtower", "gluetun", "flaresolverr"}
+        ),
+        host_ip="192.168.1.50"
+    )
+
+    assert "Recyclarr" not in output
+    assert "Watchtower" not in output
+    assert "Gluetun" not in output
+    assert "FlareSolverr" not in output
+    assert "  Jellyfin: http://192.168.1.50:8096" in output
 
 
 def test_default_timezone_reads_etc_timezone():

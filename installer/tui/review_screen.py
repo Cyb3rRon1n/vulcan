@@ -4,9 +4,9 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
-from installer.detect import describe_media_redundancy
+from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
-from installer.generate import GenerationConfig, write_stack
+from installer.generate import GenerationConfig, render_stack_summary, write_stack
 from installer.post_install import pull_stack
 from installer.preflight import check_ports_available
 from installer.tiers import TIERS
@@ -108,8 +108,10 @@ class ReviewScreen(Screen):
         self.query_one("#generate", Button).disabled = True
         result_widget = self.query_one("#result", Static)
 
+        self._config = self._build_config()
+
         try:
-            result = write_stack(self._build_config())
+            result = write_stack(self._config)
         except OSError as exc:
             result_widget.update(f"Failed to write the stack: {exc}")
             return
@@ -186,7 +188,12 @@ class ReviewScreen(Screen):
     def _start_complete(self, returncode: int) -> None:
 
         if returncode == 0:
-            self.app.exit(message="Stack is up.")
+
+            summary = render_stack_summary(self._config, detect_host_ip())
+            message = "Stack is up:\n" + summary if summary else "Stack is up."
+
+            self.app.exit(message=message)
+
         else:
             self.app.exit(message="Failed to start the stack - check `docker compose logs`.")
 
