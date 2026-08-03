@@ -2,7 +2,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import Screen
-from textual.widgets import Button, LoadingIndicator, Static
+from textual.widgets import Button, Checkbox, LoadingIndicator, Static
 
 from installer.detect import SystemInfo, detect_system
 from installer.generate import STACK_DIR, load_previous_state
@@ -28,6 +28,7 @@ class WelcomeScreen(Screen):
             LoadingIndicator(id="loading"),
             Static("", id="results"),
             Static("", id="previous-note"),
+            Checkbox("No internet access on this machine", value=False, id="offline-check"),
             Button("Continue", id="continue", disabled=True),
         )
 
@@ -68,4 +69,5 @@ class WelcomeScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "continue":
+            self.app.offline = self.query_one("#offline-check", Checkbox).value
             self.app.push_screen(DockerReadyScreen())

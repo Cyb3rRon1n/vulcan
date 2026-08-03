@@ -65,6 +65,16 @@ class DockerReadyScreen(Screen):
 
         if not info.docker_installed:
 
+            if self.app.offline:
+
+                status.update(
+                    "No internet access - Docker must already be installed on this "
+                    "machine, or install it from a machine that does have a connection: "
+                    "https://docs.docker.com/engine/install/"
+                )
+                action_button.display = False
+                return
+
             plan = install_plan_for(info.os_id)
 
             if plan is None:

@@ -3,14 +3,17 @@ Post-install operations on an already-generated stack: pulling images
 without starting anything (pull_stack), pulling fresh images and
 recreating containers (update_stack, which just calls pull_stack for
 its own pull step), archiving config for safekeeping (backup_stack),
-and reversing that archive back onto disk (restore_stack). All of
-these reuse the same real Docker/file primitives generation already
-does - run_docker_command() for the subprocess calls, the same
-STACK_DIR every other command reads from - no new machinery, just
-more things to do with a stack that already exists.
+reversing that archive back onto disk (restore_stack), and bundling a
+stack's already-pulled images into a transferable tarball for a
+machine that never touches the network (export_images/import_images).
+All of these reuse the same real Docker/file primitives generation
+already does - run_docker_command() for the subprocess calls, the
+same STACK_DIR every other command reads from - no new machinery,
+just more things to do with a stack that already exists.
 """
 
 import shutil
+import subprocess
 import tarfile
 from datetime import datetime
 from datetime import timezone as dt_timezone
@@ -45,6 +48,80 @@ def update_stack(compose_path: str, env_path: str) -> dict:
 
     if up.returncode != 0:
         return {"success": False, "error": "Failed to recreate containers - check `docker compose logs`."}
+
+    return {"success": True, "error": None}
+
+
+def export_images(
+    compose_path: str,
+    env_path: str,
+    output_path: Path | None = None,
+    export_dir: Path = Path("exports")
+) -> dict:
+
+    if not Path(compose_path).exists():
+        return {"success": False, "error": "No stack found to export.", "export_path": None}
+
+    # docker compose config --images needs its own captured subprocess call -
+    # run_docker_command() deliberately never captures output, since every
+    # other call site (pull/up/down) wants its real progress on the terminal.
+    try:
+
+        list_result = subprocess.run(
+            ["docker", "compose", "-f", compose_path, "--env-file", env_path, "config", "--images"],
+            capture_output=True,
+            text=True
+        )
+
+    except OSError as error:
+        return {"success": False, "error": str(error), "export_path": None}
+
+    if list_result.returncode != 0:
+        return {"success": False, "error": "Failed to resolve the stack's image list.", "export_path": None}
+
+    images = [line.strip() for line in list_result.stdout.splitlines() if line.strip()]
+
+    if not images:
+        return {"success": False, "error": "No images found for this stack.", "export_path": None}
+
+    if output_path is None:
+
+        export_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        output_path = export_dir / f"vulcan-images-{timestamp}.tar"
+
+    else:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    save = run_docker_command(["docker", "save", "-o", str(output_path), *images])
+
+    if save.returncode != 0:
+        return {"success": False, "error": "Failed to save images to a tarball.", "export_path": None}
+
+    return {"success": True, "error": None, "export_path": str(output_path)}
+
+
+def latest_export(export_dir: Path = Path("exports")) -> Path | None:
+
+    if not export_dir.is_dir():
+        return None
+
+    archives = sorted(export_dir.glob("vulcan-images-*.tar"))
+
+    return archives[-1] if archives else None
+
+
+def import_images(tar_path: str) -> dict:
+
+    tar_path = Path(tar_path)
+
+    if not tar_path.exists():
+        return {"success": False, "error": f"Image archive not found: {tar_path}"}
+
+    load = run_docker_command(["docker", "load", "-i", str(tar_path)])
+
+    if load.returncode != 0:
+        return {"success": False, "error": "Failed to load images from the archive."}
 
     return {"success": True, "error": None}
 

@@ -130,7 +130,50 @@ async def test_continue_navigates_to_docker_ready_screen():
             assert isinstance(app.screen, DockerReadyScreen)
 
 
-async def _launch_at_docker_screen(info: SystemInfo):
+async def test_welcome_screen_offline_checkbox_defaults_to_online():
+
+    with patch(
+        "installer.tui.welcome_screen.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.tui.welcome_screen.load_previous_state", return_value=None
+    ):
+
+        app = VulcanApp()
+
+        async with app.run_test() as pilot:
+
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+            assert app.offline is False
+
+
+async def test_welcome_screen_offline_checkbox_sets_app_offline():
+
+    with patch(
+        "installer.tui.welcome_screen.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.tui.welcome_screen.load_previous_state", return_value=None
+    ):
+
+        app = VulcanApp()
+
+        async with app.run_test() as pilot:
+
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#offline-check")
+            await pilot.click("#continue")
+            await pilot.pause()
+
+            assert app.offline is True
+
+
+async def _launch_at_docker_screen(info: SystemInfo, offline: bool = False):
     """
     Shared setup landing directly on DockerReadyScreen with a given
     SystemInfo. VulcanApp.on_mount() always pushes WelcomeScreen first,
@@ -138,7 +181,8 @@ async def _launch_at_docker_screen(info: SystemInfo):
     and silently clobber - the system_info set here, so WelcomeScreen's
     real detect_system()/load_previous_state() are mocked and awaited
     to completion before DockerReadyScreen is pushed and the fake info
-    is substituted in.
+    is substituted in. offline is set before pushing too, since
+    render_state() reads it synchronously from on_mount().
     """
 
     with patch(
@@ -155,6 +199,7 @@ async def _launch_at_docker_screen(info: SystemInfo):
         await pilot.pause()
 
     app.system_info = info
+    app.offline = offline
     app.push_screen(DockerReadyScreen())
     await pilot.pause()
 
@@ -217,6 +262,28 @@ async def test_docker_ready_screen_unsupported_distro_shows_no_action():
             assert "No known automatic install method" in status
             assert app.screen.query_one("#action", Button).display is False
             assert app.screen.query_one("#continue", Button).disabled is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_offline_shows_no_action():
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False
+    )
+
+    with patch("installer.tui.docker_screen.install_plan_for") as mock_plan:
+
+        app, pilot, ctx = await _launch_at_docker_screen(info, offline=True)
+
+        try:
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert "No internet access" in status
+            assert app.screen.query_one("#action", Button).display is False
+            assert app.screen.query_one("#continue", Button).disabled is True
+            mock_plan.assert_not_called()
 
         finally:
             await ctx.__aexit__(None, None, None)

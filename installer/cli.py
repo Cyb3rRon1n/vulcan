@@ -22,7 +22,16 @@ from installer.generate import (
     load_previous_state,
     write_stack,
 )
-from installer.post_install import backup_stack, latest_backup, pull_stack, restore_stack, update_stack
+from installer.post_install import (
+    backup_stack,
+    export_images,
+    import_images,
+    latest_backup,
+    latest_export,
+    pull_stack,
+    restore_stack,
+    update_stack,
+)
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
 
 
@@ -123,6 +132,58 @@ def backup():
         console.print(f"[yellow]! {warning}[/yellow]")
 
 
+@app.command(name="export")
+def export_command(
+    output: str | None = typer.Option(
+        None, "--output", help="Path for the image tarball; defaults into exports/"
+    )
+):
+    """
+    Save the generated stack's already-pulled images to a tarball, to move to a
+    machine with no internet access. Run `vulcan pull` first if you haven't already.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+    env_path = STACK_DIR / ".env"
+
+    result = export_images(
+        str(compose_path), str(env_path),
+        output_path=Path(output) if output is not None else None
+    )
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Images exported to {result['export_path']}[/green]")
+
+
+@app.command(name="import")
+def import_command(
+    tar_file: str = typer.Argument(
+        None, help="Path to an image tarball; defaults to the most recent file in exports/"
+    )
+):
+    """
+    Load images from a tarball produced by `vulcan export` - works with no
+    internet access, doesn't require a generated stack on this machine.
+    """
+
+    chosen = Path(tar_file) if tar_file is not None else latest_export()
+
+    if chosen is None:
+        console.print("[red]No image archives found in exports/ - pass a path explicitly.[/red]")
+        raise typer.Exit(code=1)
+
+    result = import_images(str(chosen))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Images loaded from {chosen}.[/green]")
+
+
 @app.command()
 def restore(
     backup_file: str = typer.Argument(
@@ -214,7 +275,11 @@ def main(
         None, "--domain",
         help="Base domain for Traefik routing (e.g. media.example.com) - only used if traefik is enabled"
     ),
-    plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI")
+    plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="No internet access on this machine - skip automatic Docker install if it's missing"
+    )
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -240,7 +305,8 @@ def main(
         pgid=pgid,
         timezone=timezone,
         services=services,
-        domain=domain
+        domain=domain,
+        offline=offline
     )
 
 
@@ -258,7 +324,8 @@ def run_install(
     pgid: int | None,
     timezone: str | None,
     services: str | None,
-    domain: str | None
+    domain: str | None,
+    offline: bool = False
 ):
 
     if non_interactive and not yes:
@@ -306,7 +373,7 @@ def run_install(
         f"  OS: {info.os_pretty_name or info.os_id or 'unknown'} ({info.architecture})"
     )
 
-    info, group_just_added = _ensure_docker_ready(info, non_interactive, yes)
+    info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline)
 
     if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
         console.print("[red]Docker isn't ready - can't continue.[/red]")
@@ -323,7 +390,8 @@ def run_install(
 def _ensure_docker_ready(
     info: SystemInfo,
     non_interactive: bool,
-    yes: bool
+    yes: bool,
+    offline: bool = False
 ) -> tuple[SystemInfo, bool]:
 
     group_just_added = False
@@ -334,6 +402,16 @@ def _ensure_docker_ready(
         return info, group_just_added
 
     if not info.docker_installed:
+
+        if offline:
+
+            console.print(
+                "[red]No internet access - Docker must already be installed on this "
+                "machine, or install it from a machine that does have a connection: "
+                "https://docs.docker.com/engine/install/[/red]"
+            )
+
+            return info, group_just_added
 
         plan = install_plan_for(info.os_id)
 

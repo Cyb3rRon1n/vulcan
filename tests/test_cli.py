@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -554,6 +555,36 @@ def test_docker_bootstrap_unsupported_distro_exits_cleanly(tmp_path):
 
     assert result.exit_code == 1
     assert "No known automatic install method" in result.output
+    mock_install.assert_not_called()
+
+
+def test_docker_bootstrap_offline_skips_install_attempt(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    not_ready = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False
+    )
+
+    with patch(
+        "installer.cli.detect_system", return_value=not_ready
+    ), patch(
+        "installer.cli.install_plan_for"
+    ) as mock_plan, patch(
+        "installer.cli.install_docker"
+    ) as mock_install:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes", "--offline"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "No internet access" in result.output
+    mock_plan.assert_not_called()
     mock_install.assert_not_called()
 
 
@@ -1127,6 +1158,127 @@ def test_backup_never_prompts_for_confirmation():
     with patch("installer.cli.backup_stack", return_value=result_dict):
 
         result = runner.invoke(app, ["backup"], input="")
+
+    assert result.exit_code == 0, result.output
+
+
+def test_export_success_prints_path():
+
+    with patch(
+        "installer.cli.export_images",
+        return_value={"success": True, "error": None, "export_path": "/scratch/exports/x.tar"}
+    ):
+
+        result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0, result.output
+    assert "/scratch/exports/x.tar" in result.output
+
+
+def test_export_failure_exits_1():
+
+    with patch(
+        "installer.cli.export_images",
+        return_value={"success": False, "error": "No stack found to export.", "export_path": None}
+    ):
+
+        result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 1
+    assert "No stack found to export" in result.output
+
+
+def test_export_passes_explicit_output_path(tmp_path):
+
+    output = str(tmp_path / "custom.tar")
+
+    with patch(
+        "installer.cli.export_images",
+        return_value={"success": True, "error": None, "export_path": output}
+    ) as mock_export:
+
+        result = runner.invoke(app, ["export", "--output", output])
+
+    assert result.exit_code == 0, result.output
+
+    kwargs = mock_export.call_args[1]
+    assert kwargs["output_path"] == Path(output)
+
+
+def test_export_never_prompts_for_confirmation():
+
+    with patch(
+        "installer.cli.export_images",
+        return_value={"success": True, "error": None, "export_path": "/scratch/exports/x.tar"}
+    ):
+
+        result = runner.invoke(app, ["export"], input="")
+
+    assert result.exit_code == 0, result.output
+
+
+def test_import_no_archive_found_exits_1():
+
+    with patch("installer.cli.latest_export", return_value=None):
+
+        result = runner.invoke(app, ["import"])
+
+    assert result.exit_code == 1
+    assert "No image archives found" in result.output
+
+
+def test_import_defaults_to_latest_export(tmp_path):
+
+    latest = tmp_path / "exports" / "vulcan-images-20260101T000000Z.tar"
+
+    with patch("installer.cli.latest_export", return_value=latest), patch(
+        "installer.cli.import_images", return_value={"success": True, "error": None}
+    ) as mock_import:
+
+        result = runner.invoke(app, ["import"])
+
+    assert result.exit_code == 0, result.output
+    mock_import.assert_called_once_with(str(latest))
+
+
+def test_import_explicit_file_argument(tmp_path):
+
+    tar_file = str(tmp_path / "custom.tar")
+
+    with patch(
+        "installer.cli.import_images", return_value={"success": True, "error": None}
+    ) as mock_import:
+
+        result = runner.invoke(app, ["import", tar_file])
+
+    assert result.exit_code == 0, result.output
+    mock_import.assert_called_once_with(tar_file)
+
+
+def test_import_failure_exits_1(tmp_path):
+
+    latest = tmp_path / "exports" / "vulcan-images-20260101T000000Z.tar"
+
+    with patch("installer.cli.latest_export", return_value=latest), patch(
+        "installer.cli.import_images",
+        return_value={"success": False, "error": "Failed to load images from the archive."}
+    ):
+
+        result = runner.invoke(app, ["import"])
+
+    assert result.exit_code == 1
+    assert "Failed to load images" in result.output
+
+
+def test_import_never_prompts_for_confirmation(tmp_path):
+
+    latest = tmp_path / "exports" / "vulcan-images-20260101T000000Z.tar"
+
+    with patch("installer.cli.latest_export", return_value=latest), patch(
+        "installer.cli.import_images", return_value={"success": True, "error": None}
+    ):
+
+        result = runner.invoke(app, ["import"], input="")
 
     assert result.exit_code == 0, result.output
 

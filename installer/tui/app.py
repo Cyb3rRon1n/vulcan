@@ -20,6 +20,7 @@ class VulcanApp(App):
         self.system_info: SystemInfo | None = None
         self.previous_state: dict | None = None
         self.group_just_added: bool = False
+        self.offline: bool = False
 
         self.media_path: str | None = None
         self.tier_name: str | None = None
