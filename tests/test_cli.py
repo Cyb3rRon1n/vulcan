@@ -441,6 +441,9 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
+        "installer.cli.check_ports_available",
+        return_value={"available": True, "conflicts": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ) as mock_run_docker:
 
@@ -464,6 +467,40 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
     assert command[:2] == ["docker", "compose"]
     assert "up" in command and "-d" in command
     assert kwargs["use_group_workaround"] is False
+
+
+def test_start_aborts_cleanly_on_port_conflict(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available",
+        return_value={"available": False, "conflicts": [8080]}
+    ), patch(
+        "installer.cli.run_docker_command"
+    ) as mock_run_docker:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light",
+                "--media-path", media_path,
+                "--non-interactive",
+                "--yes",
+                "--start"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "8080" in result.output
+    mock_run_docker.assert_not_called()
 
 
 def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
@@ -881,6 +918,9 @@ def test_run_docker_command_failure_reported_cleanly(tmp_path):
         return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available",
+        return_value={"available": True, "conflicts": []}
     ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):

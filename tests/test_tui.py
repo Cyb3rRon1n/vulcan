@@ -1453,6 +1453,9 @@ async def test_review_screen_start_stack_success_exits_cleanly():
             await pilot.pause()
 
         with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={"available": True, "conflicts": []}
+        ), patch(
             "installer.tui.review_screen.run_docker_command", return_value=mock_proc
         ) as mock_run_docker:
 
@@ -1489,6 +1492,9 @@ async def test_review_screen_start_stack_failure_exits_with_failure_message():
             await pilot.pause()
 
         with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={"available": True, "conflicts": []}
+        ), patch(
             "installer.tui.review_screen.run_docker_command", return_value=mock_proc
         ):
 
@@ -1498,6 +1504,44 @@ async def test_review_screen_start_stack_failure_exits_with_failure_message():
             await pilot.pause()
 
         assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_start_stack_port_conflict_stays_interactive():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={"available": False, "conflicts": [8080]}
+        ), patch(
+            "installer.tui.review_screen.run_docker_command"
+        ) as mock_run_docker:
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+        mock_run_docker.assert_not_called()
+        assert app.is_running is True
+
+        result = app.screen.query_one("#result", Static).content
+        assert "8080" in result
+
+        assert app.screen.query_one("#start", Button).disabled is False
+        assert app.screen.query_one("#pull", Button).disabled is False
+        assert app.screen.query_one("#finish", Button).disabled is False
+        assert app.screen.query_one("#back", Button).disabled is False
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -1782,6 +1826,9 @@ async def test_review_screen_back_disabled_after_start_stack_clicked():
             await pilot.pause()
 
         with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={"available": True, "conflicts": []}
+        ), patch(
             "installer.tui.review_screen.run_docker_command", side_effect=slow_run_docker_command
         ):
 
