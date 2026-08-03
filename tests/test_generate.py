@@ -175,10 +175,18 @@ def test_render_compose_medium_with_recyclarr_uses_pinned_image_and_user():
 
 def test_render_compose_heavy_includes_all_new_services():
 
-    output = render_compose(make_config("heavy", enabled_optional={"lidarr", "traefik"}))
+    output = render_compose(make_config("heavy", enabled_optional={"lidarr", "readarr", "traefik"}))
 
-    for name in ("lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
+    for name in ("lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
         assert f"container_name: {name}" in output
+
+
+def test_render_compose_readarr_uses_pinned_nightly_image():
+
+    output = render_compose(make_config("heavy", enabled_optional={"readarr"}))
+
+    assert "image: lscr.io/linuxserver/readarr:0.4.19-nightly" in output
+    assert '"8787:8787"' in output
 
 
 def test_render_compose_medium_excludes_heavy_only_services():
@@ -194,6 +202,7 @@ def test_render_compose_heavy_without_optional_extras_excludes_lidarr_and_traefi
     output = render_compose(make_config("heavy"))
 
     assert "container_name: lidarr" not in output
+    assert "container_name: readarr" not in output
     assert "container_name: traefik" not in output
     assert "container_name: homepage" in output
 
@@ -228,7 +237,7 @@ def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_s
     output = render_compose(
         make_config(
             "heavy",
-            enabled_optional={"traefik", "lidarr"},
+            enabled_optional={"traefik", "lidarr", "readarr"},
             domain="media.example.com"
         )
     )
@@ -241,6 +250,7 @@ def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_s
         "jellyseerr": 5055,
         "bazarr": 6767,
         "lidarr": 8686,
+        "readarr": 8787,
         "homepage": 3000,
         "uptime-kuma": 3001,
     }
@@ -407,6 +417,19 @@ def test_render_homepage_services_creates_tiles_for_enabled_services():
     assert "Monitoring" not in groups
 
 
+def test_render_homepage_services_creates_readarr_tile():
+
+    output = render_homepage_services(
+        make_config("heavy", custom_services={"readarr"}),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    assert groups["Media Management"]["Readarr"]["href"] == "http://localhost:8787"
+    assert groups["Media Management"]["Readarr"]["icon"] == "readarr.png"
+
+
 def test_render_homepage_services_uses_host_ip_when_provided():
 
     output = render_homepage_services(
@@ -473,7 +496,7 @@ def test_render_homepage_services_output_is_valid_yaml():
             "heavy",
             custom_services={
                 "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "uptime-kuma"
+                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
             }
         ),
         host_ip=None
@@ -518,6 +541,25 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "media" / "movies").is_dir()
     assert (media_path / "media" / "tv").is_dir()
     assert (media_path / "media" / "music").is_dir()
+    assert (media_path / "media" / "books").is_dir()
+
+
+def test_write_stack_warns_for_readarr(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"readarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("pre-release nightly build" in warning for warning in result["warnings"])
+    assert any("Recyclarr does not support Readarr" in warning for warning in result["warnings"])
 
 
 def test_write_stack_warns_for_nvidia_gpu(tmp_path):
@@ -847,7 +889,7 @@ def test_save_and_load_previous_state_round_trip(tmp_path):
         puid=1000,
         pgid=1000,
         timezone="America/New_York",
-        enabled_optional={"lidarr", "traefik"},
+        enabled_optional={"lidarr", "readarr", "traefik"},
         gpu_vendor="amd"
     )
 
@@ -859,7 +901,7 @@ def test_save_and_load_previous_state_round_trip(tmp_path):
     assert state["puid"] == 1000
     assert state["pgid"] == 1000
     assert state["timezone"] == "America/New_York"
-    assert sorted(state["enabled_optional"]) == ["lidarr", "traefik"]
+    assert sorted(state["enabled_optional"]) == ["lidarr", "readarr", "traefik"]
     assert state["gpu_vendor"] == "amd"
     assert state["custom_services"] is None
     assert "generated_at" in state

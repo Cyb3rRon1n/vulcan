@@ -102,7 +102,7 @@ def test_heavy_services_include_all_medium_services_plus_additions():
 
     assert medium_keys.issubset(heavy_keys)
     assert heavy_keys - medium_keys == {
-        "lidarr", "traefik", "homepage", "uptime-kuma", "watchtower"
+        "lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"
     }
 
 
@@ -113,6 +113,7 @@ def test_gluetun_and_lidarr_and_traefik_are_optional():
 
     assert medium_by_key["gluetun"].optional is True
     assert heavy_by_key["lidarr"].optional is True
+    assert heavy_by_key["readarr"].optional is True
     assert heavy_by_key["traefik"].optional is True
     assert heavy_by_key["homepage"].optional is False
 
@@ -144,5 +145,5 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 16
+    assert len(all_keys) == 17
     assert len(ALL_SERVICES) == len(all_keys)

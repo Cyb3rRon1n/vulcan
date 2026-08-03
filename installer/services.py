@@ -21,6 +21,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "flaresolverr": "light",
     "gluetun": "light",
     "lidarr": "standard",
+    "readarr": "standard",
     "traefik": "light",
     "homepage": "light",
     "uptime-kuma": "light",
