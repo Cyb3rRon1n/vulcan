@@ -2,7 +2,38 @@ import io
 import tarfile
 from unittest.mock import MagicMock, patch
 
-from installer.post_install import backup_stack, latest_backup, restore_stack, update_stack
+from installer.post_install import backup_stack, latest_backup, pull_stack, restore_stack, update_stack
+
+
+def test_pull_stack_failure_reports_clean_error():
+
+    pull_proc = MagicMock(returncode=1)
+
+    with patch(
+        "installer.post_install.run_docker_command", return_value=pull_proc
+    ) as mock_run:
+
+        result = pull_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert result == {
+        "success": False,
+        "error": "Failed to pull images - check `docker compose logs`."
+    }
+    mock_run.assert_called_once()
+
+    args = mock_run.call_args[0][0]
+    assert args[-1] == "pull"
+
+
+def test_pull_stack_success():
+
+    pull_proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", return_value=pull_proc):
+
+        result = pull_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert result == {"success": True, "error": None}
 
 
 def test_update_stack_pull_failure_short_circuits_before_up():

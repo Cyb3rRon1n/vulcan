@@ -1019,6 +1019,70 @@ def test_update_non_interactive_yes_skips_confirm_and_reports_failure(tmp_path):
     assert "Failed to pull images" in result.output
 
 
+def test_pull_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["pull"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_pull_success_prints_command_reminder(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.pull_stack", return_value={"success": True, "error": None}
+    ) as mock_pull:
+
+        result = runner.invoke(app, ["pull"])
+
+    assert result.exit_code == 0, result.output
+    assert "Images pulled" in result.output
+    assert "docker compose" in result.output
+    assert "--env-file" in result.output
+
+    args = mock_pull.call_args[0]
+    assert args[0] == str(stack_dir / "docker-compose.yml")
+    assert args[1] == str(stack_dir / ".env")
+
+
+def test_pull_failure_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.pull_stack",
+        return_value={"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+    ):
+
+        result = runner.invoke(app, ["pull"])
+
+    assert result.exit_code == 1
+    assert "Failed to pull images" in result.output
+
+
+def test_pull_never_prompts_for_confirmation(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.pull_stack", return_value={"success": True, "error": None}
+    ):
+
+        result = runner.invoke(app, ["pull"], input="")
+
+    assert result.exit_code == 0, result.output
+
+
 def test_backup_success_prints_path_and_warnings():
 
     result_dict = {

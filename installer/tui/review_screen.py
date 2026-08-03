@@ -6,6 +6,7 @@ from textual.widgets import Button, LoadingIndicator, Static
 
 from installer.docker_setup import run_docker_command
 from installer.generate import GenerationConfig, write_stack
+from installer.post_install import pull_stack
 from installer.tiers import TIERS
 
 
@@ -65,6 +66,7 @@ class ReviewScreen(Screen):
             Static("", id="result"),
             LoadingIndicator(id="loading"),
             Button("Start Stack Now", id="start", disabled=True),
+            Button("Pull Images Now", id="pull", disabled=True),
             Button("Finish Without Starting", id="finish", disabled=True),
         )
 
@@ -72,6 +74,7 @@ class ReviewScreen(Screen):
 
         self.query_one("#loading", LoadingIndicator).display = False
         self.query_one("#start", Button).display = False
+        self.query_one("#pull", Button).display = False
         self.query_one("#finish", Button).display = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -82,6 +85,8 @@ class ReviewScreen(Screen):
             self._finish_without_starting()
         elif event.button.id == "start":
             self._start_stack()
+        elif event.button.id == "pull":
+            self._pull_images()
         elif event.button.id == "back":
             self.app.pop_screen()
 
@@ -103,7 +108,7 @@ class ReviewScreen(Screen):
         lines.extend(f"! {warning}" for warning in result["warnings"])
         result_widget.update("\n".join(lines))
 
-        for button_id in ("start", "finish"):
+        for button_id in ("start", "pull", "finish"):
 
             button = self.query_one(f"#{button_id}", Button)
             button.display = True
@@ -121,11 +126,22 @@ class ReviewScreen(Screen):
     def _start_stack(self) -> None:
 
         self.query_one("#start", Button).disabled = True
+        self.query_one("#pull", Button).disabled = True
         self.query_one("#finish", Button).disabled = True
         self.query_one("#back", Button).disabled = True
         self.query_one("#loading", LoadingIndicator).display = True
 
         self._run_start()
+
+    def _pull_images(self) -> None:
+
+        self.query_one("#start", Button).disabled = True
+        self.query_one("#pull", Button).disabled = True
+        self.query_one("#finish", Button).disabled = True
+        self.query_one("#back", Button).disabled = True
+        self.query_one("#loading", LoadingIndicator).display = True
+
+        self._run_pull()
 
     @work(thread=True)
     def _run_start(self) -> None:
@@ -148,3 +164,22 @@ class ReviewScreen(Screen):
             self.app.exit(message="Stack is up.")
         else:
             self.app.exit(message="Failed to start the stack - check `docker compose logs`.")
+
+    @work(thread=True)
+    def _run_pull(self) -> None:
+
+        result = pull_stack(self._compose_path, self._env_path)
+
+        self.app.call_from_thread(self._pull_complete, result)
+
+    def _pull_complete(self, result: dict) -> None:
+
+        if result["success"]:
+            self.app.exit(
+                message=(
+                    "Images pulled. Run this when you're ready:\n"
+                    f"  docker compose -f {self._compose_path} --env-file {self._env_path} up -d"
+                )
+            )
+        else:
+            self.app.exit(message=result["error"])
