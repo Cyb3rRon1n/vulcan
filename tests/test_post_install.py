@@ -1,4 +1,5 @@
 import io
+import sqlite3
 import tarfile
 from unittest.mock import MagicMock, patch
 
@@ -328,6 +329,73 @@ def test_backup_stack_creates_real_archive_with_expected_contents(tmp_path):
 
         env_member = tar.extractfile(".env")
         assert env_member.read().decode() == "PUID=1000\n"
+
+
+def test_backup_stack_snapshots_live_sqlite_database_safely(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    backup_dir = tmp_path / "backups"
+
+    db_path = stack_dir / "config" / "radarr" / "radarr.db"
+    db_path.parent.mkdir(parents=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE Movies (Id INTEGER PRIMARY KEY, Title TEXT)")
+    conn.execute("INSERT INTO Movies (Title) VALUES ('Real Movie')")
+    conn.commit()
+    conn.close()
+
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+
+    result = backup_stack(stack_dir=stack_dir, backup_dir=backup_dir)
+
+    assert result["success"] is True
+    assert not any("Could not safely snapshot" in w for w in result["warnings"])
+
+    with tarfile.open(result["backup_path"], "r:gz") as tar:
+        tar.extract("config/radarr/radarr.db", path=tmp_path / "extracted", filter="data")
+
+    extracted_db = tmp_path / "extracted" / "config" / "radarr" / "radarr.db"
+
+    conn = sqlite3.connect(extracted_db)
+    assert conn.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    assert conn.execute("SELECT Title FROM Movies").fetchone() == ("Real Movie",)
+    conn.close()
+
+
+def test_backup_stack_falls_back_to_plain_copy_on_snapshot_failure(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    backup_dir = tmp_path / "backups"
+
+    db_path = stack_dir / "config" / "radarr" / "radarr.db"
+    db_path.parent.mkdir(parents=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE Movies (Id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    original_bytes = db_path.read_bytes()
+
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+
+    with patch(
+        "installer.post_install._snapshot_sqlite_database", return_value=False
+    ):
+
+        result = backup_stack(stack_dir=stack_dir, backup_dir=backup_dir)
+
+    assert result["success"] is True
+    assert any("Could not safely snapshot" in w for w in result["warnings"])
+    assert any("radarr/radarr.db" in w for w in result["warnings"])
+
+    with tarfile.open(result["backup_path"], "r:gz") as tar:
+        tar.extract("config/radarr/radarr.db", path=tmp_path / "extracted", filter="data")
+
+    extracted_db = tmp_path / "extracted" / "config" / "radarr" / "radarr.db"
+    assert extracted_db.read_bytes() == original_bytes
 
 
 def test_backup_stack_warns_about_env_secrets(tmp_path):
