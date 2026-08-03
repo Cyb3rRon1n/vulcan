@@ -18,7 +18,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default), no manual reverse-proxy config.
 - **Pre-seeded dashboard** — Homepage boots with real tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
-- **Full lifecycle, not just first install** — `vulcan update`/`backup`/`restore` round out an already-generated stack.
+- **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore` round out an already-generated stack.
 
 ## Screenshots
 
@@ -92,11 +92,12 @@ HTTPS uses Traefik's own auto-generated self-signed certificate by default — r
 
 ```bash
 vulcan update              # pull the latest images and recreate containers
+vulcan pull                # pull images without starting anything
 vulcan backup              # archive stack/config/ + docker-compose.yml/.env to backups/
 vulcan restore [file]      # restore config/, docker-compose.yml, and .env from a backup archive
 ```
 
-`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan backup` needs no confirmation — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) — but the archive includes `stack/.env`, which may hold real credentials, so store it securely. `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
+`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan pull` is `vulcan update`'s pull step on its own, with nothing recreated or restarted — run it (or click "Pull Images Now" at the end of the guided TUI flow) while you have a connection to prepare a stack you'll start later somewhere offline; needs no confirmation, since it touches nothing running. `vulcan backup` needs no confirmation either — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) — but the archive includes `stack/.env`, which may hold real credentials, so store it securely. `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
 
 ---
 

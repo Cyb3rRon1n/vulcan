@@ -1,11 +1,13 @@
 """
-Post-install operations on an already-generated stack: pulling fresh
-images and recreating containers (update_stack), archiving config for
-safekeeping (backup_stack), and reversing that archive back onto disk
-(restore_stack). All three reuse the same real Docker/file primitives
-generation already does - run_docker_command() for the subprocess
-calls, the same STACK_DIR every other command reads from - no new
-machinery, just more things to do with a stack that already exists.
+Post-install operations on an already-generated stack: pulling images
+without starting anything (pull_stack), pulling fresh images and
+recreating containers (update_stack, which just calls pull_stack for
+its own pull step), archiving config for safekeeping (backup_stack),
+and reversing that archive back onto disk (restore_stack). All of
+these reuse the same real Docker/file primitives generation already
+does - run_docker_command() for the subprocess calls, the same
+STACK_DIR every other command reads from - no new machinery, just
+more things to do with a stack that already exists.
 """
 
 import shutil
@@ -18,7 +20,7 @@ from installer.docker_setup import run_docker_command
 from installer.generate import STACK_DIR
 
 
-def update_stack(compose_path: str, env_path: str) -> dict:
+def pull_stack(compose_path: str, env_path: str) -> dict:
 
     pull = run_docker_command(
         ["docker", "compose", "-f", compose_path, "--env-file", env_path, "pull"]
@@ -26,6 +28,16 @@ def update_stack(compose_path: str, env_path: str) -> dict:
 
     if pull.returncode != 0:
         return {"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+
+    return {"success": True, "error": None}
+
+
+def update_stack(compose_path: str, env_path: str) -> dict:
+
+    pull_result = pull_stack(compose_path, env_path)
+
+    if not pull_result["success"]:
+        return pull_result
 
     up = run_docker_command(
         ["docker", "compose", "-f", compose_path, "--env-file", env_path, "up", "-d"]

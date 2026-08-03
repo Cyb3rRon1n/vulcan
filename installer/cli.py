@@ -22,7 +22,7 @@ from installer.generate import (
     load_previous_state,
     write_stack,
 )
-from installer.post_install import backup_stack, latest_backup, restore_stack, update_stack
+from installer.post_install import backup_stack, latest_backup, pull_stack, restore_stack, update_stack
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
 
 
@@ -77,6 +77,32 @@ def update(
         raise typer.Exit(code=1)
 
     console.print("[green]Stack updated.[/green]")
+
+
+@app.command()
+def pull():
+    """
+    Pull images for the generated stack without starting it - useful to prepare
+    a stack for an offline environment ahead of time.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+
+    if not compose_path.exists():
+        console.print("[red]No stack found - run `vulcan` first to generate one.[/red]")
+        raise typer.Exit(code=1)
+
+    result = pull_stack(str(compose_path), str(STACK_DIR / ".env"))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        "[green]Images pulled.[/green] Run this whenever you're ready - no network "
+        f"access needed at that point:\n  docker compose -f {compose_path} --env-file "
+        f"{STACK_DIR / '.env'} up -d"
+    )
 
 
 @app.command()

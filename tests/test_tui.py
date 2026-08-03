@@ -1347,6 +1347,85 @@ async def test_review_screen_start_stack_failure_exits_with_failure_message():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_review_screen_pull_images_success_exits_cleanly():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.pull_stack",
+            return_value={"success": True, "error": None}
+        ) as mock_pull:
+
+            await pilot.click("#pull")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        mock_pull.assert_called_once()
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_pull_images_failure_exits_with_failure_message():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.pull_stack",
+            return_value={"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+        ):
+
+            await pilot.click("#pull")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_generate_success_reveals_pull_button():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        assert app.screen.query_one("#pull", Button).display is True
+        assert app.screen.query_one("#pull", Button).disabled is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_docker_ready_screen_back_returns_to_welcome_screen():
 
     app, pilot, ctx = await _launch_at_docker_screen(make_system_info())
@@ -1551,6 +1630,36 @@ async def test_review_screen_back_disabled_after_start_stack_clicked():
         ):
 
             await pilot.click("#start")
+            await pilot.pause()
+
+            assert app.screen.query_one("#back", Button).disabled is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_back_disabled_after_pull_images_clicked():
+
+    def slow_pull_stack(*args, **kwargs):
+        time.sleep(0.2)
+        return {"success": True, "error": None}
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.pull_stack", side_effect=slow_pull_stack
+        ):
+
+            await pilot.click("#pull")
             await pilot.pause()
 
             assert app.screen.query_one("#back", Button).disabled is True
