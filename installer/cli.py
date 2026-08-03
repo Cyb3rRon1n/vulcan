@@ -5,7 +5,14 @@ import typer
 from rich.console import Console
 
 from installer import __version__
-from installer.detect import SystemInfo, detect_disk, detect_docker, detect_system
+from installer.detect import (
+    SystemInfo,
+    describe_media_redundancy,
+    detect_disk,
+    detect_docker,
+    detect_media_redundancy,
+    detect_system,
+)
 from installer.docker_setup import (
     add_user_to_docker_group,
     ensure_compose_v2,
@@ -503,6 +510,19 @@ def _gather_generation_config(
     disk_info = detect_disk(media_path)
     info.disk_free_gb = disk_info["disk_free_gb"]
     info.disk_path_checked = disk_info["disk_path_checked"]
+
+    redundancy = detect_media_redundancy(media_path)
+    description = describe_media_redundancy(redundancy)
+
+    if description is not None:
+
+        console.print(f"Media storage: {description}")
+
+        if redundancy["redundant"] is False:
+            console.print(
+                "[yellow]! No drive-level redundancy - a single drive failure "
+                "would mean data loss.[/yellow]"
+            )
 
     recommendation = recommend_tier(info)
 

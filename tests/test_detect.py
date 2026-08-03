@@ -2,15 +2,56 @@ from unittest.mock import MagicMock, mock_open, patch
 
 from installer.detect import (
     SystemInfo,
+    describe_media_redundancy,
     detect_cpu,
     detect_disk,
     detect_docker,
     detect_gpu,
     detect_host_ip,
+    detect_media_redundancy,
     detect_memory,
     detect_os,
     detect_render_group_gid,
     detect_system,
+)
+
+
+FAKE_MDSTAT_RAID1 = (
+    "Personalities : [raid1] \n"
+    "md0 : active raid1 sdb1[1] sda1[0]\n"
+    "      976630464 blocks super 1.2 [2/2] [UU]\n"
+    "\n"
+    "unused devices: <none>\n"
+)
+
+FAKE_MDSTAT_RAID0 = (
+    "Personalities : [raid0] \n"
+    "md0 : active raid0 sdb1[1] sda1[0]\n"
+    "      1953260928 blocks super 1.2 512k chunks\n"
+    "\n"
+    "unused devices: <none>\n"
+)
+
+FAKE_ZPOOL_STATUS_MIRROR = (
+    "  pool: tank\n"
+    " state: ONLINE\n"
+    "config:\n"
+    "\n"
+    "\tNAME        STATE     READ WRITE CKSUM\n"
+    "\ttank        ONLINE       0     0     0\n"
+    "\t  mirror-0  ONLINE       0     0     0\n"
+    "\t    sda     ONLINE       0     0     0\n"
+    "\t    sdb     ONLINE       0     0     0\n"
+)
+
+FAKE_ZPOOL_STATUS_SINGLE = (
+    "  pool: tank\n"
+    " state: ONLINE\n"
+    "config:\n"
+    "\n"
+    "\tNAME        STATE     READ WRITE CKSUM\n"
+    "\ttank        ONLINE       0     0     0\n"
+    "\t  sda       ONLINE       0     0     0\n"
 )
 
 
@@ -101,6 +142,241 @@ def test_detect_disk_handles_missing_path():
         "disk_free_gb": 0.0,
         "disk_path_checked": "/does/not/exist"
     }
+
+
+def _mock_findmnt(source: str, fstype: str, mountpoint: str = "/mnt/media") -> MagicMock:
+
+    return MagicMock(returncode=0, stdout=f"{source} {fstype} {mountpoint}\n")
+
+
+def test_detect_media_redundancy_unresolvable_path_returns_all_none():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=MagicMock(returncode=1, stdout="")
+    ):
+
+        result = detect_media_redundancy("/no/such/path")
+
+    assert result == {
+        "device": None, "filesystem": None, "redundant": None,
+        "redundancy_type": None, "device_count": None
+    }
+
+
+def test_detect_media_redundancy_findmnt_raises_returns_all_none():
+
+    with patch(
+        "installer.detect.subprocess.run", side_effect=OSError("findmnt not found")
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] is None
+    assert result["redundant"] is None
+
+
+def test_detect_media_redundancy_mdadm_raid1_is_redundant():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=_mock_findmnt("/dev/md0", "ext4")
+    ), patch(
+        "builtins.open", mock_open(read_data=FAKE_MDSTAT_RAID1)
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] == "/dev/md0"
+    assert result["filesystem"] == "ext4"
+    assert result["redundant"] is True
+    assert result["redundancy_type"] == "raid1"
+    assert result["device_count"] == 2
+
+
+def test_detect_media_redundancy_mdadm_raid0_is_not_redundant():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=_mock_findmnt("/dev/md0", "ext4")
+    ), patch(
+        "builtins.open", mock_open(read_data=FAKE_MDSTAT_RAID0)
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["redundant"] is False
+    assert result["redundancy_type"] == "raid0"
+
+
+def test_detect_media_redundancy_btrfs_single_device_is_not_redundant():
+
+    # media_path is a subdirectory under the real mountpoint, not the
+    # mountpoint itself - `btrfs filesystem show` rejects an arbitrary
+    # subpath (confirmed against a real filesystem), so this also
+    # guards against passing media_path to it instead of TARGET.
+    findmnt_result = _mock_findmnt("/dev/nvme0n1p3[/home]", "btrfs", mountpoint="/home")
+    show_result = MagicMock(
+        returncode=0,
+        stdout="Label: 'fedora'  uuid: xxx\n\tTotal devices 1 FS bytes used 62.66GiB\n"
+    )
+
+    with patch(
+        "installer.detect.subprocess.run", side_effect=[findmnt_result, show_result]
+    ) as mock_run, patch(
+        "installer.detect.shutil.which", return_value="/usr/bin/btrfs"
+    ):
+
+        result = detect_media_redundancy("/home/sentinel/media")
+
+    assert result["device"] == "/dev/nvme0n1p3"
+    assert result["filesystem"] == "btrfs"
+    assert result["redundant"] is False
+    assert result["device_count"] == 1
+
+    show_call_args = mock_run.call_args_list[1][0][0]
+    assert show_call_args == ["btrfs", "filesystem", "show", "/home"]
+
+
+def test_detect_media_redundancy_btrfs_multi_device_is_redundant():
+
+    findmnt_result = _mock_findmnt("/dev/sda1", "btrfs", mountpoint="/mnt/media")
+    show_result = MagicMock(
+        returncode=0,
+        stdout="Label: 'tank'  uuid: xxx\n\tTotal devices 2 FS bytes used 10.00GiB\n"
+    )
+
+    with patch(
+        "installer.detect.subprocess.run", side_effect=[findmnt_result, show_result]
+    ), patch(
+        "installer.detect.shutil.which", return_value="/usr/bin/btrfs"
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["redundant"] is True
+    assert result["device_count"] == 2
+    assert result["redundancy_type"] == "btrfs-multi-device"
+
+
+def test_detect_media_redundancy_btrfs_missing_tool_cannot_determine():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=_mock_findmnt("/dev/sda1", "btrfs")
+    ), patch(
+        "installer.detect.shutil.which", return_value=None
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] == "/dev/sda1"
+    assert result["redundant"] is None
+
+
+def test_detect_media_redundancy_zfs_mirror_is_redundant():
+
+    findmnt_result = _mock_findmnt("tank/media", "zfs")
+    status_result = MagicMock(returncode=0, stdout=FAKE_ZPOOL_STATUS_MIRROR)
+
+    with patch(
+        "installer.detect.subprocess.run", side_effect=[findmnt_result, status_result]
+    ), patch(
+        "installer.detect.shutil.which", return_value="/usr/sbin/zpool"
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] == "tank/media"
+    assert result["filesystem"] == "zfs"
+    assert result["redundant"] is True
+    assert result["redundancy_type"] == "zfs-mirror"
+
+
+def test_detect_media_redundancy_zfs_single_vdev_is_not_redundant():
+
+    findmnt_result = _mock_findmnt("tank/media", "zfs")
+    status_result = MagicMock(returncode=0, stdout=FAKE_ZPOOL_STATUS_SINGLE)
+
+    with patch(
+        "installer.detect.subprocess.run", side_effect=[findmnt_result, status_result]
+    ), patch(
+        "installer.detect.shutil.which", return_value="/usr/sbin/zpool"
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["redundant"] is False
+    assert result["redundancy_type"] is None
+
+
+def test_detect_media_redundancy_zfs_missing_tool_cannot_determine():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=_mock_findmnt("tank/media", "zfs")
+    ), patch(
+        "installer.detect.shutil.which", return_value=None
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] == "tank/media"
+    assert result["redundant"] is None
+
+
+def test_detect_media_redundancy_plain_device_is_not_redundant():
+
+    with patch(
+        "installer.detect.subprocess.run", return_value=_mock_findmnt("/dev/sda1", "ext4")
+    ):
+
+        result = detect_media_redundancy("/mnt/media")
+
+    assert result["device"] == "/dev/sda1"
+    assert result["filesystem"] == "ext4"
+    assert result["redundant"] is False
+    assert result["device_count"] == 1
+    assert result["redundancy_type"] is None
+
+
+def test_describe_media_redundancy_returns_none_when_device_unknown():
+
+    result = {
+        "device": None, "filesystem": None, "redundant": None,
+        "redundancy_type": None, "device_count": None
+    }
+
+    assert describe_media_redundancy(result) is None
+
+
+def test_describe_media_redundancy_unknown_redundancy_wording():
+
+    result = {
+        "device": "/dev/sda1", "filesystem": "ext4", "redundant": None,
+        "redundancy_type": None, "device_count": None
+    }
+
+    assert describe_media_redundancy(result) == (
+        "/dev/sda1 (ext4) - redundancy could not be determined"
+    )
+
+
+def test_describe_media_redundancy_redundant_wording():
+
+    result = {
+        "device": "/dev/md0", "filesystem": "ext4", "redundant": True,
+        "redundancy_type": "raid1", "device_count": 2
+    }
+
+    assert describe_media_redundancy(result) == "/dev/md0 (ext4, raid1, 2 devices)"
+
+
+def test_describe_media_redundancy_not_redundant_wording():
+
+    result = {
+        "device": "/dev/sda1", "filesystem": "ext4", "redundant": False,
+        "redundancy_type": None, "device_count": 1
+    }
+
+    assert describe_media_redundancy(result) == (
+        "/dev/sda1 (ext4, single device - no redundancy)"
+    )
 
 
 def test_detect_gpu_detects_nvidia():

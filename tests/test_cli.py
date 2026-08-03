@@ -925,6 +925,70 @@ def test_media_path_prompted_when_not_passed(tmp_path):
     assert config.media_path == prompted_path
 
 
+def test_media_path_shows_storage_description_and_warning(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.detect_media_redundancy",
+        return_value={
+            "device": "/dev/sda1", "filesystem": "ext4", "redundant": False,
+            "redundancy_type": None, "device_count": 1
+        }
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Media storage: /dev/sda1 (ext4, single device - no redundancy)" in result.output
+    assert "No drive-level redundancy" in result.output
+
+
+def test_media_path_redundant_storage_shows_no_warning(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.detect_media_redundancy",
+        return_value={
+            "device": "/dev/md0", "filesystem": "ext4", "redundant": True,
+            "redundancy_type": "raid1", "device_count": 2
+        }
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Media storage: /dev/md0 (ext4, raid1, 2 devices)" in result.output
+    assert "No drive-level redundancy" not in result.output
+
+
 def test_media_path_creation_failure_reported_cleanly():
 
     with patch(
