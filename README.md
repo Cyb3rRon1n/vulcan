@@ -19,6 +19,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Pre-seeded dashboard** — Homepage boots with real tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore` round out an already-generated stack.
+- **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
 
 ## Screenshots
 
@@ -98,6 +99,20 @@ vulcan restore [file]      # restore config/, docker-compose.yml, and .env from 
 ```
 
 `vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use). `vulcan pull` is `vulcan update`'s pull step on its own, with nothing recreated or restarted — run it (or click "Pull Images Now" at the end of the guided TUI flow) while you have a connection to prepare a stack you'll start later somewhere offline; needs no confirmation, since it touches nothing running. `vulcan backup` needs no confirmation either — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`) — but the archive includes `stack/.env`, which may hold real credentials, so store it securely. `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
+
+---
+
+## Airgap / offline installs
+
+Vulcan assumes internet access by default, but two real gaps are covered:
+
+```bash
+./install --offline            # or check "No internet access" in the guided TUI
+vulcan export [--output PATH]  # bundle already-pulled images into a tarball (exports/)
+vulcan import [FILE]           # load images from that tarball on another machine
+```
+
+`--offline` (CLI flag or the checkbox on the guided TUI's first screen) tells Vulcan not to attempt an automatic Docker install if Docker isn't found — installing it needs a connection Vulcan won't assume you have, so you'll get a link to the manual install docs instead. Docker being installed some other way ahead of time is unaffected either way. `vulcan export` packages a stack's already-pulled images (run `vulcan pull` first) into a single tarball under `exports/`; `vulcan import` loads that tarball's images on a different machine — one that's never been online at all, unlike `vulcan pull`, which still needs a live connection on the same machine it's run on. Neither needs confirmation, and `import` defaults to the most recent file in `exports/` if you don't pass one, the same convenience `restore` already offers for backups.
 
 ---
 

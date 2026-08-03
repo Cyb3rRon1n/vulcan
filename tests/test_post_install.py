@@ -2,7 +2,16 @@ import io
 import tarfile
 from unittest.mock import MagicMock, patch
 
-from installer.post_install import backup_stack, latest_backup, pull_stack, restore_stack, update_stack
+from installer.post_install import (
+    backup_stack,
+    export_images,
+    import_images,
+    latest_backup,
+    latest_export,
+    pull_stack,
+    restore_stack,
+    update_stack,
+)
 
 
 def test_pull_stack_failure_reports_clean_error():
@@ -32,6 +41,188 @@ def test_pull_stack_success():
     with patch("installer.post_install.run_docker_command", return_value=pull_proc):
 
         result = pull_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert result == {"success": True, "error": None}
+
+
+def test_export_images_no_stack_found(tmp_path):
+
+    result = export_images(
+        str(tmp_path / "stack" / "docker-compose.yml"), str(tmp_path / "stack" / ".env")
+    )
+
+    assert result == {"success": False, "error": "No stack found to export.", "export_path": None}
+
+
+def test_export_images_list_failure(tmp_path):
+
+    compose_path = tmp_path / "stack" / "docker-compose.yml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text("services: {}\n")
+
+    list_proc = MagicMock(returncode=1, stdout="")
+
+    with patch("installer.post_install.subprocess.run", return_value=list_proc):
+
+        result = export_images(str(compose_path), str(tmp_path / "stack" / ".env"))
+
+    assert result == {
+        "success": False,
+        "error": "Failed to resolve the stack's image list.",
+        "export_path": None
+    }
+
+
+def test_export_images_no_images_found(tmp_path):
+
+    compose_path = tmp_path / "stack" / "docker-compose.yml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text("services: {}\n")
+
+    list_proc = MagicMock(returncode=0, stdout="\n")
+
+    with patch("installer.post_install.subprocess.run", return_value=list_proc):
+
+        result = export_images(str(compose_path), str(tmp_path / "stack" / ".env"))
+
+    assert result == {"success": False, "error": "No images found for this stack.", "export_path": None}
+
+
+def test_export_images_save_failure(tmp_path):
+
+    compose_path = tmp_path / "stack" / "docker-compose.yml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text("services: {}\n")
+
+    list_proc = MagicMock(returncode=0, stdout="alpine:3.19\nbusybox:1.36\n")
+    save_proc = MagicMock(returncode=1)
+
+    with patch("installer.post_install.subprocess.run", return_value=list_proc), patch(
+        "installer.post_install.run_docker_command", return_value=save_proc
+    ) as mock_run:
+
+        result = export_images(
+            str(compose_path), str(tmp_path / "stack" / ".env"), export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": False, "error": "Failed to save images to a tarball.", "export_path": None}
+
+    args = mock_run.call_args[0][0]
+    assert args[:2] == ["docker", "save"]
+    assert "alpine:3.19" in args
+    assert "busybox:1.36" in args
+
+
+def test_export_images_success_writes_timestamped_default_path(tmp_path):
+
+    compose_path = tmp_path / "stack" / "docker-compose.yml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text("services: {}\n")
+
+    list_proc = MagicMock(returncode=0, stdout="alpine:3.19\n")
+    save_proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.subprocess.run", return_value=list_proc), patch(
+        "installer.post_install.run_docker_command", return_value=save_proc
+    ):
+
+        result = export_images(
+            str(compose_path), str(tmp_path / "stack" / ".env"), export_dir=tmp_path / "exports"
+        )
+
+    assert result["success"] is True
+    assert result["error"] is None
+    assert result["export_path"].startswith(str(tmp_path / "exports" / "vulcan-images-"))
+    assert result["export_path"].endswith(".tar")
+
+
+def test_export_images_success_with_explicit_output_path(tmp_path):
+
+    compose_path = tmp_path / "stack" / "docker-compose.yml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text("services: {}\n")
+
+    list_proc = MagicMock(returncode=0, stdout="alpine:3.19\n")
+    save_proc = MagicMock(returncode=0)
+    output_path = tmp_path / "custom" / "images.tar"
+
+    with patch("installer.post_install.subprocess.run", return_value=list_proc), patch(
+        "installer.post_install.run_docker_command", return_value=save_proc
+    ):
+
+        result = export_images(
+            str(compose_path), str(tmp_path / "stack" / ".env"), output_path=output_path
+        )
+
+    assert result == {"success": True, "error": None, "export_path": str(output_path)}
+    assert output_path.parent.is_dir()
+
+
+def test_latest_export_returns_none_when_directory_missing(tmp_path):
+
+    assert latest_export(tmp_path / "exports") is None
+
+
+def test_latest_export_returns_none_when_directory_empty(tmp_path):
+
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+
+    assert latest_export(export_dir) is None
+
+
+def test_latest_export_returns_lexicographically_latest_match(tmp_path):
+
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+
+    (export_dir / "vulcan-images-20260101T000000Z.tar").write_text("old")
+    (export_dir / "vulcan-images-20260301T120000Z.tar").write_text("newest")
+    (export_dir / "vulcan-images-20260215T000000Z.tar").write_text("middle")
+    (export_dir / "not-an-export.txt").write_text("ignored")
+
+    result = latest_export(export_dir)
+
+    assert result == export_dir / "vulcan-images-20260301T120000Z.tar"
+
+
+def test_import_images_missing_archive(tmp_path):
+
+    result = import_images(str(tmp_path / "does-not-exist.tar"))
+
+    assert result == {
+        "success": False,
+        "error": f"Image archive not found: {tmp_path / 'does-not-exist.tar'}"
+    }
+
+
+def test_import_images_load_failure(tmp_path):
+
+    tar_path = tmp_path / "images.tar"
+    tar_path.write_text("not a real tar, just needs to exist")
+
+    load_proc = MagicMock(returncode=1)
+
+    with patch("installer.post_install.run_docker_command", return_value=load_proc) as mock_run:
+
+        result = import_images(str(tar_path))
+
+    assert result == {"success": False, "error": "Failed to load images from the archive."}
+
+    args = mock_run.call_args[0][0]
+    assert args == ["docker", "load", "-i", str(tar_path)]
+
+
+def test_import_images_success(tmp_path):
+
+    tar_path = tmp_path / "images.tar"
+    tar_path.write_text("not a real tar, just needs to exist")
+
+    load_proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", return_value=load_proc):
+
+        result = import_images(str(tar_path))
 
     assert result == {"success": True, "error": None}
 

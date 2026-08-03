@@ -10,6 +10,10 @@ stack/
 # stack/.env, never committed here.
 backups/
 
+# Image tarballs (vulcan export) - large, machine-specific artifacts,
+# never committed here.
+exports/
+
 # ==========================
 # Python
 # ==========================
