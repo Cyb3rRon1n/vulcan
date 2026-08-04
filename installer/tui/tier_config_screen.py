@@ -39,6 +39,10 @@ class TierConfigScreen(Screen):
         gluetun_default = "gluetun" in previous["enabled_optional"] if previous else False
         sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
         recyclarr_default = "recyclarr" in previous["enabled_optional"] if previous else False
+        homepage_default = (
+            ("homepage" in previous["enabled_optional"]) or (previous.get("tier") == "heavy")
+            if previous else True
+        )
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
@@ -57,14 +61,19 @@ class TierConfigScreen(Screen):
                 id="tier-set"
             ),
             Horizontal(
-                Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
                 Checkbox(
                     "Enable SABnzbd (Usenet downloader)", value=sabnzbd_default, id="sabnzbd-check"
                 ),
                 Checkbox(
                     "Enable Recyclarr (TRaSH Guides sync)", value=recyclarr_default, id="recyclarr-check"
                 ),
+            ),
+            Horizontal(
+                Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
                 Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
+                Checkbox(
+                    "Enable Homepage dashboard", value=homepage_default, id="homepage-check"
+                ),
             ),
             Input(value=str(default_puid), type="integer", placeholder="PUID", id="puid-input"),
             Input(value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input"),
@@ -146,6 +155,9 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#recyclarr-check", Checkbox).value:
             enabled_optional.add("recyclarr")
+
+        if self.query_one("#homepage-check", Checkbox).value:
+            enabled_optional.add("homepage")
 
         gpu_vendor_to_use = None
 

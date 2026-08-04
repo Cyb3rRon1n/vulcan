@@ -50,6 +50,7 @@ class ReviewScreen(Screen):
             f"Gluetun VPN: {'enabled' if 'gluetun' in self.app.enabled_optional else 'disabled'}\n"
             f"SABnzbd: {'enabled' if 'sabnzbd' in self.app.enabled_optional else 'disabled'}\n"
             f"Recyclarr: {'enabled' if 'recyclarr' in self.app.enabled_optional else 'disabled'}\n"
+            f"Homepage: {'enabled' if 'homepage' in self.app.enabled_optional else 'disabled'}\n"
             f"GPU passthrough: {self.app.gpu_vendor or 'disabled'}"
         )
 
@@ -78,9 +79,11 @@ class ReviewScreen(Screen):
             ),
             Static("", id="result"),
             LoadingIndicator(id="loading"),
-            Button("Start Stack Now", id="start", disabled=True),
-            Button("Pull Images Now", id="pull", disabled=True),
-            Button("Finish Without Starting", id="finish", disabled=True),
+            Horizontal(
+                Button("Start Stack Now", id="start", disabled=True),
+                Button("Pull Images Now", id="pull", disabled=True),
+                Button("Finish Without Starting", id="finish", disabled=True),
+            ),
         )
 
     def on_mount(self) -> None:

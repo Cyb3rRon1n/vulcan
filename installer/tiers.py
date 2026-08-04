@@ -37,6 +37,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("qbittorrent", "qBittorrent"),
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
     ServiceDefinition("recyclarr", "Recyclarr", optional=True),
+    ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
@@ -50,7 +51,6 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("lidarr", "Lidarr", optional=True),
     ServiceDefinition("readarr", "Readarr", optional=True),
     ServiceDefinition("traefik", "Reverse proxy (Traefik)", optional=True),
-    ServiceDefinition("homepage", "Homepage/Homarr dashboard"),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
 ]

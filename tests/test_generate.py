@@ -176,7 +176,9 @@ def test_render_compose_medium_with_recyclarr_uses_pinned_image_and_user():
 
 def test_render_compose_heavy_includes_all_new_services():
 
-    output = render_compose(make_config("heavy", enabled_optional={"lidarr", "readarr", "traefik"}))
+    output = render_compose(
+        make_config("heavy", enabled_optional={"lidarr", "readarr", "traefik", "homepage"})
+    )
 
     for name in ("lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
         assert f"container_name: {name}" in output
@@ -198,14 +200,14 @@ def test_render_compose_medium_excludes_heavy_only_services():
         assert f"container_name: {name}" not in output
 
 
-def test_render_compose_heavy_without_optional_extras_excludes_lidarr_and_traefik():
+def test_render_compose_heavy_without_optional_extras_excludes_lidarr_traefik_and_homepage():
 
     output = render_compose(make_config("heavy"))
 
     assert "container_name: lidarr" not in output
     assert "container_name: readarr" not in output
     assert "container_name: traefik" not in output
-    assert "container_name: homepage" in output
+    assert "container_name: homepage" not in output
 
 
 def _jellyfin_block(output: str) -> str:
@@ -238,7 +240,7 @@ def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_s
     output = render_compose(
         make_config(
             "heavy",
-            enabled_optional={"traefik", "lidarr", "readarr"},
+            enabled_optional={"traefik", "lidarr", "readarr", "homepage"},
             domain="media.example.com"
         )
     )
@@ -779,7 +781,7 @@ def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
         puid=1000,
         pgid=1000,
         timezone="UTC",
-        enabled_optional=set()
+        enabled_optional={"homepage"}
     )
 
     with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
@@ -819,7 +821,7 @@ def test_write_stack_never_overwrites_existing_homepage_services_yaml(tmp_path):
         puid=1000,
         pgid=1000,
         timezone="UTC",
-        enabled_optional=set()
+        enabled_optional={"homepage"}
     )
 
     with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):

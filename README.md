@@ -16,7 +16,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
 - **Custom mode** — free-pick any of Vulcan's 17 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default), no manual reverse-proxy config.
-- **Pre-seeded dashboard** — Homepage boots with real tiles for your actual stack instead of a blank page.
+- **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
@@ -48,7 +48,7 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately. Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
+`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately. Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
 
 Non-interactive / scripted use is also supported:
 
