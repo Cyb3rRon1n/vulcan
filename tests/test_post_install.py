@@ -11,6 +11,7 @@ from installer.post_install import (
     latest_export,
     pull_stack,
     restore_stack,
+    stack_containers_exist,
     uninstall_stack,
     update_stack,
 )
@@ -823,3 +824,106 @@ def test_uninstall_stack_falls_back_to_docker_removal_on_permission_error(tmp_pa
     args = mock_run.call_args[0][0]
     assert args[:3] == ["docker", "run", "--rm"]
     assert f"{stack_dir.resolve()}:/target" in args
+
+
+def test_stack_containers_exist_true_when_docker_reports_a_container():
+
+    proc = MagicMock(returncode=0, stdout="abc123def456\n")
+
+    with patch("installer.post_install.subprocess.run", return_value=proc) as mock_run:
+        result = stack_containers_exist("stack")
+
+    assert result is True
+
+    args = mock_run.call_args[0][0]
+    assert args[:3] == ["docker", "ps", "-a"]
+    assert "label=com.docker.compose.project=stack" in args
+
+
+def test_stack_containers_exist_false_when_docker_reports_nothing():
+
+    proc = MagicMock(returncode=0, stdout="")
+
+    with patch("installer.post_install.subprocess.run", return_value=proc):
+        result = stack_containers_exist("stack")
+
+    assert result is False
+
+
+def test_uninstall_stack_falls_back_to_project_teardown_when_stack_dir_already_gone(tmp_path):
+    """
+    stack/ was deleted through some means other than a real
+    `vulcan uninstall` run (confirmed a real, recurring scenario) -
+    docker compose down needs no compose file, only the project name,
+    to stop containers still carrying its labels.
+    """
+
+    stack_dir = tmp_path / "stack"
+
+    down_proc = MagicMock(returncode=0)
+
+    with patch(
+        "installer.post_install.stack_containers_exist", return_value=True
+    ), patch(
+        "installer.post_install.run_docker_command", return_value=down_proc
+    ) as mock_run:
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": True, "error": None}
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args == ["docker", "compose", "-p", "stack", "down"]
+
+
+def test_uninstall_stack_orphan_teardown_failure_reports_clean_error(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+
+    down_proc = MagicMock(returncode=1)
+
+    with patch(
+        "installer.post_install.stack_containers_exist", return_value=True
+    ), patch(
+        "installer.post_install.run_docker_command", return_value=down_proc
+    ):
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result["success"] is False
+    assert "Failed to stop orphaned containers" in result["error"]
+
+
+def test_uninstall_stack_skips_orphan_lookup_when_stack_dir_and_no_containers(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+
+    with patch(
+        "installer.post_install.stack_containers_exist", return_value=False
+    ), patch(
+        "installer.post_install.run_docker_command"
+    ) as mock_run:
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": True, "error": None}
+    mock_run.assert_not_called()
