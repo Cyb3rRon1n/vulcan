@@ -35,7 +35,9 @@ class ReviewScreen(Screen):
             enabled_optional=self.app.enabled_optional,
             gpu_vendor=self.app.gpu_vendor,
             custom_services=self.app.custom_services,
-            domain=self.app.domain
+            domain=self.app.domain,
+            auth_username=self.app.auth_username,
+            auth_password_hash=self.app.auth_password_hash
         )
 
     def compose(self) -> ComposeResult:
@@ -59,6 +61,9 @@ class ReviewScreen(Screen):
 
         if self.app.domain:
             summary += f"\nDomain: {self.app.domain}"
+
+        if self.app.auth_username:
+            summary += f"\nAuthelia admin username: {self.app.auth_username}"
 
         if self.app.media_redundancy is not None:
 

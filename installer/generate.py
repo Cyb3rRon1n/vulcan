@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from installer.auth import generate_authelia_secrets
 from installer.detect import detect_host_ip, detect_render_group_gid
 from installer.services import resource_limits_for
 from installer.tiers import ALL_SERVICES, TIERS, TierDefinition
@@ -38,6 +39,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr"],
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
+    "Security": ["authelia"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -53,6 +55,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "readarr": 8787,
     "uptime-kuma": 3001,
     "homepage": 3000,
+    "authelia": 9091,
 }
 
 
@@ -68,6 +71,8 @@ class GenerationConfig:
     gpu_vendor: str | None = None
     custom_services: set[str] | None = None
     domain: str | None = None
+    auth_username: str | None = None
+    auth_password_hash: str | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -236,6 +241,31 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
     return yaml.safe_dump(groups, sort_keys=False)
 
 
+def render_authelia_users_database(username: str, displayname: str, password_hash: str) -> str:
+
+    return yaml.safe_dump({
+        "users": {
+            username: {
+                "disabled": False,
+                "displayname": displayname,
+                "password": password_hash,
+                "email": f"{username}@localhost",
+                "groups": ["admins"]
+            }
+        }
+    }, sort_keys=False)
+
+
+def render_authelia_configuration(config: GenerationConfig) -> str:
+
+    template = _jinja_env().get_template("authelia-configuration.yml.j2")
+
+    return template.render(
+        domain=config.domain,
+        homepage_enabled="homepage" in enabled_service_keys(config)
+    )
+
+
 def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str:
 
     enabled = enabled_service_keys(config)
@@ -335,6 +365,37 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "Gluetun requires real VPN provider credentials in stack/.env "
             "before it will connect - see the TODO comments there."
         )
+
+    if "authelia" in enabled_service_keys(config):
+
+        authelia_dir = output_dir / "config" / "authelia"
+        generate_authelia_secrets(authelia_dir / "secrets")
+
+        configuration_path = authelia_dir / "configuration.yml"
+
+        if not configuration_path.exists():
+            configuration_path.write_text(render_authelia_configuration(config))
+
+        users_database_path = authelia_dir / "users_database.yml"
+
+        if not users_database_path.exists() and config.auth_username and config.auth_password_hash:
+
+            users_database_path.write_text(
+                render_authelia_users_database(
+                    config.auth_username, config.auth_username, config.auth_password_hash
+                )
+            )
+
+        routed = "traefik" in enabled_service_keys(config) and config.domain
+
+        if not routed:
+
+            warnings.append(
+                "Authelia is enabled but Traefik isn't routing with a domain configured, "
+                "so nothing is actually protected and the login portal isn't reachable - "
+                "Authelia will start but do nothing useful until Traefik and a domain are "
+                "also enabled."
+            )
 
     if "sabnzbd" in enabled_service_keys(config):
 

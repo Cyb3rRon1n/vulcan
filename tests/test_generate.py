@@ -8,6 +8,8 @@ from installer.generate import (
     default_timezone,
     enabled_service_keys,
     load_previous_state,
+    render_authelia_configuration,
+    render_authelia_users_database,
     render_compose,
     render_env,
     render_homepage_services,
@@ -23,7 +25,9 @@ def make_config(
     enabled_optional: set[str] | None = None,
     gpu_vendor: str | None = None,
     custom_services: set[str] | None = None,
-    domain: str | None = None
+    domain: str | None = None,
+    auth_username: str | None = None,
+    auth_password_hash: str | None = None
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -35,7 +39,9 @@ def make_config(
         enabled_optional=enabled_optional or set(),
         gpu_vendor=gpu_vendor,
         custom_services=custom_services,
-        domain=domain
+        domain=domain,
+        auth_username=auth_username,
+        auth_password_hash=auth_password_hash
     )
 
 
@@ -1176,3 +1182,171 @@ def test_write_stack_writes_state_file(tmp_path):
 
     assert state is not None
     assert state["tier"] == "light"
+
+
+def test_render_authelia_users_database_output_shape():
+
+    output = render_authelia_users_database("admin", "admin", "$argon2id$fake$hash")
+    parsed = yaml.safe_load(output)
+
+    assert parsed["users"]["admin"]["password"] == "$argon2id$fake$hash"
+    assert parsed["users"]["admin"]["displayname"] == "admin"
+    assert parsed["users"]["admin"]["disabled"] is False
+    assert parsed["users"]["admin"]["groups"] == ["admins"]
+
+
+def test_render_authelia_configuration_uses_domain_for_session_cookie():
+
+    output = render_authelia_configuration(
+        make_config("heavy", custom_services={"authelia", "traefik"}, domain="media.example.com")
+    )
+    parsed = yaml.safe_load(output)
+
+    cookie = parsed["session"]["cookies"][0]
+    assert cookie["domain"] == "media.example.com"
+    assert cookie["authelia_url"] == "https://authelia.media.example.com"
+    assert "default_redirection_url" not in cookie
+    assert parsed["access_control"]["default_policy"] == "one_factor"
+    assert "rules" not in parsed["access_control"]
+    assert "jwt_secret" not in parsed.get("identity_validation", {}).get("reset_password", {})
+    assert "secret" not in parsed["session"]
+    assert "encryption_key" not in parsed["storage"]
+
+
+def test_render_authelia_configuration_redirects_to_homepage_when_enabled():
+
+    output = render_authelia_configuration(
+        make_config(
+            "heavy",
+            custom_services={"authelia", "traefik", "homepage"},
+            domain="media.example.com"
+        )
+    )
+    parsed = yaml.safe_load(output)
+
+    assert parsed["session"]["cookies"][0]["default_redirection_url"] == "https://homepage.media.example.com"
+
+
+def test_write_stack_creates_authelia_files_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"authelia", "traefik"},
+        domain="media.example.com",
+        auth_username="admin",
+        auth_password_hash="$argon2id$fake$hash"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    authelia_dir = tmp_path / "stack" / "config" / "authelia"
+
+    assert (authelia_dir / "configuration.yml").is_file()
+    assert (authelia_dir / "users_database.yml").is_file()
+    assert (authelia_dir / "secrets" / "JWT_SECRET").is_file()
+    assert (authelia_dir / "secrets" / "SESSION_SECRET").is_file()
+    assert (authelia_dir / "secrets" / "STORAGE_ENCRYPTION_KEY").is_file()
+
+    parsed = yaml.safe_load((authelia_dir / "users_database.yml").read_text())
+    assert parsed["users"]["admin"]["password"] == "$argon2id$fake$hash"
+
+
+def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"authelia", "traefik"},
+        domain="media.example.com",
+        auth_username="admin",
+        auth_password_hash="$argon2id$fake$hash"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    authelia_dir = tmp_path / "stack" / "config" / "authelia"
+    users_database_path = authelia_dir / "users_database.yml"
+    configuration_path = authelia_dir / "configuration.yml"
+    jwt_secret_path = authelia_dir / "secrets" / "JWT_SECRET"
+
+    users_database_path.write_text("# hand-edited\nusers: {}\n")
+    configuration_path.write_text("# hand-edited\n")
+    original_secret = jwt_secret_path.read_text()
+
+    # A regenerate with no username/hash (mirrors a real second run, where
+    # the CLI/TUI skip prompting entirely once users_database.yml exists).
+    second_config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"authelia", "traefik"},
+        domain="media.example.com"
+    )
+
+    write_stack(second_config, output_dir=tmp_path / "stack")
+
+    assert users_database_path.read_text() == "# hand-edited\nusers: {}\n"
+    assert configuration_path.read_text() == "# hand-edited\n"
+    assert jwt_secret_path.read_text() == original_secret
+
+
+def test_write_stack_warns_when_authelia_enabled_without_traefik_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"authelia"},
+        auth_username="admin",
+        auth_password_hash="$argon2id$fake$hash"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("nothing is actually protected" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_authelia_warning_when_traefik_and_domain_active(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"authelia", "traefik"},
+        domain="media.example.com",
+        auth_username="admin",
+        auth_password_hash="$argon2id$fake$hash"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("nothing is actually protected" in warning for warning in result["warnings"])
+
+
+def test_render_homepage_services_creates_authelia_tile_when_routed():
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={"authelia", "traefik"},
+            domain="media.example.com"
+        ),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    assert groups["Security"]["Authentication (Authelia)"]["href"] == "https://authelia.media.example.com"

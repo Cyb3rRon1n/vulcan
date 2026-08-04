@@ -5,6 +5,7 @@ import typer
 from rich.console import Console
 
 from installer import __version__
+from installer.auth import hash_authelia_password
 from installer.detect import (
     SystemInfo,
     describe_media_redundancy,
@@ -336,6 +337,14 @@ def main(
         None, "--domain",
         help="Base domain for Traefik routing (e.g. media.example.com) - only used if traefik is enabled"
     ),
+    auth_username: str | None = typer.Option(
+        None, "--auth-username",
+        help="Authelia admin username - only used if authelia is enabled and not already configured"
+    ),
+    auth_password: str | None = typer.Option(
+        None, "--auth-password",
+        help="Authelia admin password - only used if authelia is enabled and not already configured"
+    ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
     offline: bool = typer.Option(
         False, "--offline",
@@ -368,6 +377,8 @@ def main(
         timezone=timezone,
         services=services,
         domain=domain,
+        auth_username=auth_username,
+        auth_password=auth_password,
         offline=offline
     )
 
@@ -388,6 +399,8 @@ def run_install(
     timezone: str | None,
     services: str | None,
     domain: str | None,
+    auth_username: str | None = None,
+    auth_password: str | None = None,
     offline: bool = False
 ):
 
@@ -444,7 +457,7 @@ def run_install(
 
     config = _gather_generation_config(
         info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, gpu, puid, pgid, timezone,
-        non_interactive, previous, custom_services_from_flag, domain
+        non_interactive, previous, custom_services_from_flag, domain, auth_username, auth_password
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -534,7 +547,9 @@ def _gather_generation_config(
     non_interactive: bool,
     previous: dict | None,
     custom_services_from_flag: set[str] | None,
-    domain: str | None
+    domain: str | None,
+    auth_username: str | None = None,
+    auth_password: str | None = None
 ) -> GenerationConfig:
 
     if previous is not None:
@@ -671,6 +686,39 @@ def _gather_generation_config(
                 default=previous_domain or ""
             ) or None
 
+    auth_username_value = None
+    auth_password_hash_value = None
+
+    if custom_services_selected is not None and "authelia" in custom_services_selected:
+
+        users_database_path = STACK_DIR / "config" / "authelia" / "users_database.yml"
+
+        if not users_database_path.exists():
+
+            if auth_username is not None and auth_password is not None:
+                chosen_username = auth_username
+                chosen_password = auth_password
+            elif non_interactive:
+                console.print(
+                    "[red]--auth-username and --auth-password are required when enabling "
+                    "authelia in --non-interactive mode.[/red]"
+                )
+                raise typer.Exit(code=1)
+            else:
+                chosen_username = auth_username or typer.prompt("Authelia admin username", default="admin")
+                chosen_password = auth_password or typer.prompt(
+                    "Authelia admin password", hide_input=True, confirmation_prompt=True
+                )
+
+            hash_result = hash_authelia_password(chosen_password)
+
+            if not hash_result["success"]:
+                console.print(f"[red]{hash_result['error']}[/red]")
+                raise typer.Exit(code=1)
+
+            auth_username_value = chosen_username
+            auth_password_hash_value = hash_result["hash"]
+
     enabled_optional = set()
 
     if custom_services_selected is None and chosen_tier_name == "medium":
@@ -806,7 +854,9 @@ def _gather_generation_config(
         enabled_optional=enabled_optional,
         gpu_vendor=gpu_vendor_to_use,
         custom_services=custom_services_selected,
-        domain=domain_value
+        domain=domain_value,
+        auth_username=auth_username_value,
+        auth_password_hash=auth_password_hash_value
     )
 
 
@@ -834,6 +884,9 @@ def _generate_and_maybe_start(
 
     if config.domain:
         console.print(f"  Domain: {config.domain}")
+
+    if config.auth_username:
+        console.print(f"  Authelia admin username: {config.auth_username}")
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 

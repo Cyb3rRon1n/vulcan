@@ -795,3 +795,31 @@ def test_uninstall_stack_purge_artifacts_no_op_when_dirs_absent(tmp_path):
 
     assert result == {"success": True, "error": None}
     assert not stack_dir.exists()
+
+
+def test_uninstall_stack_falls_back_to_docker_removal_on_permission_error(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch(
+        "installer.post_install.shutil.rmtree", side_effect=[PermissionError(), None]
+    ) as mock_rmtree, patch(
+        "installer.post_install.run_docker_command"
+    ) as mock_run:
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": True, "error": None}
+    assert mock_rmtree.call_count == 2
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args[:3] == ["docker", "run", "--rm"]
+    assert f"{stack_dir.resolve()}:/target" in args

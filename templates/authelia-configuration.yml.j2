@@ -1,0 +1,41 @@
+---
+server:
+  address: 'tcp://:9091'
+
+log:
+  level: 'info'
+
+totp:
+  issuer: 'authelia'
+
+authentication_backend:
+  file:
+    path: '/config/users_database.yml'
+
+access_control:
+  default_policy: 'one_factor'
+
+session:
+  cookies:
+    - name: 'authelia_session'
+      domain: '{{ domain }}'
+      authelia_url: 'https://authelia.{{ domain }}'
+      expiration: '1 hour'
+      inactivity: '5 minutes'
+{% if homepage_enabled %}
+      default_redirection_url: 'https://homepage.{{ domain }}'
+{% endif %}
+
+regulation:
+  max_retries: 3
+  find_time: '2 minutes'
+  ban_time: '5 minutes'
+
+storage:
+  local:
+    path: '/config/db.sqlite3'
+
+notifier:
+  filesystem:
+    filename: '/config/notification.txt'
+...

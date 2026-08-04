@@ -32,6 +32,8 @@ class VulcanApp(App):
         self.timezone: str | None = None
         self.custom_services: set[str] | None = None
         self.domain: str | None = None
+        self.auth_username: str | None = None
+        self.auth_password_hash: str | None = None
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())

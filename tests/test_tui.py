@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from textual.widgets import Button, Checkbox, Input, RadioSet, SelectionList, Static
+from textual.widgets import Button, Checkbox, Input, LoadingIndicator, RadioSet, SelectionList, Static
 
 from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
@@ -1206,6 +1206,158 @@ async def test_service_selection_screen_continue_ignores_domain_when_traefik_des
 
     finally:
         await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_auth_inputs_hidden_without_authelia_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        assert app.screen.query_one("#auth-username-input", Input).display is False
+        assert app.screen.query_one("#auth-password-input", Input).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_auth_inputs_shown_when_authelia_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("authelia")
+        await pilot.pause()
+
+        assert app.screen.query_one("#auth-username-input", Input).display is True
+        assert app.screen.query_one("#auth-password-input", Input).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_auth_inputs_hidden_when_already_configured(tmp_path):
+
+    users_database_path = tmp_path / "stack" / "config" / "authelia" / "users_database.yml"
+    users_database_path.parent.mkdir(parents=True)
+    users_database_path.write_text("users: {}\n")
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(
+            make_system_info(), tier_name="light"
+        )
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("authelia")
+            await pilot.pause()
+
+            assert app.screen.query_one("#auth-username-input", Input).display is False
+            assert app.screen.query_one("#auth-password-input", Input).display is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_blank_auth_fields_shows_error():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        service_list = app.screen.query_one("#service-list", SelectionList)
+        service_list.toggle("authelia")
+        await pilot.pause()
+
+        app.screen.query_one("#auth-password-input", Input).value = ""
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ServiceSelectionScreen)
+        assert "can't be blank" in app.screen.query_one("#auth-result", Static).content
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_hashes_password_and_proceeds(tmp_path):
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.tui.service_selection_screen.hash_authelia_password",
+        return_value={"success": True, "error": None, "hash": "$argon2id$fake$hash"}
+    ) as mock_hash:
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(
+            make_system_info(), tier_name="light"
+        )
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("authelia")
+            await pilot.pause()
+
+            app.screen.query_one("#auth-username-input", Input).value = "admin"
+            app.screen.query_one("#auth-password-input", Input).value = "supersecret"
+
+            await pilot.click("#continue")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            mock_hash.assert_called_once_with("supersecret")
+            assert isinstance(app.screen, ReviewScreen)
+            assert app.auth_username == "admin"
+            assert app.auth_password_hash == "$argon2id$fake$hash"
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_hash_failure_stays_and_shows_error(tmp_path):
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.tui.service_selection_screen.hash_authelia_password",
+        return_value={"success": False, "error": "Failed to hash password via authelia's own CLI.", "hash": None}
+    ):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(
+            make_system_info(), tier_name="light"
+        )
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("authelia")
+            await pilot.pause()
+
+            app.screen.query_one("#auth-username-input", Input).value = "admin"
+            app.screen.query_one("#auth-password-input", Input).value = "supersecret"
+
+            await pilot.click("#continue")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert isinstance(app.screen, ServiceSelectionScreen)
+            assert "Failed to hash password" in app.screen.query_one("#auth-result", Static).content
+            assert app.screen.query_one("#continue", Button).disabled is False
+            assert app.screen.query_one("#back", Button).disabled is False
+            assert app.screen.query_one("#auth-loading", LoadingIndicator).display is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
 
 
 async def test_review_screen_summary_includes_services_when_custom():

@@ -1,9 +1,12 @@
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, Input, SelectionList, Static
+from textual.widgets import Button, Checkbox, Input, LoadingIndicator, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
+from installer.auth import hash_authelia_password
+from installer.generate import STACK_DIR
 from installer.tiers import ALL_SERVICES, TIERS
 from installer.tui.review_screen import ReviewScreen
 
@@ -13,6 +16,14 @@ class ServiceSelectionScreen(Screen):
     DEFAULT_CSS = """
     ServiceSelectionScreen {
         align: center middle;
+    }
+
+    #service-list {
+        height: 6;
+    }
+
+    #auth-result {
+        margin: 1 0;
     }
     """
 
@@ -47,6 +58,18 @@ class ServiceSelectionScreen(Screen):
                 placeholder="Base domain, e.g. media.example.com",
                 id="domain-input"
             ),
+            Input(
+                value="admin",
+                placeholder="Authelia admin username",
+                id="auth-username-input"
+            ),
+            Input(
+                placeholder="Authelia admin password",
+                password=True,
+                id="auth-password-input"
+            ),
+            Static("", id="auth-result"),
+            LoadingIndicator(id="auth-loading"),
             Horizontal(
                 Button("Back", id="back"),
                 Button("Continue", id="continue"),
@@ -54,12 +77,16 @@ class ServiceSelectionScreen(Screen):
         )
 
     def on_mount(self) -> None:
+        self.query_one("#auth-loading", LoadingIndicator).display = False
+        self.query_one("#auth-result", Static).display = False
         self._update_gpu_visibility()
         self._update_domain_visibility()
+        self._update_auth_visibility()
 
     def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
         self._update_gpu_visibility()
         self._update_domain_visibility()
+        self._update_auth_visibility()
 
     def _update_gpu_visibility(self) -> None:
 
@@ -74,6 +101,24 @@ class ServiceSelectionScreen(Screen):
 
         self.query_one("#domain-input", Input).display = "traefik" in selected
 
+    def _authelia_needs_setup(self) -> bool:
+
+        selected = set(self.query_one("#service-list", SelectionList).selected)
+
+        if "authelia" not in selected:
+            return False
+
+        users_database_path = STACK_DIR / "config" / "authelia" / "users_database.yml"
+
+        return not users_database_path.exists()
+
+    def _update_auth_visibility(self) -> None:
+
+        needs_setup = self._authelia_needs_setup()
+
+        self.query_one("#auth-username-input", Input).display = needs_setup
+        self.query_one("#auth-password-input", Input).display = needs_setup
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "back":
@@ -82,6 +127,21 @@ class ServiceSelectionScreen(Screen):
 
         if event.button.id != "continue":
             return
+
+        if self._authelia_needs_setup():
+            self._start_auth_setup()
+            return
+
+        self._continue_without_auth_setup()
+
+    def _continue_without_auth_setup(self) -> None:
+
+        self.app.auth_username = None
+        self.app.auth_password_hash = None
+
+        self._finish_and_push()
+
+    def _finish_and_push(self) -> None:
 
         selected = set(self.query_one("#service-list", SelectionList).selected)
         self.app.custom_services = selected
@@ -101,3 +161,49 @@ class ServiceSelectionScreen(Screen):
         )
 
         self.app.push_screen(ReviewScreen())
+
+    def _start_auth_setup(self) -> None:
+
+        username = self.query_one("#auth-username-input", Input).value.strip()
+        password = self.query_one("#auth-password-input", Input).value
+
+        result_widget = self.query_one("#auth-result", Static)
+
+        if not username or not password:
+            result_widget.update("Authelia admin username and password can't be blank.")
+            result_widget.display = True
+            return
+
+        result_widget.update("")
+        result_widget.display = False
+        self._pending_auth_username = username
+
+        self.query_one("#back", Button).disabled = True
+        self.query_one("#continue", Button).disabled = True
+        self.query_one("#auth-loading", LoadingIndicator).display = True
+
+        self._run_hash(password)
+
+    @work(thread=True)
+    def _run_hash(self, password: str) -> None:
+
+        result = hash_authelia_password(password)
+
+        self.app.call_from_thread(self._hash_complete, result)
+
+    def _hash_complete(self, result: dict) -> None:
+
+        self.query_one("#back", Button).disabled = False
+        self.query_one("#continue", Button).disabled = False
+        self.query_one("#auth-loading", LoadingIndicator).display = False
+
+        if not result["success"]:
+            result_widget = self.query_one("#auth-result", Static)
+            result_widget.update(result["error"])
+            result_widget.display = True
+            return
+
+        self.app.auth_username = self._pending_auth_username
+        self.app.auth_password_hash = result["hash"]
+
+        self._finish_and_push()

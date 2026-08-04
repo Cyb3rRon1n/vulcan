@@ -23,6 +23,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "lidarr": "standard",
     "readarr": "standard",
     "traefik": "light",
+    "authelia": "light",
     "homepage": "light",
     "uptime-kuma": "light",
     "watchtower": "light",

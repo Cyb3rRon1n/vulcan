@@ -318,7 +318,7 @@ def uninstall_stack(
             return {"success": False, "error": "Failed to stop the running stack - check `docker compose logs`."}
 
     if stack_dir.exists():
-        shutil.rmtree(stack_dir)
+        _remove_stack_dir(stack_dir)
 
     if purge_artifacts:
 
@@ -329,3 +329,29 @@ def uninstall_stack(
             shutil.rmtree(export_dir)
 
     return {"success": True, "error": None}
+
+
+def _remove_stack_dir(stack_dir: Path) -> None:
+    """
+    A plain shutil.rmtree() is enough for every service Vulcan generates
+    except one: Authelia's official image runs as its own internal user
+    (root, confirmed by inspecting real file ownership after running it),
+    not PUID/PGID like every LinuxServer.io image here - files it creates
+    at runtime (its SQLite db, notification log) can end up owned by a
+    UID the host user can't delete directly. Confirmed by hitting a real
+    PermissionError against a real running Authelia container, not
+    assumed. Falls back to emptying the directory from inside a
+    throwaway root container - the same real technique already used to
+    clean up stray test state in this project's own history - then
+    removing the now-empty tree normally.
+    """
+
+    try:
+        shutil.rmtree(stack_dir)
+    except PermissionError:
+
+        run_docker_command(
+            ["docker", "run", "--rm", "-v", f"{stack_dir.resolve()}:/target", "alpine", "sh", "-c", "rm -rf /target/*"]
+        )
+
+        shutil.rmtree(stack_dir, ignore_errors=True)
