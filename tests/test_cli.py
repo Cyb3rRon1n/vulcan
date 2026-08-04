@@ -2089,6 +2089,143 @@ def test_interactive_customize_with_traefik_domain_left_blank_skips_routing(tmp_
     assert config.domain is None
 
 
+def test_non_interactive_authelia_without_auth_flags_exits_1(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--services", "jellyfin,authelia,traefik",
+                "--domain", "media.example.com",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "--auth-username and --auth-password are required" in result.output
+
+
+def test_non_interactive_authelia_with_auth_flags_hashes_and_writes(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.hash_authelia_password",
+        return_value={"success": True, "error": None, "hash": "$argon2id$fake$hash"}
+    ) as mock_hash, patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--services", "jellyfin,authelia,traefik",
+                "--domain", "media.example.com",
+                "--auth-username", "admin", "--auth-password", "supersecret",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_hash.assert_called_once_with("supersecret")
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.auth_username == "admin"
+    assert config.auth_password_hash == "$argon2id$fake$hash"
+
+
+def test_authelia_prompt_skipped_when_users_database_already_exists(tmp_path):
+
+    media_path = str(tmp_path / "media")
+    stack_dir = tmp_path / "stack"
+    users_database_path = stack_dir / "config" / "authelia" / "users_database.yml"
+    users_database_path.parent.mkdir(parents=True)
+    users_database_path.write_text("users: {}\n")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.hash_authelia_password"
+    ) as mock_hash, patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--services", "jellyfin,authelia,traefik",
+                "--domain", "media.example.com",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_hash.assert_not_called()
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.auth_username is None
+    assert config.auth_password_hash is None
+
+
+def test_authelia_hash_failure_aborts_before_write_stack(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.hash_authelia_password",
+        return_value={"success": False, "error": "Failed to hash password via authelia's own CLI.", "hash": None}
+    ), patch(
+        "installer.cli.write_stack"
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--services", "jellyfin,authelia,traefik",
+                "--domain", "media.example.com",
+                "--auth-username", "admin", "--auth-password", "supersecret",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "Failed to hash password" in result.output
+    mock_write_stack.assert_not_called()
+
+
 def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):
 
     media_path = str(tmp_path / "media")

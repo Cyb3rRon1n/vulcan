@@ -16,6 +16,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
 - **Custom mode** — free-pick any of Vulcan's 17 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default), no manual reverse-proxy config.
+- **Real login, not just routing** — optional Authelia integration puts a real username/password in front of every routed service, no external identity provider or database required.
 - **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
@@ -85,6 +86,8 @@ Resource limits still scale using whichever tier you choose (`--tier` here, or t
 ```
 
 HTTPS uses Traefik's own auto-generated self-signed certificate by default — real routing and encryption with zero external setup, at the cost of a browser trust warning on first visit. Vulcan doesn't create DNS records or configure Let's Encrypt/ACME for you; point each subdomain at this host yourself. qBittorrent isn't routed when Gluetun is also enabled, since it shares Gluetun's network namespace in a way Traefik can't discover.
+
+**Auth (Authelia).** Add `authelia` alongside `traefik` in a custom selection to put a real login in front of every routed service — no LDAP, Postgres, or Redis required, and no external identity provider. You'll be prompted for an admin username/password (once — a regenerate never re-asks if it's already configured), and Vulcan handles hashing it and generating the random secrets Authelia needs itself. Without Traefik+`--domain` also active, Authelia has nothing to protect and its own login portal isn't reachable — Vulcan warns outright rather than pretending it did something.
 
 **Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address) — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
 
