@@ -280,18 +280,48 @@ def describe_media_redundancy(result: dict) -> str | None:
 
 def detect_gpu() -> str | None:
     """
-    Presence + vendor only, not driver-version validation - Phase 1
-    only needs Light/Medium, and hardware transcoding is Heavy-tier
-    scope. Intel has no equivalent "smi" tool, so its check is a
-    weaker presence heuristic (a render device with neither NVIDIA
-    nor AMD tooling present) rather than a real vendor query.
+    Real functional queries for NVIDIA/AMD, not just binary presence -
+    a tool being installed doesn't mean a working driver/GPU is
+    actually behind it. Found and confirmed on this project's own real
+    dev machine, not hypothetical: rocm-smi is present here with no
+    AMD GPU at all (no amdgpu kernel module loaded), and the previous
+    presence-only check reported "amd" on this machine for this
+    project's entire history - a genuine, live false positive.
+    Backported from the same fix built and verified in the sibling
+    Anvil project, which independently hit and root-caused this while
+    researching its own GPU-VRAM detection.
+
+    NVIDIA and AMD need different failure checks, confirmed by
+    actually running both on this real machine: nvidia-smi follows the
+    normal convention (non-zero exit when it can't reach a driver -
+    the same signal NVIDIA's own driver-validator tooling relies on),
+    but rocm-smi does not - `rocm-smi --showid` against this machine's
+    real absent AMD driver prints "ERROR:root:Driver not initialized"
+    and still exits 0, so its check has to look at the actual output,
+    not just the return code. Intel has no equivalent "smi" tool, so
+    its check stays the pre-existing lspci-output heuristic (already a
+    real check of actual command output, not just presence).
     """
 
-    if shutil.which("nvidia-smi"):
+    if shutil.which("nvidia-smi") and run_ok(["nvidia-smi", "-L"]):
         return "nvidia"
 
     if shutil.which("rocm-smi"):
-        return "amd"
+
+        try:
+
+            result = subprocess.run(
+                ["rocm-smi", "--showid"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0 and "ERROR" not in result.stdout and "ERROR" not in result.stderr:
+                return "amd"
+
+        except (subprocess.SubprocessError, OSError):
+            pass
 
     if shutil.which("lspci"):
 
