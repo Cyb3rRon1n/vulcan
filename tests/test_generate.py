@@ -398,6 +398,14 @@ def test_render_env_includes_vpn_placeholders_when_gluetun_enabled():
     assert "WIREGUARD_PRIVATE_KEY=changeme" in output
 
 
+def test_render_env_gluetun_comment_points_to_real_provider_docs():
+
+    output = render_env(make_config("medium", {"gluetun"}))
+
+    assert "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers" in output
+    assert "see docs" not in output
+
+
 def _homepage_groups(output: str) -> dict[str, dict[str, dict]]:
 
     parsed = yaml.safe_load(output)
@@ -586,6 +594,10 @@ def test_write_stack_warns_for_nvidia_gpu(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert any("nvidia-container-toolkit" in warning for warning in result["warnings"])
+    assert any(
+        "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html" in warning
+        for warning in result["warnings"]
+    )
 
 
 def test_write_stack_no_gpu_warning_for_amd(tmp_path):

@@ -56,17 +56,23 @@ class ServiceSelectionScreen(Screen):
             Input(
                 value=default_domain or "",
                 placeholder="Base domain, e.g. media.example.com",
-                id="domain-input"
+                id="domain-input",
+                tooltip=(
+                    "You'll need to own this domain and point its subdomains at this host "
+                    "yourself - Vulcan doesn't create DNS records or set up Let's Encrypt/ACME."
+                )
             ),
             Input(
                 value="admin",
                 placeholder="Authelia admin username",
-                id="auth-username-input"
+                id="auth-username-input",
+                tooltip="Creates the login you'll use for every Traefik-routed service."
             ),
             Input(
                 placeholder="Authelia admin password",
                 password=True,
-                id="auth-password-input"
+                id="auth-password-input",
+                tooltip="Remember this - it won't be shown again."
             ),
             Static("", id="auth-result"),
             LoadingIndicator(id="auth-loading"),

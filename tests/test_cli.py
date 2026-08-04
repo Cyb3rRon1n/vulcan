@@ -702,6 +702,35 @@ def test_interactive_full_run_with_prompts(tmp_path):
     mock_run_docker.assert_not_called()
 
 
+def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    info = make_system_info(
+        disk_free_gb=100.0, ram_total_gb=4.0,
+        cpu_cores_logical=2, cpu_cores_physical=2
+    )
+
+    with patch(
+        "installer.cli.detect_system", return_value=info
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 100.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--media-path", media_path, "--no-start"],
+            input="\nn\nn\nn\nn\n\n\n\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "PUID/PGID set which user/group ID" in result.output
+    mock_write_stack.assert_called_once()
+
+
 def test_docker_installed_but_not_running_starts_service(tmp_path):
 
     media_path = str(tmp_path / "media")
@@ -2080,6 +2109,7 @@ def test_interactive_customize_with_traefik_prompts_for_domain(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "Base domain for Traefik routing" in result.output
+    assert "You'll need to own this domain" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.domain == "media.example.com"
@@ -2248,6 +2278,41 @@ def test_authelia_hash_failure_aborts_before_write_stack(tmp_path):
     assert result.exit_code == 1
     assert "Failed to hash password" in result.output
     mock_write_stack.assert_not_called()
+
+
+def test_interactive_authelia_prompt_shows_context_line(tmp_path):
+
+    media_path = str(tmp_path / "media")
+    stack_dir = tmp_path / "stack"
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.hash_authelia_password",
+        return_value={"success": True, "error": None, "hash": "$argon2id$fake$hash"}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="y\njellyfin,authelia,traefik\nmedia.example.com\n\nsupersecret\nsupersecret\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "won't be shown again" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.auth_username == "admin"
 
 
 def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):

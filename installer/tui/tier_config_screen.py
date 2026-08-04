@@ -69,14 +69,26 @@ class TierConfigScreen(Screen):
                 ),
             ),
             Horizontal(
-                Checkbox("Enable Gluetun VPN", value=gluetun_default, id="gluetun-check"),
+                Checkbox(
+                    "Enable Gluetun VPN", value=gluetun_default, id="gluetun-check",
+                    tooltip=(
+                        "You'll need your VPN provider's credentials afterward - setup guide "
+                        "per provider: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"
+                    )
+                ),
                 Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
                 Checkbox(
                     "Enable Homepage dashboard", value=homepage_default, id="homepage-check"
                 ),
             ),
-            Input(value=str(default_puid), type="integer", placeholder="PUID", id="puid-input"),
-            Input(value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input"),
+            Input(
+                value=str(default_puid), type="integer", placeholder="PUID", id="puid-input",
+                tooltip="User ID the containers run as - matters for file ownership on your media library. Defaults to your own user."
+            ),
+            Input(
+                value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input",
+                tooltip="Group ID the containers run as - same as PUID, defaults to your own user's group."
+            ),
             Input(value=default_tz, placeholder="Timezone", id="timezone-input"),
             Static("", id="tier-error"),
             Horizontal(

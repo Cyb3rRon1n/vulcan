@@ -446,7 +446,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         warnings.append(
             "NVIDIA hardware transcoding requires the nvidia-container-toolkit "
             "to be installed and registered with Docker on this host - Vulcan "
-            "doesn't install it automatically."
+            "doesn't install it automatically. Install guide: "
+            "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
         )
 
     return {
