@@ -1721,12 +1721,36 @@ def test_restore_start_failure_exits_1(tmp_path):
 
 def test_uninstall_no_stack_found_exits_1(tmp_path):
 
-    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.stack_containers_exist", return_value=False
+    ):
 
         result = runner.invoke(app, ["uninstall"])
 
     assert result.exit_code == 1
     assert "No stack found" in result.output
+
+
+def test_uninstall_proceeds_when_orphaned_containers_exist_without_stack_dir(tmp_path):
+    """
+    stack/ was deleted through some means other than a real
+    `vulcan uninstall` run - real containers from a previous project
+    can still exist even though the directory doesn't, confirmed a
+    real, recurring scenario. `uninstall` should still act on those,
+    not report "nothing to uninstall".
+    """
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.stack_containers_exist", return_value=True
+    ), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ) as mock_uninstall:
+
+        result = runner.invoke(app, ["uninstall", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "Stack removed" in result.output
+    mock_uninstall.assert_called_once()
 
 
 def test_uninstall_non_interactive_without_yes_exits_1(tmp_path):

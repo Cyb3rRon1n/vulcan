@@ -9,8 +9,10 @@ directly), reversing that archive back onto disk (restore_stack),
 bundling a stack's already-pulled images into a transferable tarball
 for a machine that never touches the network (export_images/
 import_images), and tearing a generated stack down entirely
-(uninstall_stack - stops containers, deletes stack/, never touches
-the media library). All of these reuse the same real Docker/file
+(uninstall_stack - stops containers (falling back to a project-label
+lookup via stack_containers_exist() if stack/ is already gone),
+deletes stack/, never touches the media library). All of these reuse
+the same real Docker/file
 primitives generation already does - run_docker_command() for the
 subprocess calls, the same STACK_DIR every other command reads from -
 no new machinery, just more things to do with a stack that already
@@ -299,6 +301,27 @@ def restore_stack(
     return {"success": True, "error": None}
 
 
+def stack_containers_exist(project_name: str) -> bool:
+    """
+    True if any container (running or stopped) still carries Docker
+    Compose's own com.docker.compose.project label for this project -
+    confirmed the real label key by inspecting a real generated
+    container, not assumed. Used to detect containers orphaned by
+    stack/ being deleted through some means other than a real
+    `vulcan uninstall` run (confirmed a real, recurring scenario, not
+    hypothetical) - docker compose itself needs no compose file to act
+    on these, only the project name.
+    """
+
+    result = subprocess.run(
+        ["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={project_name}", "-q"],
+        capture_output=True,
+        text=True
+    )
+
+    return bool(result.stdout.strip())
+
+
 def uninstall_stack(
     compose_path: str,
     env_path: str,
@@ -316,6 +339,13 @@ def uninstall_stack(
 
         if down.returncode != 0:
             return {"success": False, "error": "Failed to stop the running stack - check `docker compose logs`."}
+
+    elif stack_containers_exist(stack_dir.name):
+
+        down = run_docker_command(["docker", "compose", "-p", stack_dir.name, "down"])
+
+        if down.returncode != 0:
+            return {"success": False, "error": "Failed to stop orphaned containers - check `docker compose logs`."}
 
     if stack_dir.exists():
         _remove_stack_dir(stack_dir)

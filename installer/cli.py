@@ -40,6 +40,7 @@ from installer.post_install import (
     latest_export,
     pull_stack,
     restore_stack,
+    stack_containers_exist,
     uninstall_stack,
     update_stack,
 )
@@ -275,10 +276,12 @@ def uninstall(
     """
     Stop the generated stack and permanently delete stack/ (containers,
     network, and all app config/data) - for testing a fresh install, or
-    tearing one down for good. Never touches your media library.
+    tearing one down for good. Never touches your media library. Also
+    finds and stops containers left orphaned by stack/ being deleted
+    through some means other than a real `vulcan uninstall` run.
     """
 
-    if not STACK_DIR.exists():
+    if not STACK_DIR.exists() and not stack_containers_exist(STACK_DIR.name):
         console.print("[red]No stack found - nothing to uninstall.[/red]")
         raise typer.Exit(code=1)
 
