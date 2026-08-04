@@ -5,10 +5,12 @@ recreating containers (update_stack, which just calls pull_stack for
 its own pull step), archiving config for safekeeping (backup_stack -
 which snapshots any live SQLite database it finds via sqlite3's own
 online-backup API rather than archiving a possibly-mid-write file
-directly), reversing that archive back onto disk (restore_stack), and
+directly), reversing that archive back onto disk (restore_stack),
 bundling a stack's already-pulled images into a transferable tarball
 for a machine that never touches the network (export_images/
-import_images). All of these reuse the same real Docker/file
+import_images), and tearing a generated stack down entirely
+(uninstall_stack - stops containers, deletes stack/, never touches
+the media library). All of these reuse the same real Docker/file
 primitives generation already does - run_docker_command() for the
 subprocess calls, the same STACK_DIR every other command reads from -
 no new machinery, just more things to do with a stack that already
@@ -293,5 +295,37 @@ def restore_stack(
             tar.extractall(path=stack_dir, filter="data")
     except tarfile.TarError as error:
         return {"success": False, "error": f"'{backup_path.name}' isn't a valid backup archive: {error}"}
+
+    return {"success": True, "error": None}
+
+
+def uninstall_stack(
+    compose_path: str,
+    env_path: str,
+    stack_dir: Path = STACK_DIR,
+    backup_dir: Path = Path("backups"),
+    export_dir: Path = Path("exports"),
+    purge_artifacts: bool = False
+) -> dict:
+
+    if Path(compose_path).exists():
+
+        down = run_docker_command(
+            ["docker", "compose", "-f", compose_path, "--env-file", env_path, "down"]
+        )
+
+        if down.returncode != 0:
+            return {"success": False, "error": "Failed to stop the running stack - check `docker compose logs`."}
+
+    if stack_dir.exists():
+        shutil.rmtree(stack_dir)
+
+    if purge_artifacts:
+
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+
+        if export_dir.exists():
+            shutil.rmtree(export_dir)
 
     return {"success": True, "error": None}

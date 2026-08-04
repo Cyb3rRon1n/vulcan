@@ -1719,6 +1719,98 @@ def test_restore_start_failure_exits_1(tmp_path):
     assert "Failed to start the stack" in result.output
 
 
+def test_uninstall_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["uninstall"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_uninstall_non_interactive_without_yes_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir):
+
+        result = runner.invoke(app, ["uninstall", "--non-interactive"])
+
+    assert result.exit_code == 1
+    assert "--yes is required" in result.output
+
+
+def test_uninstall_confirm_declined_aborts(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack"
+    ) as mock_uninstall:
+
+        result = runner.invoke(app, ["uninstall"], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+    mock_uninstall.assert_not_called()
+
+
+def test_uninstall_confirm_accepted_calls_uninstall_stack(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ) as mock_uninstall:
+
+        result = runner.invoke(app, ["uninstall"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Stack removed" in result.output
+
+    args, kwargs = mock_uninstall.call_args
+    assert args[0] == str(stack_dir / "docker-compose.yml")
+    assert args[1] == str(stack_dir / ".env")
+    assert kwargs["purge_artifacts"] is False
+
+
+def test_uninstall_failure_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack",
+        return_value={"success": False, "error": "Failed to stop the running stack - check `docker compose logs`."}
+    ):
+
+        result = runner.invoke(app, ["uninstall", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Failed to stop the running stack" in result.output
+
+
+def test_uninstall_purge_artifacts_threaded_through(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ) as mock_uninstall:
+
+        result = runner.invoke(
+            app, ["uninstall", "--non-interactive", "--yes", "--purge-artifacts"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert mock_uninstall.call_args.kwargs["purge_artifacts"] is True
+
+
 def test_services_unknown_key_rejected_before_detection():
 
     with patch("installer.cli.detect_system") as mock_detect:

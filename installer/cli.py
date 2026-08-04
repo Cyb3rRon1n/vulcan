@@ -39,6 +39,7 @@ from installer.post_install import (
     latest_export,
     pull_stack,
     restore_stack,
+    uninstall_stack,
     update_stack,
 )
 from installer.preflight import check_ports_available
@@ -260,6 +261,55 @@ def restore(
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
             raise typer.Exit(code=1)
+
+
+@app.command()
+def uninstall(
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    purge_artifacts: bool = typer.Option(
+        False, "--purge-artifacts", help="Also delete backups/ and exports/"
+    )
+):
+    """
+    Stop the generated stack and permanently delete stack/ (containers,
+    network, and all app config/data) - for testing a fresh install, or
+    tearing one down for good. Never touches your media library.
+    """
+
+    if not STACK_DIR.exists():
+        console.print("[red]No stack found - nothing to uninstall.[/red]")
+        raise typer.Exit(code=1)
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"This will stop the running stack (if any) and permanently delete {STACK_DIR}/ "
+        "(containers, network, and all app config/data)."
+        + (
+            " backups/ and exports/ will also be deleted."
+            if purge_artifacts
+            else " Your media library, backups/, and exports/ are left untouched."
+        )
+    )
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = uninstall_stack(
+        str(STACK_DIR / "docker-compose.yml"),
+        str(STACK_DIR / ".env"),
+        purge_artifacts=purge_artifacts
+    )
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Stack removed.[/green] Run `./install` again for a fresh setup.")
 
 
 @app.callback(invoke_without_command=True)
