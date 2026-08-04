@@ -11,6 +11,7 @@ from installer.post_install import (
     latest_export,
     pull_stack,
     restore_stack,
+    uninstall_stack,
     update_stack,
 )
 
@@ -648,3 +649,149 @@ def test_restore_stack_down_failure_stops_before_touching_files(tmp_path):
     assert result["success"] is False
     assert "Failed to stop the running stack" in result["error"]
     assert (stack_dir / "docker-compose.yml").read_text() == "services: {stale: true}\n"
+
+
+def test_uninstall_stack_stops_running_stack_and_removes_stack_dir(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+    (stack_dir / "config" / "jellyfin").mkdir(parents=True)
+
+    down_proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", return_value=down_proc) as mock_run:
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": True, "error": None}
+
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args[-1] == "down"
+    assert str(stack_dir / "docker-compose.yml") in args
+
+    assert not stack_dir.exists()
+
+
+def test_uninstall_stack_skips_down_when_no_existing_compose_file(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "config" / "jellyfin").mkdir(parents=True)
+
+    with patch("installer.post_install.run_docker_command") as mock_run:
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result == {"success": True, "error": None}
+    mock_run.assert_not_called()
+    assert not stack_dir.exists()
+
+
+def test_uninstall_stack_down_failure_leaves_stack_dir_untouched(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+
+    down_proc = MagicMock(returncode=1)
+
+    with patch("installer.post_install.run_docker_command", return_value=down_proc):
+
+        result = uninstall_stack(
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir,
+            backup_dir=tmp_path / "backups",
+            export_dir=tmp_path / "exports"
+        )
+
+    assert result["success"] is False
+    assert "Failed to stop the running stack" in result["error"]
+    assert stack_dir.exists()
+
+
+def test_uninstall_stack_leaves_backups_and_exports_by_default(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    backup_dir = tmp_path / "backups"
+    export_dir = tmp_path / "exports"
+    backup_dir.mkdir()
+    export_dir.mkdir()
+    (backup_dir / "vulcan-backup-20260101T000000Z.tar.gz").write_text("fake")
+    (export_dir / "vulcan-images-20260101T000000Z.tar").write_text("fake")
+
+    result = uninstall_stack(
+        str(stack_dir / "docker-compose.yml"),
+        str(stack_dir / ".env"),
+        stack_dir=stack_dir,
+        backup_dir=backup_dir,
+        export_dir=export_dir
+    )
+
+    assert result["success"] is True
+    assert not stack_dir.exists()
+    assert backup_dir.exists()
+    assert export_dir.exists()
+
+
+def test_uninstall_stack_purge_artifacts_removes_backups_and_exports(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    backup_dir = tmp_path / "backups"
+    export_dir = tmp_path / "exports"
+    backup_dir.mkdir()
+    export_dir.mkdir()
+    (backup_dir / "vulcan-backup-20260101T000000Z.tar.gz").write_text("fake")
+    (export_dir / "vulcan-images-20260101T000000Z.tar").write_text("fake")
+
+    result = uninstall_stack(
+        str(stack_dir / "docker-compose.yml"),
+        str(stack_dir / ".env"),
+        stack_dir=stack_dir,
+        backup_dir=backup_dir,
+        export_dir=export_dir,
+        purge_artifacts=True
+    )
+
+    assert result["success"] is True
+    assert not stack_dir.exists()
+    assert not backup_dir.exists()
+    assert not export_dir.exists()
+
+
+def test_uninstall_stack_purge_artifacts_no_op_when_dirs_absent(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    result = uninstall_stack(
+        str(stack_dir / "docker-compose.yml"),
+        str(stack_dir / ".env"),
+        stack_dir=stack_dir,
+        backup_dir=tmp_path / "backups",
+        export_dir=tmp_path / "exports",
+        purge_artifacts=True
+    )
+
+    assert result == {"success": True, "error": None}
+    assert not stack_dir.exists()
