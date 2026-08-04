@@ -684,6 +684,13 @@ def _gather_generation_config(
         elif non_interactive:
             domain_value = previous_domain
         else:
+
+            console.print(
+                "You'll need to own this domain and point its subdomains at this host "
+                "yourself - Vulcan doesn't create DNS records or set up Let's Encrypt/ACME, "
+                "it uses Traefik's self-signed certificate."
+            )
+
             domain_value = typer.prompt(
                 "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip)",
                 default=previous_domain or ""
@@ -708,6 +715,12 @@ def _gather_generation_config(
                 )
                 raise typer.Exit(code=1)
             else:
+
+                console.print(
+                    "Authelia puts a real login in front of every Traefik-routed service. "
+                    "This creates that login - remember the password, it won't be shown again."
+                )
+
                 chosen_username = auth_username or typer.prompt("Authelia admin username", default="admin")
                 chosen_password = auth_password or typer.prompt(
                     "Authelia admin password", hide_input=True, confirmation_prompt=True
@@ -731,8 +744,9 @@ def _gather_generation_config(
         if vpn is None:
 
             enable_vpn = vpn_default if non_interactive else typer.confirm(
-                "Enable Gluetun VPN for qBittorrent? "
-                "(you'll need to add real VPN credentials afterward)",
+                "Enable Gluetun VPN for qBittorrent? You'll need your VPN provider's "
+                "credentials afterward - setup guide per provider: "
+                "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers",
                 default=vpn_default
             )
 
@@ -832,6 +846,14 @@ def _gather_generation_config(
         default_puid = previous["puid"]
         default_pgid = previous["pgid"]
         default_tz = previous["timezone"]
+
+    if not non_interactive and (puid is None or pgid is None):
+
+        console.print(
+            "PUID/PGID set which user/group ID the containers run as - matters for file "
+            "ownership on your media library. The defaults below are your own user; "
+            "accept them unless you specifically need something else."
+        )
 
     if puid is None:
         final_puid = default_puid if non_interactive else typer.prompt("PUID", default=default_puid, type=int)

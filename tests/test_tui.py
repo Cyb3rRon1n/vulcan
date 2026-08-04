@@ -921,6 +921,26 @@ async def test_tier_config_screen_continue_leaves_custom_services_none():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_gluetun_and_puid_pgid_tooltips_set():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        gluetun_tooltip = app.screen.query_one("#gluetun-check", Checkbox).tooltip
+        puid_tooltip = app.screen.query_one("#puid-input", Input).tooltip
+        pgid_tooltip = app.screen.query_one("#pgid-input", Input).tooltip
+
+        assert gluetun_tooltip
+        assert "gluetun-wiki" in gluetun_tooltip
+        assert puid_tooltip
+        assert "file ownership" in puid_tooltip
+        assert pgid_tooltip
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_customize_navigates_to_service_selection_screen():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
@@ -966,6 +986,28 @@ async def test_service_selection_screen_prechecks_tier_default_without_previous(
             "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
             "jellyseerr", "bazarr", "flaresolverr"
         }
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_domain_and_auth_tooltips_set():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="medium"
+    )
+
+    try:
+
+        domain_tooltip = app.screen.query_one("#domain-input", Input).tooltip
+        username_tooltip = app.screen.query_one("#auth-username-input", Input).tooltip
+        password_tooltip = app.screen.query_one("#auth-password-input", Input).tooltip
+
+        assert domain_tooltip
+        assert "own this domain" in domain_tooltip
+        assert username_tooltip
+        assert password_tooltip
+        assert "shown again" in password_tooltip
 
     finally:
         await ctx.__aexit__(None, None, None)
