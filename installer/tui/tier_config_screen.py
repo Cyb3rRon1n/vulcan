@@ -1,3 +1,4 @@
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -62,10 +63,18 @@ class TierConfigScreen(Screen):
             ),
             Horizontal(
                 Checkbox(
-                    "Enable SABnzbd (Usenet downloader)", value=sabnzbd_default, id="sabnzbd-check"
+                    "Enable SABnzbd (Usenet downloader)", value=sabnzbd_default, id="sabnzbd-check",
+                    tooltip=(
+                        "Needs your Usenet provider's server details entered through its own "
+                        "setup wizard on first login before it can download anything."
+                    )
                 ),
                 Checkbox(
-                    "Enable Recyclarr (TRaSH Guides sync)", value=recyclarr_default, id="recyclarr-check"
+                    "Enable Recyclarr (TRaSH Guides sync)", value=recyclarr_default, id="recyclarr-check",
+                    tooltip=(
+                        "Syncs TRaSH Guides quality/format settings into Radarr/Sonarr - needs "
+                        "each app's real API key added to its config after first start."
+                    )
                 ),
             ),
             Horizontal(
@@ -76,9 +85,13 @@ class TierConfigScreen(Screen):
                         "per provider: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"
                     )
                 ),
-                Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
                 Checkbox(
-                    "Enable Homepage dashboard", value=homepage_default, id="homepage-check"
+                    gpu_label, value=gpu_default, id="gpu-check",
+                    tooltip="Passes the detected GPU through to Jellyfin for hardware transcoding."
+                ),
+                Checkbox(
+                    "Enable Homepage dashboard", value=homepage_default, id="homepage-check",
+                    tooltip="A dashboard with tiles linking to every enabled service - pre-seeded automatically, safe to accept."
                 ),
             ),
             Input(
@@ -89,7 +102,10 @@ class TierConfigScreen(Screen):
                 value=str(default_pgid), type="integer", placeholder="PGID", id="pgid-input",
                 tooltip="Group ID the containers run as - same as PUID, defaults to your own user's group."
             ),
-            Input(value=default_tz, placeholder="Timezone", id="timezone-input"),
+            Input(
+                value=default_tz, placeholder="Timezone", id="timezone-input",
+                tooltip="IANA timezone name (e.g. America/New_York) - used by every container for correct local timestamps."
+            ),
             Static("", id="tier-error"),
             Horizontal(
                 Button("Back", id="back"),
@@ -100,6 +116,18 @@ class TierConfigScreen(Screen):
 
     def on_mount(self) -> None:
         self._update_visibility(self._current_tier_id())
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        """
+        Keyboard-accessible equivalent of the mouse-only tooltip - Focus/
+        Blur don't bubble, but DescendantFocus does, so this fires once
+        per Tab regardless of which widget gained focus. Reuses
+        #tier-error (already part of the layout) rather than adding a
+        new row - can overwrite an unread validation error on the next
+        Tab, an accepted tradeoff over a stickier design.
+        """
+
+        self.query_one("#tier-error", Static).update(event.widget.tooltip or "")
 
     def _current_tier_id(self) -> str:
         return self.query_one("#tier-set", RadioSet).pressed_button.id
