@@ -384,9 +384,28 @@ def test_detect_gpu_detects_nvidia():
     with patch(
         "installer.detect.shutil.which",
         side_effect=lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None
+    ), patch(
+        "installer.detect.run_ok", return_value=True
     ):
 
         assert detect_gpu() == "nvidia"
+
+
+def test_detect_gpu_nvidia_binary_present_but_query_fails_falls_through():
+    """
+    The exact class of false positive this function exists to avoid -
+    a present-but-non-functional nvidia-smi (no driver, no card) must
+    not be reported as NVIDIA.
+    """
+
+    with patch(
+        "installer.detect.shutil.which",
+        side_effect=lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None
+    ), patch(
+        "installer.detect.run_ok", return_value=False
+    ):
+
+        assert detect_gpu() is None
 
 
 def test_detect_gpu_detects_amd():
@@ -394,9 +413,36 @@ def test_detect_gpu_detects_amd():
     with patch(
         "installer.detect.shutil.which",
         side_effect=lambda name: "/usr/bin/rocm-smi" if name == "rocm-smi" else None
+    ), patch(
+        "installer.detect.subprocess.run",
+        return_value=MagicMock(returncode=0, stdout="GPU[0]\t: Device ID: 0x1002", stderr="")
     ):
 
         assert detect_gpu() == "amd"
+
+
+def test_detect_gpu_amd_binary_present_but_no_driver_falls_through():
+    """
+    A real, confirmed bug, not hypothetical: rocm-smi exits 0 even
+    when it fails - "ERROR:root:Driver not initialized (amdgpu not
+    found in modules)" was the actual real output captured from this
+    project's own dev machine, which has rocm-smi installed with no
+    AMD GPU at all. A plain exit-code check alone would have kept
+    reporting "amd" on this exact machine forever - the return code
+    doesn't signal failure here, only the output does.
+    """
+
+    with patch(
+        "installer.detect.shutil.which",
+        side_effect=lambda name: "/usr/bin/rocm-smi" if name == "rocm-smi" else None
+    ), patch(
+        "installer.detect.subprocess.run",
+        return_value=MagicMock(
+            returncode=0, stdout="", stderr="ERROR:root:Driver not initialized (amdgpu not found in modules)"
+        )
+    ):
+
+        assert detect_gpu() is None
 
 
 def test_detect_gpu_detects_intel_via_lspci():
