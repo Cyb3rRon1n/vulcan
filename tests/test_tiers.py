@@ -102,7 +102,7 @@ def test_heavy_services_include_all_medium_services_plus_additions():
 
     assert medium_keys.issubset(heavy_keys)
     assert heavy_keys - medium_keys == {
-        "lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"
+        "lidarr", "readarr", "traefik", "uptime-kuma", "watchtower"
     }
 
 
@@ -115,7 +115,7 @@ def test_gluetun_and_lidarr_and_traefik_are_optional():
     assert heavy_by_key["lidarr"].optional is True
     assert heavy_by_key["readarr"].optional is True
     assert heavy_by_key["traefik"].optional is True
-    assert heavy_by_key["homepage"].optional is False
+    assert heavy_by_key["homepage"].optional is True
 
 
 def test_sabnzbd_is_optional_starting_at_light():
@@ -133,6 +133,14 @@ def test_recyclarr_is_optional_starting_at_light():
 
     assert "recyclarr" in light_by_key
     assert light_by_key["recyclarr"].optional is True
+
+
+def test_homepage_is_optional_starting_at_light():
+
+    light_by_key = {s.key: s for s in TIERS["light"].services}
+
+    assert "homepage" in light_by_key
+    assert light_by_key["homepage"].optional is True
 
 
 def test_all_services_is_exactly_the_union_of_every_tier():

@@ -701,6 +701,9 @@ async def test_tier_config_screen_continue_with_sabnzbd_checked():
         await pilot.click("#sabnzbd-check")
         await pilot.pause()
 
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -741,6 +744,9 @@ async def test_tier_config_screen_continue_with_recyclarr_checked():
         await pilot.click("#recyclarr-check")
         await pilot.pause()
 
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -764,11 +770,93 @@ async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
         await pilot.click("#gluetun-check")
         await pilot.pause()
 
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
         await pilot.click("#continue")
         await pilot.pause()
 
         assert app.tier_name == "medium"
         assert app.enabled_optional == {"gluetun"}
+        assert isinstance(app.screen, ReviewScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_homepage_checkbox_defaults_enabled_fresh_install():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        checkbox = app.screen.query_one("#homepage-check", Checkbox)
+        assert checkbox.value is True
+        assert checkbox.display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_homepage_checkbox_visible_in_every_tier():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        for tier_id in ("#light", "#medium", "#heavy"):
+
+            await pilot.click(tier_id)
+            await pilot.pause()
+
+            assert app.screen.query_one("#homepage-check", Checkbox).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_regenerate_existing_heavy_stack_preserves_homepage_default():
+    """
+    Same backward-compatibility case as the CLI equivalent: an existing
+    Heavy-tier deployment never had "homepage" tracked in
+    enabled_optional (it was hardcoded non-optional before this slice),
+    so the checkbox must still default checked on the very next
+    regenerate, not just when enabled_optional explicitly lists it.
+    """
+
+    previous = {
+        "tier": "heavy", "media_path": "/mnt/media", "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": [], "gpu_vendor": None
+    }
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(), previous)
+
+    try:
+
+        checkbox = app.screen.query_one("#homepage-check", Checkbox)
+        assert checkbox.value is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_homepage_unchecked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "light"
+        assert app.enabled_optional == set()
         assert isinstance(app.screen, ReviewScreen)
 
     finally:

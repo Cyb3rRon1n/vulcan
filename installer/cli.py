@@ -272,6 +272,7 @@ def main(
     vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
     sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
     recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
+    homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -309,6 +310,7 @@ def main(
         vpn=vpn,
         sabnzbd=sabnzbd,
         recyclarr=recyclarr,
+        homepage=homepage,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -328,6 +330,7 @@ def run_install(
     vpn: bool | None,
     sabnzbd: bool | None,
     recyclarr: bool | None,
+    homepage: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -390,7 +393,7 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, recyclarr, gpu, puid, pgid, timezone,
+        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, gpu, puid, pgid, timezone,
         non_interactive, previous, custom_services_from_flag, domain
     )
 
@@ -473,6 +476,7 @@ def _gather_generation_config(
     vpn: bool | None,
     sabnzbd: bool | None,
     recyclarr: bool | None,
+    homepage: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -671,6 +675,26 @@ def _gather_generation_config(
         if enable_recyclarr:
             enabled_optional.add("recyclarr")
 
+    if custom_services_selected is None:
+
+        homepage_default = (
+            ("homepage" in previous["enabled_optional"]) or (previous.get("tier") == "heavy")
+            if previous else True
+        )
+
+        if homepage is None:
+
+            enable_homepage = homepage_default if non_interactive else typer.confirm(
+                "Enable Homepage dashboard?",
+                default=homepage_default
+            )
+
+        else:
+            enable_homepage = homepage
+
+        if enable_homepage:
+            enabled_optional.add("homepage")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -752,6 +776,7 @@ def _generate_and_maybe_start(
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
     console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
     console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
