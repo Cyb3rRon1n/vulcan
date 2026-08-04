@@ -941,6 +941,57 @@ async def test_tier_config_screen_gluetun_and_puid_pgid_tooltips_set():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_sabnzbd_recyclarr_homepage_gpu_timezone_tooltips_set():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
+
+    try:
+
+        assert app.screen.query_one("#sabnzbd-check", Checkbox).tooltip
+        assert app.screen.query_one("#recyclarr-check", Checkbox).tooltip
+        assert app.screen.query_one("#homepage-check", Checkbox).tooltip
+        assert app.screen.query_one("#gpu-check", Checkbox).tooltip
+        assert app.screen.query_one("#timezone-input", Input).tooltip
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_focus_shows_real_tooltip_in_error_line():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        app.screen.query_one("#gluetun-check", Checkbox).focus()
+        await pilot.pause()
+
+        error_text = app.screen.query_one("#tier-error", Static).content
+        assert "gluetun-wiki" in error_text
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_focus_clears_error_line_for_untooltipped_widget():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        app.screen.query_one("#gluetun-check", Checkbox).focus()
+        await pilot.pause()
+        assert app.screen.query_one("#tier-error", Static).content != ""
+
+        app.screen.query_one("#tier-set", RadioSet).focus()
+        await pilot.pause()
+
+        assert app.screen.query_one("#tier-error", Static).content == ""
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_customize_navigates_to_service_selection_screen():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
@@ -994,7 +1045,7 @@ async def test_service_selection_screen_prechecks_tier_default_without_previous(
 async def test_service_selection_screen_domain_and_auth_tooltips_set():
 
     app, pilot, ctx = await _launch_at_service_selection_screen(
-        make_system_info(), tier_name="medium"
+        make_system_info(gpu_vendor="amd"), tier_name="medium"
     )
 
     try:
@@ -1002,12 +1053,59 @@ async def test_service_selection_screen_domain_and_auth_tooltips_set():
         domain_tooltip = app.screen.query_one("#domain-input", Input).tooltip
         username_tooltip = app.screen.query_one("#auth-username-input", Input).tooltip
         password_tooltip = app.screen.query_one("#auth-password-input", Input).tooltip
+        gpu_tooltip = app.screen.query_one("#gpu-check", Checkbox).tooltip
 
         assert domain_tooltip
         assert "own this domain" in domain_tooltip
         assert username_tooltip
         assert password_tooltip
         assert "shown again" in password_tooltip
+        assert gpu_tooltip
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_focus_shows_real_tooltip_in_result_line():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="medium"
+    )
+
+    try:
+
+        gpu_check = app.screen.query_one("#gpu-check", Checkbox)
+        assert gpu_check.display is True
+
+        gpu_check.focus()
+        await pilot.pause()
+
+        result_widget = app.screen.query_one("#auth-result", Static)
+        assert result_widget.display is True
+        assert "transcoding" in result_widget.content
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_focus_clears_result_line_for_untooltipped_widget():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(gpu_vendor="amd"), tier_name="medium"
+    )
+
+    try:
+
+        app.screen.query_one("#gpu-check", Checkbox).focus()
+        await pilot.pause()
+        assert app.screen.query_one("#auth-result", Static).display is True
+
+        app.screen.query_one("#service-list", SelectionList).focus()
+        await pilot.pause()
+
+        result_widget = app.screen.query_one("#auth-result", Static)
+        assert result_widget.display is False
+        assert result_widget.content == ""
 
     finally:
         await ctx.__aexit__(None, None, None)

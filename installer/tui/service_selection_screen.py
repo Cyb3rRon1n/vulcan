@@ -1,4 +1,4 @@
-from textual import work
+from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -52,7 +52,10 @@ class ServiceSelectionScreen(Screen):
         yield Vertical(
             Static("Select services to include", id="title"),
             SelectionList(*selections, id="service-list"),
-            Checkbox(gpu_label, value=gpu_default, id="gpu-check"),
+            Checkbox(
+                gpu_label, value=gpu_default, id="gpu-check",
+                tooltip="Passes the detected GPU through to Jellyfin for hardware transcoding."
+            ),
             Input(
                 value=default_domain or "",
                 placeholder="Base domain, e.g. media.example.com",
@@ -88,6 +91,22 @@ class ServiceSelectionScreen(Screen):
         self._update_gpu_visibility()
         self._update_domain_visibility()
         self._update_auth_visibility()
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        """
+        Keyboard-accessible equivalent of the mouse-only tooltip - see
+        TierConfigScreen's identical handler for the DescendantFocus
+        reasoning. #auth-result is display-toggled (added last slice to
+        save a row), so this toggles it too rather than always showing
+        an empty line - can overwrite an unread validation/hash-failure
+        error on the next Tab, same accepted tradeoff.
+        """
+
+        tooltip = event.widget.tooltip
+        result_widget = self.query_one("#auth-result", Static)
+
+        result_widget.update(tooltip or "")
+        result_widget.display = bool(tooltip)
 
     def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
         self._update_gpu_visibility()
