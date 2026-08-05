@@ -75,6 +75,8 @@ Non-interactive / scripted use is also supported:
 
 ## Tiers
 
+Both the guided TUI and the plain CLI show what each tier actually contains before you pick one — not just its name.
+
 | Tier | Target Hardware | Core Services | Extras |
 |---|---|---|---|
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup) |

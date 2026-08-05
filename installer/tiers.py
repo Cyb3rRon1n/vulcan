@@ -72,6 +72,29 @@ ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES
 _ORDERED_HIGH_TO_LOW = ["heavy", "medium", "light"]
 
 
+def tier_description(tier: TierDefinition) -> str:
+    """
+    Generated from the tier's real ServiceDefinition list, not
+    hand-written - a hardcoded copy would have gone stale the moment
+    a service was added (this project has hit that exact class of
+    staleness multiple times with hand-maintained service counts
+    elsewhere in the docs). Core services always render; optional ones
+    only listed if the tier actually has any (Light's core-only list
+    reads cleaner without a trailing "- optional:" when every optional
+    service still shows via its own checkbox anyway).
+    """
+
+    core = [service.display_name for service in tier.services if not service.optional]
+    optional = [service.display_name for service in tier.services if service.optional]
+
+    description = ", ".join(core)
+
+    if optional:
+        description += " - optional: " + ", ".join(optional)
+
+    return description
+
+
 @dataclass
 class Recommendation:
 

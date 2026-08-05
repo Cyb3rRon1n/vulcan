@@ -5,7 +5,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
 from installer.generate import default_puid_pgid, default_timezone
-from installer.tiers import recommend_tier
+from installer.tiers import TIERS, recommend_tier, tier_description
 from installer.tui.review_screen import ReviewScreen
 from installer.tui.service_selection_screen import ServiceSelectionScreen
 
@@ -56,9 +56,18 @@ class TierConfigScreen(Screen):
                 id="recommendation"
             ),
             RadioSet(
-                RadioButton("Light", id="light", value=default_tier == "light"),
-                RadioButton("Medium", id="medium", value=default_tier == "medium"),
-                RadioButton("Heavy", id="heavy", value=default_tier == "heavy"),
+                RadioButton(
+                    "Light", id="light", value=default_tier == "light",
+                    tooltip=tier_description(TIERS["light"])
+                ),
+                RadioButton(
+                    "Medium", id="medium", value=default_tier == "medium",
+                    tooltip=tier_description(TIERS["medium"])
+                ),
+                RadioButton(
+                    "Heavy", id="heavy", value=default_tier == "heavy",
+                    tooltip=tier_description(TIERS["heavy"])
+                ),
                 id="tier-set"
             ),
             Horizontal(
@@ -138,6 +147,25 @@ class TierConfigScreen(Screen):
 
         self.query_one("#gluetun-check", Checkbox).display = tier_id == "medium"
         self.query_one("#gpu-check", Checkbox).display = tier_id == "heavy" and bool(gpu_vendor)
+
+        # Reuses #tier-error rather than a new row - there's no room for
+        # one (this screen's #continue/#back already sit at the bottom
+        # of the test viewport's real height budget). Same accepted
+        # "can be overwritten by the next focus change" tradeoff the
+        # tooltip mechanism below already has - showing what a tier
+        # actually contains the moment you select it is worth that.
+        description = tier_description(TIERS[tier_id])
+        self.query_one("#tier-error", Static).update(description)
+
+        # A real ordering issue found by testing, not assumed: Textual
+        # auto-focuses the first focusable widget (the RadioSet itself)
+        # right after mount, firing DescendantFocus and immediately
+        # clobbering the line above back to "" (RadioSet had no tooltip
+        # of its own). Keeping the RadioSet's own tooltip in sync here
+        # means that auto-focus event reads the same correct text
+        # instead of clearing it - no flicker, no special-casing the
+        # mount-vs-change path.
+        self.query_one("#tier-set", RadioSet).tooltip = description
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_visibility(event.pressed.id)
