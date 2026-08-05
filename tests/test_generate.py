@@ -332,6 +332,70 @@ def test_render_compose_traefik_redirects_http_to_https_only_with_domain():
     assert "redirections.entrypoint.to=websecure" in with_domain
 
 
+def test_render_compose_traefik_api_flags_always_present_regardless_of_domain():
+    """
+    --api.dashboard=true just enables the feature - harmless with no
+    domain, since nothing can route to it without one anyway. Only the
+    routing labels themselves are domain-gated.
+    """
+
+    without_domain = render_compose(make_config("heavy", enabled_optional={"traefik"}))
+    with_domain = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    assert "--api=true" in without_domain
+    assert "--api.dashboard=true" in without_domain
+    assert "--api=true" in with_domain
+    assert "--api.dashboard=true" in with_domain
+
+
+def test_render_compose_traefik_dashboard_routed_with_domain():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    traefik_block = _service_block(output, "traefik", "authelia")
+
+    assert (
+        "traefik.http.routers.dashboard.rule=Host(`traefik.media.example.com`) && "
+        "(PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+    ) in traefik_block
+    assert "traefik.http.routers.dashboard.service=api@internal" in traefik_block
+    assert "traefik.http.routers.dashboard.entrypoints=websecure" in traefik_block
+    assert "traefik.http.routers.dashboard.tls=true" in traefik_block
+
+
+def test_render_compose_traefik_dashboard_omitted_without_domain():
+
+    output = render_compose(make_config("heavy", enabled_optional={"traefik"}))
+
+    assert "routers.dashboard" not in output
+    assert "api@internal" not in output
+
+
+def test_render_compose_traefik_dashboard_protected_by_authelia_when_enabled():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik", "authelia"}, domain="media.example.com"
+        )
+    )
+
+    traefik_block = _service_block(output, "traefik", "authelia")
+    assert "traefik.http.routers.dashboard.middlewares=authelia@docker" in traefik_block
+
+
+def test_render_compose_traefik_dashboard_unprotected_without_authelia():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    assert "dashboard.middlewares" not in output
+
+
 def test_render_compose_amd_gpu_adds_device_and_group(tmp_path):
 
     with patch("installer.generate.detect_render_group_gid", return_value=105):
@@ -491,6 +555,62 @@ def test_render_homepage_services_uses_traefik_domain_when_routed():
 
     assert "https://jellyfin.media.example.com" in output
     assert "http://localhost" not in output
+
+
+def test_render_homepage_services_creates_traefik_dashboard_tile_when_routed():
+
+    output = render_homepage_services(
+        make_config("heavy", custom_services={"traefik"}, domain="media.example.com"),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    group_names = [list(group.keys())[0] for group in parsed]
+
+    assert "Infrastructure" in group_names
+    assert "https://traefik.media.example.com" in output
+
+
+def test_render_homepage_services_omits_traefik_tile_without_domain():
+    """
+    Traefik's dashboard has no independent host-published port (it's
+    routing-only, no --api.insecure=true) - with no domain, there's
+    nothing real to link to, so it shouldn't get a dead tile.
+    """
+
+    output = render_homepage_services(
+        make_config("heavy", custom_services={"traefik"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    assert parsed == []
+
+
+def test_render_homepage_services_qbittorrent_uses_host_port_not_broken_route_when_gluetun_and_traefik_both_active():
+    """
+    Regression lock for a real bug found while adding the Traefik
+    dashboard tile: qBittorrent's own Traefik labels are skipped
+    whenever Gluetun is active (network_mode: service:gluetun has no
+    network identity for Traefik's Docker provider to discover), but
+    _service_href() didn't know that - with Traefik+domain also
+    active, it generated https://qbittorrent.<domain>, a real dead
+    link (no matching router exists). It must fall back to the real
+    working host-port URL instead, the same URL it already correctly
+    uses when Traefik isn't routing at all.
+    """
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={"qbittorrent", "gluetun", "traefik"},
+            domain="media.example.com"
+        ),
+        host_ip=None
+    )
+
+    assert "http://localhost:8080" in output
+    assert "https://qbittorrent.media.example.com" not in output
 
 
 def test_render_homepage_services_omits_empty_groups():
@@ -1346,6 +1466,61 @@ def test_write_stack_no_authelia_warning_when_traefik_and_domain_active(tmp_path
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("nothing is actually protected" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_about_unprotected_traefik_dashboard_without_authelia(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "traefik.media.example.com" in warning and "no login" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_no_dashboard_warning_when_authelia_also_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "authelia"},
+        domain="media.example.com",
+        auth_username="admin",
+        auth_password_hash="$argon2id$fake$hash"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("no login in front of it" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_dashboard_warning_without_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("no login in front of it" in warning for warning in result["warnings"])
 
 
 def test_render_homepage_services_creates_authelia_tile_when_routed():

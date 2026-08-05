@@ -391,9 +391,22 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      - "--api=true"
+      - "--api.dashboard=true"
 {% if domain %}
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+{% endif %}
+{% if domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.{{ domain }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.service=api@internal"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.dashboard.middlewares=authelia@docker"
+{% endif %}
 {% endif %}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

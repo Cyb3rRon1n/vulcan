@@ -40,6 +40,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
     "Security": ["authelia"],
+    "Infrastructure": ["traefik"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -56,6 +57,10 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "uptime-kuma": 3001,
     "homepage": 3000,
     "authelia": 9091,
+    # Deliberately no "traefik" entry - its dashboard has no
+    # independent host-published port (see _service_href()'s
+    # api.insecure security note), so it has no non-routed fallback
+    # the way every other service here does.
 }
 
 
@@ -205,13 +210,36 @@ def render_env(
     )
 
 
-def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str:
+def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str | None:
 
     enabled = enabled_service_keys(config)
-    routed = "traefik" in enabled and config.domain
+
+    # qBittorrent's own Traefik labels are skipped whenever Gluetun is
+    # active (network_mode: service:gluetun has no network identity of
+    # its own for Traefik's Docker provider to discover - see the
+    # compose template) - a real, qbittorrent-specific exception to
+    # the otherwise-generic "routed" rule below. Found and fixed while
+    # adding the Traefik dashboard tile: this exception was missing
+    # here even though the compose template itself already has it, so
+    # a Gluetun + qBittorrent + Traefik + domain combination
+    # previously generated a real dead link (a 404, no matching
+    # router) instead of the working host-port fallback qBittorrent
+    # actually has through Gluetun's own static port mapping.
+    qbittorrent_via_gluetun = key == "qbittorrent" and "gluetun" in enabled
+
+    routed = "traefik" in enabled and config.domain and not qbittorrent_via_gluetun
 
     if routed:
         return f"https://{key}.{config.domain}"
+
+    if key not in _HOMEPAGE_PORTS:
+
+        # No non-routed fallback exists for this service - e.g.
+        # Traefik's own dashboard, which is only ever reachable
+        # through Traefik's routing itself, never a plain host port
+        # (see the "--api.insecure=true" security note this project
+        # deliberately avoided).
+        return None
 
     return f"http://{host_ip or 'localhost'}:{_HOMEPAGE_PORTS[key]}"
 
@@ -233,6 +261,10 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
                 continue
 
             href = _service_href(key, config, host_ip)
+
+            if href is None:
+                continue
+
             items.append({display_names[key]: {"href": href, "icon": f"{key}.png"}})
 
         if items:
@@ -272,10 +304,12 @@ def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str
     display_names = {service.key: service.display_name for service in ALL_SERVICES}
 
     lines = [
-        f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
+        f"  {display_names[key]}: {href}"
         for keys in _HOMEPAGE_GROUPS.values()
         for key in keys
         if key in enabled and key != "uptime-kuma"
+        for href in [_service_href(key, config, host_ip)]
+        if href is not None
     ]
 
     kuma_href = _service_href("uptime-kuma", config, host_ip)
@@ -364,6 +398,14 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         warnings.append(
             "Gluetun requires real VPN provider credentials in stack/.env "
             "before it will connect - see the TODO comments there."
+        )
+
+    if "traefik" in enabled_service_keys(config) and config.domain and "authelia" not in enabled_service_keys(config):
+
+        warnings.append(
+            f"Traefik's own dashboard is now reachable at https://traefik.{config.domain} "
+            "with no login in front of it - enable Authelia too if you want that locked down, "
+            "the same as every other routed service without it."
         )
 
     if "authelia" in enabled_service_keys(config):
