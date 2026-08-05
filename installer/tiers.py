@@ -37,6 +37,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("qbittorrent", "qBittorrent"),
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
     ServiceDefinition("recyclarr", "Recyclarr", optional=True),
+    ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
 ]
 

@@ -11,6 +11,7 @@ from installer.generate import (
     render_authelia_configuration,
     render_authelia_users_database,
     render_compose,
+    render_decluttarr_config,
     render_env,
     render_homepage_services,
     render_stack_summary,
@@ -182,6 +183,22 @@ def test_render_compose_medium_with_recyclarr_uses_pinned_image_and_user():
     assert "image: ghcr.io/recyclarr/recyclarr:8" in recyclarr_block
     assert 'user: "${PUID}:${PGID}"' in recyclarr_block
     assert "PUID=${PUID}" not in recyclarr_block
+
+
+def test_render_compose_medium_without_decluttarr_omits_it():
+
+    output = render_compose(make_config("medium"))
+
+    assert "container_name: decluttarr" not in output
+
+
+def test_render_compose_medium_with_decluttarr_mounts_config():
+
+    output = render_compose(make_config("medium", {"decluttarr"}))
+
+    decluttarr_block = _service_block(output, "decluttarr", "jellyseerr")
+    assert "image: ghcr.io/manimatter/decluttarr:latest" in decluttarr_block
+    assert "./config/decluttarr/config.yaml:/app/config/config.yaml" in decluttarr_block
 
 
 def test_render_compose_heavy_includes_all_new_services():
@@ -1193,6 +1210,79 @@ def test_write_stack_no_recyclarr_warning_when_disabled(tmp_path):
     assert result["warnings"] == []
 
 
+def test_write_stack_creates_decluttarr_config_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"decluttarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    config_path = tmp_path / "stack" / "config" / "decluttarr" / "config.yaml"
+    assert config_path.is_file()
+    assert any("CHANGEME" in warning for warning in result["warnings"])
+    assert any("test_run: true" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_when_decluttarr_enabled_via_custom_services(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin", "radarr", "sonarr", "decluttarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("decluttarr" in warning.lower() for warning in result["warnings"])
+
+
+def test_write_stack_no_decluttarr_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
+
+
+def test_write_stack_never_overwrites_existing_decluttarr_config(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"decluttarr"}
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    config_path = tmp_path / "stack" / "config" / "decluttarr" / "config.yaml"
+    config_path.write_text("# hand-edited, real API keys filled in\n")
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert config_path.read_text() == "# hand-edited, real API keys filled in\n"
+
+
 def test_write_stack_warns_when_traefik_domain_configured(tmp_path):
 
     config = GenerationConfig(
@@ -1678,6 +1768,70 @@ def test_render_authelia_configuration_uses_domain_for_session_cookie():
     assert "jwt_secret" not in parsed.get("identity_validation", {}).get("reset_password", {})
     assert "secret" not in parsed["session"]
     assert "encryption_key" not in parsed["storage"]
+
+
+def test_render_decluttarr_config_includes_only_enabled_arr_instances():
+
+    output = render_decluttarr_config(
+        make_config("light", custom_services={"decluttarr", "radarr", "sonarr"})
+    )
+    parsed = yaml.safe_load(output)
+
+    assert "radarr" in parsed["instances"]
+    assert "sonarr" in parsed["instances"]
+    assert "lidarr" not in parsed["instances"]
+    assert "readarr" not in parsed["instances"]
+    assert parsed["instances"]["radarr"][0]["base_url"] == "http://radarr:7878"
+    assert parsed["instances"]["radarr"][0]["api_key"] == "CHANGEME"
+
+
+def test_render_decluttarr_config_defaults_to_dry_run():
+
+    output = render_decluttarr_config(make_config("light", {"decluttarr"}))
+    parsed = yaml.safe_load(output)
+
+    assert parsed["general"]["test_run"] is True
+
+
+def test_render_decluttarr_config_qbittorrent_uses_gluetun_hostname_when_active():
+
+    output = render_decluttarr_config(
+        make_config("light", custom_services={"decluttarr", "radarr", "sonarr", "qbittorrent", "gluetun"})
+    )
+    parsed = yaml.safe_load(output)
+
+    assert parsed["download_clients"]["qbittorrent"][0]["base_url"] == "http://gluetun:8080"
+
+
+def test_render_decluttarr_config_qbittorrent_uses_own_hostname_without_gluetun():
+
+    output = render_decluttarr_config(
+        make_config("light", custom_services={"decluttarr", "radarr", "sonarr", "qbittorrent"})
+    )
+    parsed = yaml.safe_load(output)
+
+    assert parsed["download_clients"]["qbittorrent"][0]["base_url"] == "http://qbittorrent:8080"
+
+
+def test_render_decluttarr_config_includes_sabnzbd_when_enabled():
+
+    output = render_decluttarr_config(
+        make_config("light", custom_services={"decluttarr", "radarr", "sonarr", "sabnzbd"})
+    )
+    parsed = yaml.safe_load(output)
+
+    assert parsed["download_clients"]["sabnzbd"][0]["base_url"] == "http://sabnzbd:8080"
+    assert parsed["download_clients"]["sabnzbd"][0]["api_key"] == "CHANGEME"
+
+
+def test_render_decluttarr_config_omits_download_clients_when_none_enabled():
+
+    output = render_decluttarr_config(
+        make_config("light", custom_services={"decluttarr", "radarr", "sonarr"})
+    )
+    parsed = yaml.safe_load(output)
+
+    assert "download_clients" not in parsed
 
 
 def test_render_authelia_configuration_redirects_to_homepage_when_enabled():

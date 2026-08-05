@@ -377,6 +377,29 @@ def render_authelia_configuration(config: GenerationConfig) -> str:
     )
 
 
+def render_decluttarr_config(config: GenerationConfig) -> str:
+
+    template = _jinja_env().get_template("decluttarr-config.yaml.j2")
+    enabled = enabled_service_keys(config)
+
+    return template.render(
+        enabled=enabled,
+        # Decluttarr's own config schema has no environment-variable
+        # substitution mechanism (confirmed by reading the real,
+        # current config_example.yaml directly, not assumed - api_key
+        # values are always literal strings) - so unlike every other
+        # credential in this project, a real key can't live in .env.
+        # qBittorrent specifically needs its real container DNS name
+        # when Gluetun owns its network namespace (network_mode:
+        # service:gluetun), same reasoning _service_href() already
+        # applies for Homepage - "qbittorrent" isn't a resolvable
+        # hostname on the Docker network in that case, "gluetun" is.
+        qbittorrent_base_url=(
+            "http://gluetun:8080" if "gluetun" in enabled else "http://qbittorrent:8080"
+        )
+    )
+
+
 def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str:
 
     enabled = enabled_service_keys(config)
@@ -596,6 +619,24 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "section alongside it, then set each base_url/api_key to the real API key from "
             "Settings > General in that app's web UI and http://radarr:7878 / http://sonarr:8989 "
             "before it can sync anything."
+        )
+
+    if "decluttarr" in enabled_service_keys(config):
+
+        decluttarr_config_path = output_dir / "config" / "decluttarr" / "config.yaml"
+
+        if not decluttarr_config_path.exists():
+
+            decluttarr_config_path.parent.mkdir(parents=True, exist_ok=True)
+            decluttarr_config_path.write_text(render_decluttarr_config(config))
+
+        warnings.append(
+            "Decluttarr was pre-seeded with a starter config at "
+            "stack/config/decluttarr/config.yaml - real base_urls are already filled in, but "
+            "each api_key is a \"CHANGEME\" placeholder: edit the file directly and paste in "
+            "the real API key from Settings > General in each app's own web UI before "
+            "Decluttarr can connect. It starts in test_run: true (a dry run - nothing is "
+            "actually removed) - flip that to false once you've confirmed the config is right."
         )
 
     if "readarr" in enabled_service_keys(config):
