@@ -2,11 +2,15 @@
 
 **An intelligent media stack forge.**
 
+- **What** — Inspects your Linux host's real hardware, recommends a sized tier, and generates a ready-to-run Jellyfin + `*arr` Docker Compose media stack.
+- **Who it's for** — Homelab and self-hosted folks who want a media server + download automation stack without hand-tuning resource limits or manually wiring a dozen services together.
+- **Why** — A one-size-fits-all media stack either starves a small machine or wastes a big one. Vulcan sizes for what your machine can actually handle — deterministically, no LLM in the decision path.
+- **Where** — Any Linux host with Docker (Ubuntu, Debian, Raspbian, Fedora, and Arch all get an automatic Docker install) and Python 3.11+.
+- **When to use it** — Pre-alpha but actively developed, with every feature verified against real infrastructure as it was built, not just exercised in isolation — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.
+
 Vulcan inspects your system's resources and automatically builds a tailored Jellyfin + *arr homelab — sized as Light, Medium, or Heavy to match what your machine can actually handle. Point it at a Linux box, answer a handful of questions, and get back a working `docker-compose.yml` and `.env` scoped to your real hardware, not a one-size-fits-all stack that either starves a small machine or wastes a big one.
 
 Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/GPU, no LLM involved.
-
-*Pre-alpha, actively developed. Every feature below has been verified against real infrastructure as it was built, not just exercised in isolation — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.*
 
 ---
 
@@ -17,7 +21,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Custom mode** — free-pick any of Vulcan's 17 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default), no manual reverse-proxy config.
 - **Real login, not just routing** — optional Authelia integration puts a real username/password in front of every routed service, no external identity provider or database required.
-- **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real tiles for your actual stack instead of a blank page.
+- **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real, grouped, described tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
@@ -89,7 +93,7 @@ HTTPS uses Traefik's own auto-generated self-signed certificate by default — r
 
 **Auth (Authelia).** Add `authelia` alongside `traefik` in a custom selection to put a real login in front of every routed service — no LDAP, Postgres, or Redis required, and no external identity provider. You'll be prompted for an admin username/password (once — a regenerate never re-asks if it's already configured), and Vulcan handles hashing it and generating the random secrets Authelia needs itself. Without Traefik+`--domain` also active, Authelia has nothing to protect and its own login portal isn't reachable — Vulcan warns outright rather than pretending it did something.
 
-**Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address) — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
+**Pre-seeded dashboard.** If Homepage is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address), grouped by category (Media, Media Management, Downloads, Monitoring, Security, Infrastructure), and a brief one-line description under each tile so a service is identifiable at a glance, not just an icon and a name — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized `stack/config/homepage/services.yaml` yourself, a later regenerate never touches it.
 
 ---
 

@@ -63,6 +63,29 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     # the way every other service here does.
 }
 
+# One real, plain-language sentence per service - gethomepage.dev's own
+# documented `description:` field, shown under the tile name so a tile
+# is identifiable by what it does, not just its (sometimes opaque, e.g.
+# "Prowlarr") name. Covers every key that can ever appear in
+# _HOMEPAGE_GROUPS above - a KeyError here means a group was extended
+# without adding the matching description, same "every real key stays
+# in sync" discipline _HOMEPAGE_PORTS already follows.
+_HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
+    "jellyfin": "Stream your movies, TV, and music",
+    "jellyseerr": "Request new movies and shows",
+    "radarr": "Automatically finds and manages your movie library",
+    "sonarr": "Automatically finds and manages your TV library",
+    "lidarr": "Automatically finds and manages your music library",
+    "readarr": "Automatically finds and manages your book library",
+    "prowlarr": "Indexer manager shared by every *arr app",
+    "bazarr": "Automatically finds and manages subtitles",
+    "qbittorrent": "Torrent download client",
+    "sabnzbd": "Usenet download client",
+    "uptime-kuma": "Uptime monitoring for your services",
+    "authelia": "Login protecting every routed service",
+    "traefik": "Reverse proxy routing and dashboard",
+}
+
 
 @dataclass
 class GenerationConfig:
@@ -174,18 +197,44 @@ def _jinja_env() -> Environment:
     )
 
 
-def render_compose(config: GenerationConfig) -> str:
+def _homepage_allowed_hosts(config: GenerationConfig, enabled: set[str], host_ip: str | None) -> str:
+    """
+    Recent Homepage images reject any request whose Host header isn't
+    explicitly allowlisted (HOMEPAGE_ALLOWED_HOSTS) - found by actually
+    starting a real container against a generated config, not assumed;
+    without this, Homepage refuses every request outright regardless of
+    how it's reached. Covers every real way Vulcan itself can put
+    Homepage in front of a user: the bare host-published port (both
+    "localhost" for local access and the real detected LAN IP for
+    another device on the network), plus the routed Traefik hostname
+    when domain routing is active.
+    """
+
+    hosts = ["localhost:3000"]
+
+    if host_ip:
+        hosts.append(f"{host_ip}:3000")
+
+    if "traefik" in enabled and config.domain:
+        hosts.append(f"homepage.{config.domain}")
+
+    return ",".join(hosts)
+
+
+def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
+    enabled = enabled_service_keys(config)
 
     return template.render(
-        enabled=enabled_service_keys(config),
+        enabled=enabled,
         limits=resource_limits_for(config.tier.name),
         gpu_vendor=config.gpu_vendor,
         render_gid=(
             detect_render_group_gid() if config.gpu_vendor in ("amd", "intel") else None
         ),
-        domain=config.domain
+        domain=config.domain,
+        homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip)
     )
 
 
@@ -265,7 +314,13 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
             if href is None:
                 continue
 
-            items.append({display_names[key]: {"href": href, "icon": f"{key}.png"}})
+            items.append({
+                display_names[key]: {
+                    "href": href,
+                    "icon": f"{key}.png",
+                    "description": _HOMEPAGE_DESCRIPTIONS[key]
+                }
+            })
 
         if items:
             groups.append({group_name: items})
@@ -349,6 +404,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
 
+    # Computed once, up front - render_compose() needs it now too
+    # (HOMEPAGE_ALLOWED_HOSTS), not just the warnings/Homepage-tile
+    # logic further down that already used to be its first use.
+    host_ip = detect_host_ip()
+
     # Read any existing .env before it gets overwritten - a real Gluetun
     # VPN credential the user already filled in must survive a regenerate,
     # not get reset back to a placeholder.
@@ -359,7 +419,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         wireguard_private_key=_preserved_vpn_value(output_dir, "WIREGUARD_PRIVATE_KEY", "changeme")
     )
 
-    compose_path.write_text(render_compose(config))
+    compose_path.write_text(render_compose(config, host_ip))
     env_path.write_text(env_content)
     save_state(config, output_dir)
 
@@ -374,7 +434,6 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "books").mkdir(parents=True, exist_ok=True)
 
     warnings = []
-    host_ip = detect_host_ip()
 
     if "homepage" in enabled_service_keys(config):
 

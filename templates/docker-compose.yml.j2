@@ -457,6 +457,8 @@ services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS={{ homepage_allowed_hosts }}
     volumes:
       - ./config/homepage:/app/config
     ports:
