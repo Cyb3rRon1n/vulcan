@@ -241,6 +241,23 @@ services:
           memory: "{{ limits.recyclarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'decluttarr' in enabled %}
+  decluttarr:
+    image: ghcr.io/manimatter/decluttarr:latest
+    container_name: decluttarr
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ./config/decluttarr/config.yaml:/app/config/config.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.decluttarr.cpus }}"
+          memory: "{{ limits.decluttarr.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'jellyseerr' in enabled %}
   jellyseerr:
     image: fallenbagel/jellyseerr:latest

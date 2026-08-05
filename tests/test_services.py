@@ -5,7 +5,7 @@ def test_all_known_services_have_a_resource_profile():
 
     expected = {
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
-        "jellyseerr", "bazarr", "flaresolverr", "gluetun",
+        "decluttarr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
         "watchtower"
     }

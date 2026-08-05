@@ -1,0 +1,54 @@
+general:
+  log_level: INFO
+  test_run: true
+  timer: 10
+
+job_defaults:
+  max_strikes: 3
+  min_days_between_searches: 7
+  max_concurrent_searches: 3
+
+jobs:
+  remove_bad_files:
+  remove_failed_downloads:
+  remove_stalled:
+
+instances:
+{% if 'radarr' in enabled %}
+  radarr:
+    - base_url: "http://radarr:7878"
+      api_key: "CHANGEME"
+{% endif %}
+{% if 'sonarr' in enabled %}
+  sonarr:
+    - base_url: "http://sonarr:8989"
+      api_key: "CHANGEME"
+{% endif %}
+{% if 'lidarr' in enabled %}
+  lidarr:
+    - base_url: "http://lidarr:8686"
+      api_key: "CHANGEME"
+{% endif %}
+{% if 'readarr' in enabled %}
+  readarr:
+    - base_url: "http://readarr:8787"
+      api_key: "CHANGEME"
+{% endif %}
+{% if 'qbittorrent' in enabled or 'sabnzbd' in enabled %}
+
+download_clients:
+{% if 'qbittorrent' in enabled %}
+  qbittorrent:
+    - base_url: "{{ qbittorrent_base_url }}"
+      name: "qBittorrent"
+      # If your qBittorrent WebUI has auth configured, add either:
+      #   api_key: "..."          (qBittorrent 5.2.0+, generate under WebUI settings)
+      #   username / password     (older qBittorrent)
+{% endif %}
+{% if 'sabnzbd' in enabled %}
+  sabnzbd:
+    - base_url: "http://sabnzbd:8080"
+      api_key: "CHANGEME"
+      name: "SABnzbd"
+{% endif %}
+{% endif %}
