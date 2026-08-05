@@ -216,6 +216,42 @@ def test_render_compose_heavy_without_optional_extras_excludes_lidarr_traefik_an
     assert "container_name: homepage" not in output
 
 
+def test_render_compose_homepage_allowed_hosts_always_includes_localhost():
+
+    output = render_compose(make_config("heavy", enabled_optional={"homepage"}))
+
+    assert "HOMEPAGE_ALLOWED_HOSTS=localhost:3000" in output
+
+
+def test_render_compose_homepage_allowed_hosts_includes_real_host_ip_when_known():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"homepage"}), host_ip="192.168.1.100"
+    )
+
+    assert "HOMEPAGE_ALLOWED_HOSTS=localhost:3000,192.168.1.100:3000" in output
+
+
+def test_render_compose_homepage_allowed_hosts_includes_routed_domain():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"homepage", "traefik"}, domain="media.example.com"),
+        host_ip="192.168.1.100"
+    )
+
+    assert "HOMEPAGE_ALLOWED_HOSTS=localhost:3000,192.168.1.100:3000,homepage.media.example.com" in output
+
+
+def test_render_compose_homepage_allowed_hosts_omits_domain_without_traefik_routing():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"homepage"}, domain="media.example.com"),
+        host_ip="192.168.1.100"
+    )
+
+    assert "homepage.media.example.com" not in output
+
+
 def _jellyfin_block(output: str) -> str:
 
     return output.split("jellyfin:", 1)[1].split("  radarr:", 1)[0]
@@ -493,9 +529,38 @@ def test_render_homepage_services_creates_tiles_for_enabled_services():
 
     assert groups["Media"]["Jellyfin"]["href"] == "http://localhost:8096"
     assert groups["Media"]["Jellyfin"]["icon"] == "jellyfin.png"
+    assert groups["Media"]["Jellyfin"]["description"] == "Stream your movies, TV, and music"
     assert groups["Media Management"]["Radarr"]["href"] == "http://localhost:7878"
     assert groups["Downloads"]["qBittorrent"]["href"] == "http://localhost:8080"
     assert "Monitoring" not in groups
+
+
+def test_render_homepage_services_every_tile_has_a_real_description():
+    """
+    Every service that can ever get a tile needs a real, identifying
+    one-liner - not just an icon and a sometimes-opaque name like
+    "Prowlarr" or "Bazarr".
+    """
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={
+                "jellyfin", "jellyseerr", "radarr", "sonarr", "lidarr", "readarr",
+                "prowlarr", "bazarr", "qbittorrent", "sabnzbd", "uptime-kuma",
+                "authelia", "traefik"
+            },
+            domain="media.example.com"
+        ),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    for services in groups.values():
+        for tile in services.values():
+            assert isinstance(tile["description"], str)
+            assert len(tile["description"]) > 0
 
 
 def test_render_homepage_services_creates_readarr_tile():
