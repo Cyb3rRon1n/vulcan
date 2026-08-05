@@ -44,7 +44,7 @@ from installer.post_install import (
     uninstall_stack,
     update_stack,
 )
-from installer.preflight import check_ports_available
+from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
 
@@ -1010,11 +1010,10 @@ def _generate_and_maybe_start(
 
         if not port_check["available"]:
 
-            conflicts = ", ".join(str(p) for p in port_check["conflicts"])
-
             console.print(
-                f"[red]Can't start - port(s) already in use: {conflicts}. Free them, "
-                "then run this when you're ready:\n"
+                "[red]Can't start - port(s) already in use:[/red]\n"
+                f"{format_port_conflicts(port_check)}\n"
+                "[red]Free them, then run this when you're ready:\n"
                 f"  docker compose -f {result['compose_path']} --env-file "
                 f"{result['env_path']} up -d[/red]"
             )
