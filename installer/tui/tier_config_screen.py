@@ -37,7 +37,11 @@ class TierConfigScreen(Screen):
             default_pgid = previous["pgid"]
             default_tz = previous["timezone"]
 
-        gluetun_default = "gluetun" in previous["enabled_optional"] if previous else False
+        # Defaults to True (opt-out) on a fresh install - see the CLI's
+        # identical change for the real reasoning (qBittorrent is
+        # exposed without it, at every tier, and this used to only
+        # even be reachable at Medium tier in the default flow).
+        gluetun_default = "gluetun" in previous["enabled_optional"] if previous else True
         sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
         recyclarr_default = "recyclarr" in previous["enabled_optional"] if previous else False
         homepage_default = (
@@ -90,8 +94,10 @@ class TierConfigScreen(Screen):
                 Checkbox(
                     "Enable Gluetun VPN", value=gluetun_default, id="gluetun-check",
                     tooltip=(
-                        "You'll need your VPN provider's credentials afterward - setup guide "
-                        "per provider: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"
+                        "Recommended - without it, torrent traffic exposes your real IP to "
+                        "the swarm. You'll need your VPN provider's credentials afterward - "
+                        "setup guide per provider: "
+                        "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"
                     )
                 ),
                 Checkbox(
@@ -145,7 +151,10 @@ class TierConfigScreen(Screen):
 
         gpu_vendor = self.app.system_info.gpu_vendor
 
-        self.query_one("#gluetun-check", Checkbox).display = tier_id == "medium"
+        # Gluetun is no longer tier-gated (used to only show at Medium) -
+        # qBittorrent is present at every tier, and so is the real IP
+        # exposure Gluetun protects against, so the checkbox is just
+        # always visible now, same as SABnzbd/Recyclarr/Homepage.
         self.query_one("#gpu-check", Checkbox).display = tier_id == "heavy" and bool(gpu_vendor)
 
         # Reuses #tier-error rather than a new row - there's no room for
@@ -215,7 +224,7 @@ class TierConfigScreen(Screen):
         tier_id = self._current_tier_id()
         enabled_optional = set()
 
-        if tier_id == "medium" and self.query_one("#gluetun-check", Checkbox).value:
+        if self.query_one("#gluetun-check", Checkbox).value:
             enabled_optional.add("gluetun")
 
         if self.query_one("#sabnzbd-check", Checkbox).value:

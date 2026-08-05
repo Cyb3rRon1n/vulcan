@@ -795,15 +795,27 @@ def _gather_generation_config(
 
     enabled_optional = set()
 
-    if custom_services_selected is None and chosen_tier_name == "medium":
+    if custom_services_selected is None:
 
-        vpn_default = "gluetun" in previous["enabled_optional"] if previous else False
+        # Defaults to True (opt-out, not opt-in) on a fresh install -
+        # qBittorrent is present at every tier, and Gluetun is what
+        # actually keeps its torrent traffic from exposing a real IP
+        # to the swarm. A real, deliberate behavior change: previously
+        # defaulted off and was only ever asked about at Medium tier
+        # specifically (Heavy-tier users on the default flow could
+        # never reach this question at all outside custom mode) -
+        # both gaps meant it was realistic to end up torrenting fully
+        # exposed without ever being asked. A regenerate still respects
+        # whatever was explicitly chosen last time, same as every other
+        # optional service here.
+        vpn_default = "gluetun" in previous["enabled_optional"] if previous else True
 
         if vpn is None:
 
             enable_vpn = vpn_default if non_interactive else typer.confirm(
-                "Enable Gluetun VPN for qBittorrent? You'll need your VPN provider's "
-                "credentials afterward - setup guide per provider: "
+                "Enable Gluetun VPN for qBittorrent? Recommended - without it, torrent "
+                "traffic exposes your real IP to the swarm. You'll need your VPN "
+                "provider's credentials afterward - setup guide per provider: "
                 "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers",
                 default=vpn_default
             )

@@ -91,7 +91,7 @@ def test_medium_services_include_all_light_services_plus_additions():
 
     assert light_keys.issubset(medium_keys)
     assert medium_keys - light_keys == {
-        "jellyseerr", "bazarr", "flaresolverr", "gluetun"
+        "jellyseerr", "bazarr", "flaresolverr"
     }
 
 

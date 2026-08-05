@@ -613,7 +613,7 @@ async def test_tier_config_screen_previous_tier_preselected_when_present():
         await ctx.__aexit__(None, None, None)
 
 
-async def test_tier_config_screen_selecting_light_hides_both_checkboxes():
+async def test_tier_config_screen_selecting_light_hides_gpu_but_shows_gluetun():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))
 
@@ -622,7 +622,10 @@ async def test_tier_config_screen_selecting_light_hides_both_checkboxes():
         await pilot.click("#light")
         await pilot.pause()
 
-        assert app.screen.query_one("#gluetun-check", Checkbox).display is False
+        # Gluetun is tier-agnostic now (qBittorrent is present at every
+        # tier, and so is the IP exposure it protects against) - only
+        # GPU passthrough stays Heavy-only.
+        assert app.screen.query_one("#gluetun-check", Checkbox).display is True
         assert app.screen.query_one("#gpu-check", Checkbox).display is False
 
     finally:
@@ -657,7 +660,7 @@ async def test_tier_config_screen_selecting_heavy_with_gpu_shows_only_gpu_checke
         gluetun = app.screen.query_one("#gluetun-check", Checkbox)
         gpu = app.screen.query_one("#gpu-check", Checkbox)
 
-        assert gluetun.display is False
+        assert gluetun.display is True
         assert gpu.display is True
         assert gpu.value is True
 
@@ -665,7 +668,7 @@ async def test_tier_config_screen_selecting_heavy_with_gpu_shows_only_gpu_checke
         await ctx.__aexit__(None, None, None)
 
 
-async def test_tier_config_screen_selecting_heavy_without_gpu_shows_neither():
+async def test_tier_config_screen_selecting_heavy_without_gpu_shows_only_gluetun():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor=None))
 
@@ -674,7 +677,7 @@ async def test_tier_config_screen_selecting_heavy_without_gpu_shows_neither():
         await pilot.click("#heavy")
         await pilot.pause()
 
-        assert app.screen.query_one("#gluetun-check", Checkbox).display is False
+        assert app.screen.query_one("#gluetun-check", Checkbox).display is True
         assert app.screen.query_one("#gpu-check", Checkbox).display is False
 
     finally:
@@ -711,6 +714,10 @@ async def test_tier_config_screen_continue_with_sabnzbd_checked():
         await pilot.pause()
 
         await pilot.click("#homepage-check")
+        await pilot.pause()
+
+        # Gluetun defaults on now - uncheck it to isolate sabnzbd alone.
+        await pilot.click("#gluetun-check")
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -756,6 +763,10 @@ async def test_tier_config_screen_continue_with_recyclarr_checked():
         await pilot.click("#homepage-check")
         await pilot.pause()
 
+        # Gluetun defaults on now - uncheck it to isolate recyclarr alone.
+        await pilot.click("#gluetun-check")
+        await pilot.pause()
+
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -776,9 +787,8 @@ async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
         await pilot.click("#medium")
         await pilot.pause()
 
-        await pilot.click("#gluetun-check")
-        await pilot.pause()
-
+        # Gluetun now defaults on - leave it untouched rather than
+        # clicking it (which would toggle it off).
         await pilot.click("#homepage-check")
         await pilot.pause()
 
@@ -859,6 +869,11 @@ async def test_tier_config_screen_continue_with_homepage_unchecked():
         await pilot.pause()
 
         await pilot.click("#homepage-check")
+        await pilot.pause()
+
+        # Gluetun defaults on now - uncheck it so the only thing under
+        # test here is homepage being unchecked.
+        await pilot.click("#gluetun-check")
         await pilot.pause()
 
         await pilot.click("#continue")
