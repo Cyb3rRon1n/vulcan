@@ -10,6 +10,7 @@ from installer.post_install import (
     latest_backup,
     latest_export,
     pull_stack,
+    remove_orphaned_containers,
     restore_stack,
     stack_containers_exist,
     uninstall_stack,
@@ -848,6 +849,51 @@ def test_stack_containers_exist_false_when_docker_reports_nothing():
         result = stack_containers_exist("stack")
 
     assert result is False
+
+
+def test_remove_orphaned_containers_success():
+
+    proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", return_value=proc) as mock_run:
+        result = remove_orphaned_containers("stack")
+
+    assert result == {"success": True, "error": None}
+
+    args = mock_run.call_args[0][0]
+    assert args == ["docker", "compose", "-p", "stack", "down"]
+
+
+def test_remove_orphaned_containers_failure():
+
+    proc = MagicMock(returncode=1)
+
+    with patch("installer.post_install.run_docker_command", return_value=proc):
+        result = remove_orphaned_containers("stack")
+
+    assert result["success"] is False
+    assert "Failed to stop orphaned containers" in result["error"]
+
+
+def test_remove_orphaned_containers_never_touches_stack_dir(tmp_path):
+    """
+    The real reason this is a separate function from uninstall_stack(),
+    not a call to it: this is used mid-port-conflict-remediation, where
+    stack/ holds the *freshly generated* compose file the current run
+    is trying to start, not a stale one - uninstall_stack()'s own
+    unconditional _remove_stack_dir() would delete it.
+    """
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", return_value=proc):
+        remove_orphaned_containers("stack")
+
+    assert (stack_dir / "docker-compose.yml").exists()
 
 
 def test_uninstall_stack_falls_back_to_project_teardown_when_stack_dir_already_gone(tmp_path):

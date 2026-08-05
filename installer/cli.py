@@ -30,6 +30,7 @@ from installer.generate import (
     default_timezone,
     load_previous_state,
     render_stack_summary,
+    resolve_ports,
     write_stack,
 )
 from installer.post_install import (
@@ -39,6 +40,7 @@ from installer.post_install import (
     latest_backup,
     latest_export,
     pull_stack,
+    remove_orphaned_containers,
     restore_stack,
     stack_containers_exist,
     uninstall_stack,
@@ -953,8 +955,134 @@ def _gather_generation_config(
         cloudflare_dns=cloudflare_dns_value,
         cloudflare_email=cloudflare_email_value,
         auth_username=auth_username_value,
-        auth_password_hash=auth_password_hash_value
+        auth_password_hash=auth_password_hash_value,
+        port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {}
     )
+
+
+def _resolve_port_conflicts(config: GenerationConfig, result: dict, non_interactive: bool) -> dict:
+    """
+    Step two of the port-conflict work: check_ports_available() already
+    diagnosed a real cause (see preflight.py), but the only thing this
+    project ever did with that diagnosis was print it and refuse. This
+    turns "here's what's wrong" into "let's fix it and retry" for the
+    two real cases the diagnosis already distinguishes - your own
+    orphaned containers (safe to clean up automatically) and an
+    unrelated service (needs a different port, not a cleanup). A third,
+    genuinely unresolvable case (a non-Docker/native service holding
+    the port, or a service - Traefik, FlareSolverr - deliberately out
+    of remap scope) still ends in the same clean refusal this always
+    had; this only replaces the *dead end*, not the boundary.
+
+    Loops rather than handling one pass, since fixing one conflict can
+    surface another (e.g. a typed-in port that happens to collide with
+    a second still-conflicting service) - each pass regenerates via
+    write_stack() (same re-run-safe path every other regenerate uses)
+    and re-checks for real before declaring victory or asking again.
+    """
+
+    while True:
+
+        port_check = check_ports_available(result["compose_path"])
+
+        if port_check["available"]:
+            return result
+
+        console.print("[red]Can't start - port(s) already in use:[/red]")
+        console.print(format_port_conflicts(port_check))
+
+        if non_interactive:
+            console.print(
+                "[red]Free them, then run this when you're ready:\n"
+                f"  docker compose -f {result['compose_path']} --env-file "
+                f"{result['env_path']} up -d[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        remappable = resolve_ports(config)
+        resolved_any = False
+
+        # remove_orphaned_containers() tears down the whole orphaned
+        # project in one call - real testing against actual orphaned
+        # containers surfaced that asking once per conflicting port
+        # (own_orphan is often true for several ports at once, since
+        # they're all the same leftover stack) meant every port after
+        # the first just re-asked to clean up containers that were
+        # already gone. One confirm covers every own-orphan port in
+        # this pass.
+        own_orphan_cleaned = False
+
+        for port in port_check["conflicts"]:
+
+            service_key = port_check["port_services"].get(port)
+
+            if port_check["own_orphan"].get(port):
+
+                if own_orphan_cleaned:
+                    resolved_any = True
+                    continue
+
+                if typer.confirm(
+                    f"Port {port} (and any other ports below from the same stack) is "
+                    "held by your own orphaned containers from a previous stack. Stop "
+                    "and remove them now?",
+                    default=True
+                ):
+
+                    cleanup = remove_orphaned_containers(Path(result["compose_path"]).parent.name)
+
+                    if cleanup["success"]:
+                        resolved_any = True
+                        own_orphan_cleaned = True
+                    else:
+                        console.print(f"[red]{cleanup['error']}[/red]")
+
+                continue
+
+            if service_key is None or service_key not in remappable:
+
+                console.print(
+                    f"[yellow]Port {port} can't be remapped automatically - free it "
+                    "manually and retry.[/yellow]"
+                )
+                continue
+
+            new_port_str = typer.prompt(
+                f"Enter a new host port for {service_key} (currently {port}), or "
+                "press Enter to leave it and resolve manually",
+                default="",
+                show_default=False
+            )
+
+            if not new_port_str:
+                continue
+
+            try:
+                new_port = int(new_port_str)
+            except ValueError:
+                console.print("[red]Not a valid port number - skipped.[/red]")
+                continue
+
+            if new_port in remappable.values():
+                console.print(
+                    f"[red]Port {new_port} is already used by another service in "
+                    "this stack - skipped.[/red]"
+                )
+                continue
+
+            config.port_overrides[service_key] = new_port
+            resolved_any = True
+
+        if not resolved_any:
+            console.print(
+                "[red]Free the port(s) above, then run this when you're ready:\n"
+                f"  docker compose -f {result['compose_path']} --env-file "
+                f"{result['env_path']} up -d[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        result = write_stack(config)
+        console.print(f"[green]Stack regenerated at {result['compose_path']}[/green]")
 
 
 def _generate_and_maybe_start(
@@ -1018,18 +1146,7 @@ def _generate_and_maybe_start(
 
     if do_start:
 
-        port_check = check_ports_available(result["compose_path"])
-
-        if not port_check["available"]:
-
-            console.print(
-                "[red]Can't start - port(s) already in use:[/red]\n"
-                f"{format_port_conflicts(port_check)}\n"
-                "[red]Free them, then run this when you're ready:\n"
-                f"  docker compose -f {result['compose_path']} --env-file "
-                f"{result['env_path']} up -d[/red]"
-            )
-            raise typer.Exit(code=1)
+        result = _resolve_port_conflicts(config, result, non_interactive)
 
         proc = run_docker_command(
             [

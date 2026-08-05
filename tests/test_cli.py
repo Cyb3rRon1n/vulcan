@@ -578,6 +578,212 @@ def test_start_aborts_with_identified_port_owner_in_output(tmp_path):
     assert "homepage-old" in result.output
 
 
+def test_interactive_start_remaps_conflicting_port_and_retries(tmp_path):
+    """
+    The real port-conflict-override flow: a remappable conflict no
+    longer just refuses - typing a new port regenerates the stack
+    (write_stack called a second time with the override set) and
+    re-checks for real before starting.
+    """
+
+    media_path = str(tmp_path / "media")
+    mock_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [8096],
+            "owners": {8096: None},
+            "port_services": {8096: "jellyfin"},
+            "own_orphan": {8096: False},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack, patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.run_docker_command", return_value=mock_proc
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light",
+                "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="\n\n\n\n\ny\ny\n9096\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+
+    assert mock_write_stack.call_count == 2
+    regenerated_config = mock_write_stack.call_args_list[1][0][0]
+    assert regenerated_config.port_overrides == {"jellyfin": 9096}
+
+
+def test_interactive_start_own_orphan_conflict_cleans_up_and_retries(tmp_path):
+    """
+    The other real case the diagnosis distinguishes: your own orphaned
+    containers from a previous stack get cleaned up automatically
+    (confirmed) rather than remapped - remove_orphaned_containers(),
+    not uninstall_stack(), since stack/ here is the fresh compose file
+    this run just wrote, not a stale one.
+    """
+
+    media_path = str(tmp_path / "media")
+    mock_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [8080],
+            "owners": {8080: 'your own orphaned containers from a previous stack (project "stack")'},
+            "port_services": {8080: "qbittorrent"},
+            "own_orphan": {8080: True},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
+    ) as mock_cleanup, patch(
+        "installer.cli.run_docker_command", return_value=mock_proc
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light",
+                "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="\n\n\n\n\ny\ny\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+    mock_cleanup.assert_called_once_with("stack")
+
+
+def test_interactive_start_own_orphan_multiple_ports_confirms_once(tmp_path):
+    """
+    Real bug found only by testing against real orphaned containers,
+    not by any mocked test: remove_orphaned_containers() tears down the
+    whole orphaned project in one call, but multiple conflicting ports
+    from that same project each independently reported own_orphan=True
+    - asking once per port meant every port after the first just
+    re-asked to clean up containers that were already gone. Confirmed
+    for real: a 5-port conflict from one leftover stack needed exactly
+    one confirm before the fix's own_orphan_cleaned dedup, not five.
+    """
+
+    media_path = str(tmp_path / "media")
+    mock_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [7878, 8080, 8096],
+            "owners": {port: 'your own orphaned containers from a previous stack (project "stack")' for port in (7878, 8080, 8096)},
+            "port_services": {7878: "radarr", 8080: "qbittorrent", 8096: "jellyfin"},
+            "own_orphan": {7878: True, 8080: True, 8096: True},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
+    ) as mock_cleanup, patch(
+        "installer.cli.run_docker_command", return_value=mock_proc
+    ):
+
+        # Only one "y" for the cleanup confirm, despite three
+        # conflicting ports - if the dedup regresses, this run starves
+        # for input on the second/third port's confirm and the
+        # invocation fails instead of reaching "Stack is up".
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light",
+                "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="\n\n\n\n\ny\ny\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+    mock_cleanup.assert_called_once_with("stack")
+
+
+def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    always_conflicted = {
+        "available": False,
+        "conflicts": [80],
+        "owners": {80: None},
+        "port_services": {80: "traefik"},
+        "own_orphan": {80: False},
+    }
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available", return_value=always_conflicted
+    ), patch(
+        "installer.cli.run_docker_command"
+    ) as mock_run_docker:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "light",
+                "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
+            ],
+            input="\n\n\n\n\ny\ny\n"
+        )
+
+    assert result.exit_code == 1
+    assert "can't be remapped automatically" in result.output
+    mock_run_docker.assert_not_called()
+
+
 def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
 
     media_path = str(tmp_path / "media")

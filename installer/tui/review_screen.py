@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -7,7 +9,7 @@ from textual.widgets import Button, LoadingIndicator, Static
 from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
 from installer.generate import GenerationConfig, render_stack_summary, write_stack
-from installer.post_install import pull_stack
+from installer.post_install import pull_stack, remove_orphaned_containers
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS
 
@@ -39,7 +41,8 @@ class ReviewScreen(Screen):
             cloudflare_dns=self.app.cloudflare_dns,
             cloudflare_email=self.app.cloudflare_email,
             auth_username=self.app.auth_username,
-            auth_password_hash=self.app.auth_password_hash
+            auth_password_hash=self.app.auth_password_hash,
+            port_overrides=self.app.port_overrides
         )
 
     def compose(self) -> ComposeResult:
@@ -93,6 +96,7 @@ class ReviewScreen(Screen):
                 Button("Start Stack Now", id="start", disabled=True),
                 Button("Pull Images Now", id="pull", disabled=True),
                 Button("Finish Without Starting", id="finish", disabled=True),
+                Button("Clean Up & Retry", id="cleanup-retry", disabled=True),
             ),
         )
 
@@ -102,6 +106,7 @@ class ReviewScreen(Screen):
         self.query_one("#start", Button).display = False
         self.query_one("#pull", Button).display = False
         self.query_one("#finish", Button).display = False
+        self.query_one("#cleanup-retry", Button).display = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
@@ -113,6 +118,8 @@ class ReviewScreen(Screen):
             self._start_stack()
         elif event.button.id == "pull":
             self._pull_images()
+        elif event.button.id == "cleanup-retry":
+            self._cleanup_and_retry()
         elif event.button.id == "back":
             self.app.pop_screen()
 
@@ -154,16 +161,39 @@ class ReviewScreen(Screen):
     def _start_stack(self) -> None:
 
         port_check = check_ports_available(self._compose_path)
+        cleanup_button = self.query_one("#cleanup-retry", Button)
 
         if not port_check["available"]:
 
-            self.query_one("#result", Static).update(
-                "Can't start - port(s) already in use:\n"
-                f"{format_port_conflicts(port_check)}\n"
-                "Free them and try again, or use Finish Without Starting."
+            lines = [
+                "Can't start - port(s) already in use:",
+                format_port_conflicts(port_check),
+            ]
+
+            if any(port_check["own_orphan"].values()):
+
+                lines.append(
+                    "Some of these are your own orphaned containers from a "
+                    "previous stack - \"Clean Up & Retry\" removes just those "
+                    "containers, without touching this stack's files, then "
+                    "tries starting again."
+                )
+                cleanup_button.display = True
+                cleanup_button.disabled = False
+
+            else:
+                cleanup_button.display = False
+
+            lines.append(
+                "A port held by something else needs a different host port - "
+                "rerun with `vulcan --plain` for interactive remapping, or free "
+                "it manually and retry here."
             )
+
+            self.query_one("#result", Static).update("\n".join(lines))
             return
 
+        cleanup_button.display = False
         self.query_one("#start", Button).disabled = True
         self.query_one("#pull", Button).disabled = True
         self.query_one("#finish", Button).disabled = True
@@ -171,6 +201,17 @@ class ReviewScreen(Screen):
         self.query_one("#loading", LoadingIndicator).display = True
 
         self._run_start()
+
+    def _cleanup_and_retry(self) -> None:
+
+        result = remove_orphaned_containers(Path(self._compose_path).parent.name)
+
+        if not result["success"]:
+            self.query_one("#result", Static).update(result["error"])
+            return
+
+        self.query_one("#cleanup-retry", Button).display = False
+        self._start_stack()
 
     def _pull_images(self) -> None:
 

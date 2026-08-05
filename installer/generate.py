@@ -103,6 +103,25 @@ class GenerationConfig:
     auth_password_hash: str | None = None
     cloudflare_dns: bool = False
     cloudflare_email: str | None = None
+    port_overrides: dict[str, int] = field(default_factory=dict)
+
+
+def resolve_ports(config: GenerationConfig) -> dict[str, int]:
+    """
+    _HOMEPAGE_PORTS is already the single real registry of every
+    service's default host port (used for Homepage tiles/the
+    post-start summary/the Uptime Kuma reference) - port remapping
+    reuses it rather than inventing a second table that could drift
+    out of sync. config.port_overrides wins per-key when present; a
+    conflict-remediation flow (CLI/TUI) is the only real caller that
+    ever sets it. Deliberately no "traefik" key - see _HOMEPAGE_PORTS's
+    own comment for why it was never in that table to begin with, and
+    80/443 aren't safely remappable the same way (Let's Encrypt HTTP-01
+    assumptions, and every routed https://service.domain URL scheme
+    already assumes standard ports).
+    """
+
+    return {**_HOMEPAGE_PORTS, **config.port_overrides}
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -151,6 +170,7 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "domain": config.domain,
         "cloudflare_dns": config.cloudflare_dns,
         "cloudflare_email": config.cloudflare_email,
+        "port_overrides": config.port_overrides,
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -240,7 +260,8 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         domain=config.domain,
         homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip),
         cloudflare_dns=config.cloudflare_dns,
-        cloudflare_email=config.cloudflare_email
+        cloudflare_email=config.cloudflare_email,
+        ports=resolve_ports(config)
     )
 
 
@@ -305,7 +326,9 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
     if routed:
         return f"https://{key}.{config.domain}"
 
-    if key not in _HOMEPAGE_PORTS:
+    ports = resolve_ports(config)
+
+    if key not in ports:
 
         # No non-routed fallback exists for this service - e.g.
         # Traefik's own dashboard, which is only ever reachable
@@ -314,7 +337,7 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
         # deliberately avoided).
         return None
 
-    return f"http://{host_ip or 'localhost'}:{_HOMEPAGE_PORTS[key]}"
+    return f"http://{host_ip or 'localhost'}:{ports[key]}"
 
 
 def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> str:

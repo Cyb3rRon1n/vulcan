@@ -301,6 +301,28 @@ def restore_stack(
     return {"success": True, "error": None}
 
 
+def remove_orphaned_containers(project_name: str) -> dict:
+    """
+    Narrower than uninstall_stack() on purpose: stops and removes just
+    the containers still carrying this project's compose label, by
+    label alone (`docker compose -p <project> down`, no -f needed - the
+    exact mechanism stack_containers_exist()'s own docstring already
+    established) - and never touches stack/ on disk. The port-conflict
+    remediation flow calls this for the "your own orphaned containers"
+    case, where stack/ is *not* stale - it's the freshly-generated
+    stack the current run is actively trying to start, so
+    uninstall_stack()'s own unconditional _remove_stack_dir() would
+    delete the very compose file this run just wrote.
+    """
+
+    down = run_docker_command(["docker", "compose", "-p", project_name, "down"])
+
+    if down.returncode != 0:
+        return {"success": False, "error": "Failed to stop orphaned containers - check `docker compose logs`."}
+
+    return {"success": True, "error": None}
+
+
 def stack_containers_exist(project_name: str) -> bool:
     """
     True if any container (running or stopped) still carries Docker

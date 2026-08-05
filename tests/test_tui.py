@@ -2123,7 +2123,13 @@ async def test_review_screen_start_stack_port_conflict_stays_interactive():
 
         with patch(
             "installer.tui.review_screen.check_ports_available",
-            return_value={"available": False, "conflicts": [8080], "owners": {8080: None}}
+            return_value={
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: None},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: False},
+            }
         ), patch(
             "installer.tui.review_screen.run_docker_command"
         ) as mock_run_docker:
@@ -2141,6 +2147,65 @@ async def test_review_screen_start_stack_port_conflict_stays_interactive():
         assert app.screen.query_one("#pull", Button).disabled is False
         assert app.screen.query_one("#finish", Button).disabled is False
         assert app.screen.query_one("#back", Button).disabled is False
+        assert app.screen.query_one("#cleanup-retry", Button).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_own_orphan_conflict_shows_cleanup_button_and_retries():
+    """
+    The TUI's real, narrower treatment of port-conflict override: no
+    interactive remap sub-flow (see CLAUDE.md for why), but the
+    auto-cleanable "own orphaned containers" case gets a real button
+    that removes just those containers and retries the start.
+    """
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        conflict_then_clear = [
+            {
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: 'your own orphaned containers from a previous stack (project "stack")'},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: True},
+            },
+            {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+        ]
+
+        mock_proc = MagicMock(returncode=0)
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available", side_effect=conflict_then_clear
+        ), patch(
+            "installer.tui.review_screen.remove_orphaned_containers",
+            return_value={"success": True, "error": None}
+        ) as mock_cleanup, patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            assert app.screen.query_one("#cleanup-retry", Button).display is True
+
+            await pilot.click("#cleanup-retry")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        mock_cleanup.assert_called_once_with("stack")
+        assert app.is_running is False
 
     finally:
         await ctx.__aexit__(None, None, None)
