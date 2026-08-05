@@ -1,7 +1,12 @@
 import socket
 from unittest.mock import MagicMock, patch
 
-from installer.preflight import check_ports_available, format_port_conflicts, identify_port_owner
+from installer.preflight import (
+    check_ports_available,
+    format_port_conflicts,
+    identify_port_owner,
+    port_owner_is_own_orphan,
+)
 
 
 COMPOSE_TWO_SERVICES = """
@@ -40,7 +45,9 @@ def test_check_ports_available_no_conflicts(tmp_path):
     with patch("installer.preflight._port_in_use", return_value=False):
         result = check_ports_available(str(compose_path))
 
-    assert result == {"available": True, "conflicts": [], "owners": {}}
+    assert result == {
+        "available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}
+    }
 
 
 def test_check_ports_available_reports_conflicts(tmp_path):
@@ -52,10 +59,18 @@ def test_check_ports_available_reports_conflicts(tmp_path):
         "installer.preflight._port_in_use", side_effect=lambda port: port == 7878
     ), patch(
         "installer.preflight.identify_port_owner", return_value=None
+    ), patch(
+        "installer.preflight.port_owner_is_own_orphan", return_value=False
     ):
         result = check_ports_available(str(compose_path))
 
-    assert result == {"available": False, "conflicts": [7878], "owners": {7878: None}}
+    assert result == {
+        "available": False,
+        "conflicts": [7878],
+        "owners": {7878: None},
+        "port_services": {7878: "radarr"},
+        "own_orphan": {7878: False},
+    }
 
 
 def test_check_ports_available_checks_every_port_in_multi_port_service(tmp_path):
@@ -67,10 +82,18 @@ def test_check_ports_available_checks_every_port_in_multi_port_service(tmp_path)
         "installer.preflight._port_in_use", return_value=True
     ), patch(
         "installer.preflight.identify_port_owner", return_value=None
+    ), patch(
+        "installer.preflight.port_owner_is_own_orphan", return_value=False
     ):
         result = check_ports_available(str(compose_path))
 
-    assert result == {"available": False, "conflicts": [80, 443], "owners": {80: None, 443: None}}
+    assert result == {
+        "available": False,
+        "conflicts": [80, 443],
+        "owners": {80: None, 443: None},
+        "port_services": {80: "traefik", 443: "traefik"},
+        "own_orphan": {80: False, 443: False},
+    }
 
 
 def test_check_ports_available_service_with_no_ports_key_does_not_crash(tmp_path):
@@ -81,7 +104,9 @@ def test_check_ports_available_service_with_no_ports_key_does_not_crash(tmp_path
     with patch("installer.preflight._port_in_use", return_value=False):
         result = check_ports_available(str(compose_path))
 
-    assert result == {"available": True, "conflicts": [], "owners": {}}
+    assert result == {
+        "available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}
+    }
 
 
 def test_check_ports_available_real_bound_port_is_detected(tmp_path):
@@ -98,10 +123,20 @@ def test_check_ports_available_real_bound_port_is_detected(tmp_path):
             f'services:\n  test:\n    image: test\n    ports:\n      - "{real_port}:{real_port}"\n'
         )
 
-        with patch("installer.preflight.identify_port_owner", return_value=None):
+        with patch(
+            "installer.preflight.identify_port_owner", return_value=None
+        ), patch(
+            "installer.preflight.port_owner_is_own_orphan", return_value=False
+        ):
             result = check_ports_available(str(compose_path))
 
-    assert result == {"available": False, "conflicts": [real_port], "owners": {real_port: None}}
+    assert result == {
+        "available": False,
+        "conflicts": [real_port],
+        "owners": {real_port: None},
+        "port_services": {real_port: "test"},
+        "own_orphan": {real_port: False},
+    }
 
 
 DOCKER_PS_OUTPUT_UNRELATED_CONTAINER = (
@@ -171,6 +206,63 @@ def test_identify_port_owner_returns_none_on_docker_failure():
         owner = identify_port_owner(8080)
 
     assert owner is None
+
+
+def test_port_owner_is_own_orphan_true_for_matching_project():
+
+    proc = MagicMock(returncode=0, stdout=DOCKER_PS_OUTPUT_OWN_ORPHANED_CONTAINER)
+
+    with patch("installer.preflight.subprocess.run", return_value=proc):
+        assert port_owner_is_own_orphan(8080, own_project_name="stack") is True
+
+
+def test_port_owner_is_own_orphan_false_for_unrelated_container():
+
+    proc = MagicMock(returncode=0, stdout=DOCKER_PS_OUTPUT_UNRELATED_CONTAINER)
+
+    with patch("installer.preflight.subprocess.run", return_value=proc):
+        assert port_owner_is_own_orphan(8080, own_project_name="stack") is False
+
+
+def test_port_owner_is_own_orphan_false_when_no_container_found():
+
+    proc = MagicMock(returncode=0, stdout=DOCKER_PS_OUTPUT_NO_MATCH)
+
+    with patch("installer.preflight.subprocess.run", return_value=proc):
+        assert port_owner_is_own_orphan(8080, own_project_name="stack") is False
+
+
+def test_port_owner_is_own_orphan_false_with_no_own_project_given():
+
+    proc = MagicMock(returncode=0, stdout=DOCKER_PS_OUTPUT_OWN_ORPHANED_CONTAINER)
+
+    with patch("installer.preflight.subprocess.run", return_value=proc):
+        assert port_owner_is_own_orphan(8080, own_project_name=None) is False
+
+
+def test_check_ports_available_maps_gluetun_port_to_qbittorrent_key(tmp_path):
+    """
+    Gluetun's own ports block is qBittorrent's effective port when
+    Gluetun is active - the remediation flow needs to offer to remap
+    "qbittorrent" (the real GenerationConfig.port_overrides key), not
+    a "gluetun" key the template never reads.
+    """
+
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n  gluetun:\n    image: qmcgaw/gluetun\n    ports:\n      - \"8080:8080\"\n"
+    )
+
+    with patch(
+        "installer.preflight._port_in_use", return_value=True
+    ), patch(
+        "installer.preflight.identify_port_owner", return_value=None
+    ), patch(
+        "installer.preflight.port_owner_is_own_orphan", return_value=False
+    ):
+        result = check_ports_available(str(compose_path))
+
+    assert result["port_services"] == {8080: "qbittorrent"}
 
 
 def test_format_port_conflicts_shows_identified_owner():

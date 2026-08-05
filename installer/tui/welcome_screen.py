@@ -48,6 +48,13 @@ class WelcomeScreen(Screen):
         self.app.system_info = info
         self.app.previous_state = previous
 
+        # The TUI has no port-remap UI of its own (see ReviewScreen's
+        # "Clean Up & Retry" - only the own-orphan case gets one) but a
+        # previous port_overrides still needs to survive a regenerate,
+        # the same re-run-safe rule every other field here follows.
+        if previous and previous.get("port_overrides"):
+            self.app.port_overrides = dict(previous["port_overrides"])
+
         self.query_one("#loading", LoadingIndicator).display = False
 
         self.query_one("#results", Static).update(

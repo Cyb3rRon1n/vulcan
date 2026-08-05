@@ -30,16 +30,11 @@ def _port_in_use(port: int) -> bool:
             return True
 
 
-def identify_port_owner(port: int, own_project_name: str | None = None) -> str | None:
+def _find_container_on_port(port: int) -> tuple[str, str, str | None] | None:
     """
-    Best-effort diagnosis of what's actually holding a conflicting
-    port, so a refusal names a real cause instead of just a number -
-    the exact gap that turned the original cAdvisor-vs-qBittorrent
-    incident into a confusing debugging session instead of an obvious
-    one. Docker-only: this project's one hard dependency is already
-    Docker itself, so this needs no new tool (no lsof/ss requirement) -
-    if the port isn't held by a Docker container, this honestly
-    returns None rather than guessing further.
+    The real Docker lookup shared by identify_port_owner() and
+    port_owner_is_own_orphan() - one docker ps call, one parse, so the
+    two can't ever disagree about what's actually holding a port.
 
     docker ps's own `--filter publish=<port>` looked like the right
     tool for this but isn't - confirmed for real, not assumed: it
@@ -76,38 +71,94 @@ def identify_port_owner(port: int, own_project_name: str | None = None) -> str |
         if not port_pattern.search(ports_field):
             continue
 
-        if own_project_name and compose_project == own_project_name:
-            return (
-                f"your own orphaned containers from a previous stack (project "
-                f"\"{compose_project}\") - try `vulcan uninstall` to clean them up, "
-                "then regenerate"
-            )
-
-        return f"container \"{name}\" (image {image})"
+        return name, image, (compose_project or None)
 
     return None
+
+
+def identify_port_owner(port: int, own_project_name: str | None = None) -> str | None:
+    """
+    Best-effort diagnosis of what's actually holding a conflicting
+    port, so a refusal names a real cause instead of just a number -
+    the exact gap that turned the original cAdvisor-vs-qBittorrent
+    incident into a confusing debugging session instead of an obvious
+    one. Docker-only: this project's one hard dependency is already
+    Docker itself, so this needs no new tool (no lsof/ss requirement) -
+    if the port isn't held by a Docker container, this honestly
+    returns None rather than guessing further.
+    """
+
+    found = _find_container_on_port(port)
+
+    if found is None:
+        return None
+
+    name, image, compose_project = found
+
+    if own_project_name and compose_project == own_project_name:
+        return (
+            f"your own orphaned containers from a previous stack (project "
+            f"\"{compose_project}\") - try `vulcan uninstall` to clean them up, "
+            "then regenerate"
+        )
+
+    return f"container \"{name}\" (image {image})"
+
+
+def port_owner_is_own_orphan(port: int, own_project_name: str | None) -> bool:
+    """
+    Structured counterpart to identify_port_owner()'s human-readable
+    string - lets a caller branch on "is this the safe, automatable
+    case" without parsing prose. Reuses the exact same lookup, so the
+    two functions can never disagree about a given port.
+    """
+
+    if not own_project_name:
+        return False
+
+    found = _find_container_on_port(port)
+
+    return found is not None and found[2] == own_project_name
 
 
 def check_ports_available(compose_path: str) -> dict:
 
     compose_path = Path(compose_path)
     parsed = yaml.safe_load(compose_path.read_text()) or {}
-    ports = set()
+    port_services: dict[int, str] = {}
 
-    for service in parsed.get("services", {}).values():
+    for service_name, service in parsed.get("services", {}).items():
 
         for entry in service.get("ports", []):
 
-            host_port = str(entry).split(":")[-2]
-            ports.add(int(host_port))
+            host_port = int(str(entry).split(":")[-2])
 
-    conflicts = sorted(port for port in ports if _port_in_use(port))
+            # Gluetun's own port block is qBittorrent's effective port
+            # when Gluetun is active (proxied through its network
+            # namespace, see the compose template) - the key that
+            # actually controls it in GenerationConfig.port_overrides
+            # is "qbittorrent", not "gluetun".
+            port_services[host_port] = "qbittorrent" if service_name == "gluetun" else service_name
+
+    conflicts = sorted(port for port in port_services if _port_in_use(port))
+    own_project_name = compose_path.parent.name
+
     owners = {
-        port: identify_port_owner(port, own_project_name=compose_path.parent.name)
+        port: identify_port_owner(port, own_project_name=own_project_name)
+        for port in conflicts
+    }
+    own_orphan = {
+        port: port_owner_is_own_orphan(port, own_project_name)
         for port in conflicts
     }
 
-    return {"available": not conflicts, "conflicts": conflicts, "owners": owners}
+    return {
+        "available": not conflicts,
+        "conflicts": conflicts,
+        "owners": owners,
+        "port_services": {port: port_services[port] for port in conflicts},
+        "own_orphan": own_orphan,
+    }
 
 
 def format_port_conflicts(port_check: dict) -> str:

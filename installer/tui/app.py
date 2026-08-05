@@ -36,6 +36,7 @@ class VulcanApp(App):
         self.cloudflare_email: str | None = None
         self.auth_username: str | None = None
         self.auth_password_hash: str | None = None
+        self.port_overrides: dict[str, int] = {}
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())

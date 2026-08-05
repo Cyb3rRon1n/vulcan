@@ -11,7 +11,7 @@ services:
       - ./config/jellyfin:/config
       - ${MEDIA_PATH}/media:/data/media:ro
     ports:
-      - "8096:8096"
+      - "{{ ports['jellyfin'] }}:8096"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -60,7 +60,7 @@ services:
       - ./config/radarr:/config
       - ${MEDIA_PATH}:/data
     ports:
-      - "7878:7878"
+      - "{{ ports['radarr'] }}:7878"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -94,7 +94,7 @@ services:
       - ./config/sonarr:/config
       - ${MEDIA_PATH}:/data
     ports:
-      - "8989:8989"
+      - "{{ ports['sonarr'] }}:8989"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -127,7 +127,7 @@ services:
     volumes:
       - ./config/prowlarr:/config
     ports:
-      - "9696:9696"
+      - "{{ ports['prowlarr'] }}:9696"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -166,7 +166,7 @@ services:
       - gluetun
 {% else %}
     ports:
-      - "8080:8080"
+      - "{{ ports['qbittorrent'] }}:8080"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -201,7 +201,7 @@ services:
       - ./config/sabnzbd:/config
       - ${MEDIA_PATH}:/data
     ports:
-      - "8081:8080"
+      - "{{ ports['sabnzbd'] }}:8080"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -267,7 +267,7 @@ services:
     volumes:
       - ./config/jellyseerr:/app/config
     ports:
-      - "5055:5055"
+      - "{{ ports['jellyseerr'] }}:5055"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -301,7 +301,7 @@ services:
       - ./config/bazarr:/config
       - ${MEDIA_PATH}/media:/data/media
     ports:
-      - "6767:6767"
+      - "{{ ports['bazarr'] }}:6767"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -353,7 +353,10 @@ services:
     volumes:
       - ./config/gluetun:/gluetun
     ports:
-      - "8080:8080"
+      # Effectively qBittorrent's port - see check_ports_available()'s
+      # own comment on why the remap key is "qbittorrent", not
+      # "gluetun".
+      - "{{ ports['qbittorrent'] }}:8080"
     deploy:
       resources:
         limits:
@@ -373,7 +376,7 @@ services:
       - ./config/lidarr:/config
       - ${MEDIA_PATH}:/data
     ports:
-      - "8686:8686"
+      - "{{ ports['lidarr'] }}:8686"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -407,7 +410,7 @@ services:
       - ./config/readarr:/config
       - ${MEDIA_PATH}:/data
     ports:
-      - "8787:8787"
+      - "{{ ports['readarr'] }}:8787"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -494,7 +497,7 @@ services:
       - ./config/authelia:/config
       - ./config/authelia/secrets:/secrets
     ports:
-      - "9091:9091"
+      - "{{ ports['authelia'] }}:9091"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -548,7 +551,7 @@ services:
     volumes:
       - ./config/homepage:/app/config
     ports:
-      - "3000:3000"
+      - "{{ ports['homepage'] }}:3000"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -577,7 +580,7 @@ services:
     volumes:
       - ./config/uptime-kuma:/app/data
     ports:
-      - "3001:3001"
+      - "{{ ports['uptime-kuma'] }}:3001"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"

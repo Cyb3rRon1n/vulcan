@@ -15,6 +15,7 @@ from installer.generate import (
     render_env,
     render_homepage_services,
     render_stack_summary,
+    resolve_ports,
     save_state,
     write_stack,
 )
@@ -30,7 +31,8 @@ def make_config(
     cloudflare_dns: bool = False,
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
-    auth_password_hash: str | None = None
+    auth_password_hash: str | None = None,
+    port_overrides: dict[str, int] | None = None
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -46,7 +48,8 @@ def make_config(
         cloudflare_dns=cloudflare_dns,
         cloudflare_email=cloudflare_email,
         auth_username=auth_username,
-        auth_password_hash=auth_password_hash
+        auth_password_hash=auth_password_hash,
+        port_overrides=port_overrides or {}
     )
 
 
@@ -164,6 +167,74 @@ def test_render_compose_medium_with_sabnzbd_uses_remapped_port():
     sabnzbd_block = output.split("sabnzbd:", 1)[1].split("jellyseerr:", 1)[0]
     assert '"8081:8080"' in sabnzbd_block
     assert "${MEDIA_PATH}:/data" in sabnzbd_block
+
+
+def test_resolve_ports_returns_defaults_when_no_overrides():
+
+    ports = resolve_ports(make_config("light"))
+
+    assert ports["jellyfin"] == 8096
+    assert ports["qbittorrent"] == 8080
+    assert ports["sabnzbd"] == 8081
+
+
+def test_resolve_ports_override_wins_over_default():
+
+    ports = resolve_ports(make_config("light", port_overrides={"jellyfin": 9096}))
+
+    assert ports["jellyfin"] == 9096
+    # every other service's default is untouched by one override
+    assert ports["radarr"] == 7878
+
+
+def test_resolve_ports_has_no_traefik_entry():
+    """
+    Traefik's 80/443 are deliberately out of remap scope - see
+    resolve_ports()'s own docstring - so it should never appear as a
+    remappable key even with no overrides at all.
+    """
+
+    assert "traefik" not in resolve_ports(make_config("heavy"))
+
+
+def test_render_compose_jellyfin_uses_port_override():
+
+    output = render_compose(make_config("light", port_overrides={"jellyfin": 9096}))
+
+    jellyfin_block = output.split("jellyfin:", 1)[1].split("radarr:", 1)[0]
+    assert '"9096:8096"' in jellyfin_block
+    assert "8096:8096" not in jellyfin_block
+
+
+def test_render_compose_gluetun_port_follows_qbittorrent_override():
+    """
+    Gluetun's own ports block is qBittorrent's effective port when
+    Gluetun is active - the override key is "qbittorrent", not
+    "gluetun" (see check_ports_available()'s port_services mapping),
+    and the compose template reuses ports['qbittorrent'] in both
+    places for exactly that reason.
+    """
+
+    output = render_compose(make_config("medium", {"gluetun"}, port_overrides={"qbittorrent": 9080}))
+
+    gluetun_block = output.split("gluetun:", 1)[1].split("lidarr:", 1)[0]
+    assert '"9080:8080"' in gluetun_block
+
+
+def test_render_compose_sabnzbd_port_override_leaves_container_port_fixed():
+
+    output = render_compose(make_config("light", {"sabnzbd"}, port_overrides={"sabnzbd": 9081}))
+
+    sabnzbd_block = output.split("sabnzbd:", 1)[1].split("recyclarr:", 1)[0]
+    assert '"9081:8080"' in sabnzbd_block
+
+
+def test_render_compose_no_override_keeps_default_port():
+
+    output = render_compose(make_config("light"))
+
+    jellyfin_block = output.split("jellyfin:", 1)[1].split("radarr:", 1)[0]
+    assert '"8096:8096"' in jellyfin_block
 
 
 def test_render_compose_medium_without_recyclarr_omits_it():
@@ -685,6 +756,28 @@ def test_render_homepage_services_creates_tiles_for_enabled_services():
     assert groups["Media Management"]["Radarr"]["href"] == "http://localhost:7878"
     assert groups["Downloads"]["qBittorrent"]["href"] == "http://localhost:8080"
     assert "Monitoring" not in groups
+
+
+def test_render_homepage_services_reflects_port_override():
+    """
+    A remapped port has to change every real link to the service, not
+    just the compose file - otherwise the Homepage tile (and the
+    post-start summary/Uptime Kuma reference, which share the same
+    _service_href()) would point at the old, now-wrong port.
+    """
+
+    output = render_homepage_services(
+        make_config(
+            "heavy",
+            custom_services={"jellyfin", "homepage"},
+            port_overrides={"jellyfin": 9096}
+        ),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    assert groups["Media"]["Jellyfin"]["href"] == "http://localhost:9096"
 
 
 def test_render_homepage_services_every_tile_has_a_real_description():
@@ -1593,6 +1686,23 @@ def test_save_and_load_previous_state_round_trip(tmp_path):
     assert state["gpu_vendor"] == "amd"
     assert state["custom_services"] is None
     assert "generated_at" in state
+
+
+def test_save_and_load_previous_state_round_trips_port_overrides(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path="/mnt/media",
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        port_overrides={"jellyfin": 9096, "qbittorrent": 9080}
+    )
+
+    save_state(config, tmp_path)
+    state = load_previous_state(tmp_path)
+
+    assert state["port_overrides"] == {"jellyfin": 9096, "qbittorrent": 9080}
 
 
 def test_save_and_load_previous_state_round_trips_custom_services(tmp_path):
