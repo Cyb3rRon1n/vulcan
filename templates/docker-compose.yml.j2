@@ -258,6 +258,39 @@ services:
           memory: "{{ limits.decluttarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'maintainerr' in enabled %}
+  maintainerr:
+    image: ghcr.io/maintainerr/maintainerr:latest
+    container_name: maintainerr
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/maintainerr:/opt/data
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['maintainerr'] }}:6246"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.maintainerr.rule=Host(`maintainerr.{{ domain }}`)"
+      - "traefik.http.routers.maintainerr.entrypoints=websecure"
+      - "traefik.http.routers.maintainerr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.maintainerr.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.maintainerr.loadbalancer.server.port=6246"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.maintainerr.middlewares=authelia@docker"
+{% endif %}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.maintainerr.cpus }}"
+          memory: "{{ limits.maintainerr.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'jellyseerr' in enabled %}
   jellyseerr:
     image: fallenbagel/jellyseerr:latest

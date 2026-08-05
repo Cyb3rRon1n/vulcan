@@ -36,7 +36,7 @@ STATE_FILENAME = ".vulcan-state.json"
 # SABnzbd specifically (8081 here, not its internal 8080).
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "jellyseerr"],
-    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
     "Security": ["authelia"],
@@ -57,6 +57,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "uptime-kuma": 3001,
     "homepage": 3000,
     "authelia": 9091,
+    "maintainerr": 6246,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -84,6 +85,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "uptime-kuma": "Uptime monitoring for your services",
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
+    "maintainerr": "Automatically cleans up unwatched or unwanted media",
 }
 
 
@@ -660,6 +662,25 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "the real API key from Settings > General in each app's own web UI before "
             "Decluttarr can connect. It starts in test_run: true (a dry run - nothing is "
             "actually removed) - flip that to false once you've confirmed the config is right."
+        )
+
+    if "maintainerr" in enabled_service_keys(config):
+
+        # Unlike Decluttarr/Recyclarr, Maintainerr has no config file
+        # for Vulcan to pre-seed at all - Plex/Jellyfin/Emby
+        # credentials, Radarr/Sonarr API keys, and cleanup rules are
+        # all entered through its own web UI setup wizard on first
+        # visit. Same "needs one-time setup, no secret to invent"
+        # treatment as the Uptime Kuma reference warning, just without
+        # that one's per-service URL list - Maintainerr's setup wizard
+        # itself is where each *arr connection gets configured, so
+        # there's nothing else useful to enumerate here.
+        maintainerr_href = _service_href("maintainerr", config, host_ip)
+
+        warnings.append(
+            f"Maintainerr needs one-time setup: visit {maintainerr_href}, connect it to "
+            "Jellyfin (or Plex/Emby) and Radarr/Sonarr through its own setup wizard, then "
+            "create your library-cleanup rules there - nothing is pre-configured."
         )
 
     if "readarr" in enabled_service_keys(config):

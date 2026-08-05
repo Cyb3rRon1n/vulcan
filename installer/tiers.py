@@ -44,6 +44,13 @@ _LIGHT_SERVICES = [
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
     ServiceDefinition("recyclarr", "Recyclarr", optional=True),
     ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True),
+    # Tier-agnostic like Decluttarr, and for the same reason: Radarr/
+    # Sonarr are non-optional in every tier, so Maintainerr always has
+    # something real to manage - it's the other half of the original
+    # "media agent" request (unwatched/unwanted library cleanup),
+    # complementary to Decluttarr's download-queue cleanup, not a
+    # duplicate of it.
+    ServiceDefinition("maintainerr", "Maintainerr (library cleanup)", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
 ]
 

@@ -272,6 +272,37 @@ def test_render_compose_medium_with_decluttarr_mounts_config():
     assert "./config/decluttarr/config.yaml:/app/config/config.yaml" in decluttarr_block
 
 
+def test_render_compose_medium_without_maintainerr_omits_it():
+
+    output = render_compose(make_config("medium"))
+
+    assert "container_name: maintainerr" not in output
+
+
+def test_render_compose_medium_with_maintainerr_mounts_media_and_config():
+
+    output = render_compose(make_config("medium", {"maintainerr"}))
+
+    maintainerr_block = _service_block(output, "maintainerr", "jellyseerr")
+    assert "image: ghcr.io/maintainerr/maintainerr:latest" in maintainerr_block
+    assert 'user: "${PUID}:${PGID}"' in maintainerr_block
+    assert "./config/maintainerr:/opt/data" in maintainerr_block
+    # Read-write, and at the same internal path Radarr/Sonarr/qBittorrent
+    # already use - Maintainerr's leftover-folder cleanup needs to see
+    # media at the same path those apps report it at, not a separate
+    # read-only mount like Jellyfin/Bazarr get.
+    assert "${MEDIA_PATH}:/data" in maintainerr_block
+    assert '"8080:8080"' not in maintainerr_block
+
+
+def test_render_compose_maintainerr_uses_port_override():
+
+    output = render_compose(make_config("medium", {"maintainerr"}, port_overrides={"maintainerr": 7246}))
+
+    maintainerr_block = _service_block(output, "maintainerr", "jellyseerr")
+    assert '"7246:6246"' in maintainerr_block
+
+
 def test_render_compose_heavy_includes_all_new_services():
 
     output = render_compose(
@@ -819,6 +850,20 @@ def test_render_homepage_services_creates_readarr_tile():
 
     assert groups["Media Management"]["Readarr"]["href"] == "http://localhost:8787"
     assert groups["Media Management"]["Readarr"]["icon"] == "readarr.png"
+
+
+def test_render_homepage_services_creates_maintainerr_tile():
+
+    output = render_homepage_services(
+        make_config("light", {"maintainerr"}),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+    tile = groups["Media Management"]["Maintainerr (library cleanup)"]
+
+    assert tile["href"] == "http://localhost:6246"
+    assert tile["icon"] == "maintainerr.png"
 
 
 def test_render_homepage_services_uses_host_ip_when_provided():
@@ -1374,6 +1419,47 @@ def test_write_stack_never_overwrites_existing_decluttarr_config(tmp_path):
     write_stack(config, output_dir=tmp_path / "stack")
 
     assert config_path.read_text() == "# hand-edited, real API keys filled in\n"
+
+
+def test_write_stack_warns_when_maintainerr_enabled(tmp_path):
+    """
+    Unlike Decluttarr/Recyclarr, Maintainerr has no config file for
+    Vulcan to pre-seed at all - the warning is purely a "go do the
+    one-time setup wizard" pointer, the same shape the Uptime Kuma
+    reference warning already established.
+    """
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"maintainerr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    warning = next(w for w in result["warnings"] if "maintainerr" in w.lower())
+    assert "one-time setup" in warning
+    assert "http://" in warning
+    assert not (tmp_path / "stack" / "config" / "maintainerr" / "config.yaml").exists()
+
+
+def test_write_stack_no_maintainerr_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
 
 
 def test_write_stack_warns_when_traefik_domain_configured(tmp_path):
