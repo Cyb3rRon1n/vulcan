@@ -8,7 +8,7 @@ from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
 from installer.generate import GenerationConfig, render_stack_summary, write_stack
 from installer.post_install import pull_stack
-from installer.preflight import check_ports_available
+from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS
 
 
@@ -157,11 +157,10 @@ class ReviewScreen(Screen):
 
         if not port_check["available"]:
 
-            conflicts = ", ".join(str(p) for p in port_check["conflicts"])
-
             self.query_one("#result", Static).update(
-                f"Can't start - port(s) already in use: {conflicts}. Free them and "
-                "try again, or use Finish Without Starting."
+                "Can't start - port(s) already in use:\n"
+                f"{format_port_conflicts(port_check)}\n"
+                "Free them and try again, or use Finish Without Starting."
             )
             return
 

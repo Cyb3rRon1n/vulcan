@@ -520,7 +520,7 @@ def test_start_aborts_cleanly_on_port_conflict(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
         "installer.cli.check_ports_available",
-        return_value={"available": False, "conflicts": [8080]}
+        return_value={"available": False, "conflicts": [8080], "owners": {8080: None}}
     ), patch(
         "installer.cli.run_docker_command"
     ) as mock_run_docker:
@@ -539,6 +539,43 @@ def test_start_aborts_cleanly_on_port_conflict(tmp_path):
     assert result.exit_code == 1
     assert "8080" in result.output
     mock_run_docker.assert_not_called()
+
+
+def test_start_aborts_with_identified_port_owner_in_output(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available",
+        return_value={
+            "available": False,
+            "conflicts": [8080],
+            "owners": {8080: 'container "homepage-old" (image ghcr.io/gethomepage/homepage:latest)'}
+        }
+    ), patch(
+        "installer.cli.run_docker_command"
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light",
+                "--media-path", media_path,
+                "--non-interactive",
+                "--yes",
+                "--start"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "homepage-old" in result.output
 
 
 def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):

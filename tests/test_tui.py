@@ -2108,7 +2108,7 @@ async def test_review_screen_start_stack_port_conflict_stays_interactive():
 
         with patch(
             "installer.tui.review_screen.check_ports_available",
-            return_value={"available": False, "conflicts": [8080]}
+            return_value={"available": False, "conflicts": [8080], "owners": {8080: None}}
         ), patch(
             "installer.tui.review_screen.run_docker_command"
         ) as mock_run_docker:
