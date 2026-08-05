@@ -1,5 +1,11 @@
 # Vulcan
 
+<p align="center">
+  <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml"><img src="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+</p>
+
 **An intelligent media stack forge.**
 
 - **What** — Inspects your Linux host's real hardware, recommends a sized tier, and generates a ready-to-run Jellyfin + `*arr` Docker Compose media stack.
@@ -72,7 +78,7 @@ Non-interactive / scripted use is also supported:
 |---|---|---|---|
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional SABnzbd (Usenet), Recyclarr (TRaSH sync) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Optional Gluetun (VPN) |
-| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | GPU transcoding if detected; Lidarr, Readarr, and Traefik via custom mode |
+| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | GPU transcoding if detected; Lidarr, Readarr, Traefik, Authelia, and Tailscale via custom mode |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
