@@ -6,7 +6,7 @@ Vulcan inspects your system's resources and automatically builds a tailored Jell
 
 Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/GPU, no LLM involved.
 
-*Pre-alpha, actively developed. Every feature below has been verified against real infrastructure as it was built, not just exercised in isolation — see [CONTRIBUTING.md](CONTRIBUTING.md) for what's genuinely finished versus still open.*
+*Pre-alpha, actively developed. Every feature below has been verified against real infrastructure as it was built, not just exercised in isolation — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.*
 
 ---
 
@@ -132,7 +132,7 @@ vulcan import [FILE]           # load images from that tarball on another machin
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth, and [ROADMAP.md](ROADMAP.md) tracks what's shipped versus still open.
 
 ---
 
