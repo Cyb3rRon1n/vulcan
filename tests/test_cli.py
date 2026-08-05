@@ -893,6 +893,35 @@ def test_non_interactive_medium_with_explicit_vpn_flag(tmp_path):
     assert "fill in your VPN credentials" in result.output
 
 
+def test_prints_all_three_tier_compositions(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "medium", "--media-path", media_path,
+                "--non-interactive", "--yes", "--no-homepage"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Light:" in result.output
+    assert "Medium:" in result.output
+    assert "Heavy:" in result.output
+    assert "Jellyfin" in result.output
+    assert "Uptime Kuma" in result.output
+
+
 def test_non_interactive_light_with_explicit_sabnzbd_flag(tmp_path):
 
     media_path = str(tmp_path / "media")

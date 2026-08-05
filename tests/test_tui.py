@@ -4,7 +4,16 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from textual.widgets import Button, Checkbox, Input, LoadingIndicator, RadioSet, SelectionList, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    LoadingIndicator,
+    RadioButton,
+    RadioSet,
+    SelectionList,
+    Static,
+)
 
 from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
@@ -983,10 +992,59 @@ async def test_tier_config_screen_focus_clears_error_line_for_untooltipped_widge
         await pilot.pause()
         assert app.screen.query_one("#tier-error", Static).content != ""
 
-        app.screen.query_one("#tier-set", RadioSet).focus()
+        # #tier-set (the RadioSet) is deliberately no longer "untooltipped" -
+        # it now carries the current tier's composition (see the dedicated
+        # tests for that) - so #back is used here instead as a widget that
+        # genuinely has no tooltip.
+        app.screen.query_one("#back", Button).focus()
         await pilot.pause()
 
         assert app.screen.query_one("#tier-error", Static).content == ""
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_shows_default_tier_composition_on_mount():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        error_text = app.screen.query_one("#tier-error", Static).content
+        assert "Jellyfin" in error_text
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_selecting_a_tier_updates_composition_line():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        app.screen.query_one("#heavy", RadioButton).value = True
+        await pilot.pause()
+
+        error_text = app.screen.query_one("#tier-error", Static).content
+        assert "Uptime Kuma" in error_text
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_radio_buttons_have_real_composition_tooltips():
+
+    from installer.tiers import TIERS, tier_description
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        for tier_id in ("light", "medium", "heavy"):
+            button = app.screen.query_one(f"#{tier_id}", RadioButton)
+            assert button.tooltip == tier_description(TIERS[tier_id])
 
     finally:
         await ctx.__aexit__(None, None, None)

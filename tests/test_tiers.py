@@ -1,5 +1,5 @@
 from installer.detect import SystemInfo
-from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
+from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
 
 def make_system_info(
@@ -156,3 +156,29 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     assert all_keys == union_keys
     assert len(all_keys) == 20
     assert len(ALL_SERVICES) == len(all_keys)
+
+
+def test_tier_description_light_lists_core_and_optional_services():
+
+    description = tier_description(TIERS["light"])
+
+    assert "Jellyfin" in description
+    assert "Radarr" in description
+    assert "- optional:" in description
+    assert "SABnzbd" in description
+    assert "Decluttarr" in description
+
+
+def test_tier_description_reflects_real_service_membership():
+    """
+    Generated from the tier's own real ServiceDefinition list, not a
+    hand-maintained copy - a service added to _HEAVY_SERVICES should
+    show up here automatically, with no separate description to update.
+    """
+
+    for tier in TIERS.values():
+
+        description = tier_description(tier)
+
+        for service in tier.services:
+            assert service.display_name in description

@@ -45,7 +45,7 @@ from installer.post_install import (
     update_stack,
 )
 from installer.preflight import check_ports_available
-from installer.tiers import ALL_SERVICES, TIERS, recommend_tier
+from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
 
 app = typer.Typer(
@@ -621,6 +621,9 @@ def _gather_generation_config(
         f"Recommended tier: [bold]{recommendation.tier.display_name}[/bold] - "
         f"{recommendation.explanation}"
     )
+
+    for tier_name in ("light", "medium", "heavy"):
+        console.print(f"  {TIERS[tier_name].display_name}: {tier_description(TIERS[tier_name])}")
 
     if tier is not None:
 
