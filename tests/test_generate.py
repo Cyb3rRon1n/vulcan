@@ -26,6 +26,8 @@ def make_config(
     gpu_vendor: str | None = None,
     custom_services: set[str] | None = None,
     domain: str | None = None,
+    cloudflare_dns: bool = False,
+    cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password_hash: str | None = None
 ) -> GenerationConfig:
@@ -40,6 +42,8 @@ def make_config(
         gpu_vendor=gpu_vendor,
         custom_services=custom_services,
         domain=domain,
+        cloudflare_dns=cloudflare_dns,
+        cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password_hash=auth_password_hash
     )
@@ -432,6 +436,75 @@ def test_render_compose_traefik_dashboard_unprotected_without_authelia():
     assert "dashboard.middlewares" not in output
 
 
+def test_render_compose_tailscale_uses_host_networking():
+
+    output = render_compose(make_config("heavy", enabled_optional={"tailscale"}))
+
+    tailscale_block = _service_block(output, "tailscale", "homepage")
+
+    assert "network_mode: host" in tailscale_block
+    assert "TS_AUTHKEY=${TS_AUTHKEY}" in tailscale_block
+    assert "/dev/net/tun:/dev/net/tun" in tailscale_block
+    assert "NET_ADMIN" in tailscale_block
+    assert "NET_RAW" in tailscale_block
+
+
+def test_render_compose_omits_tailscale_when_disabled():
+
+    output = render_compose(make_config("light"))
+
+    assert "container_name: tailscale" not in output
+
+
+def test_render_compose_cloudflare_dns_adds_certresolver_flags_and_token():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com", cloudflare_dns=True)
+    )
+
+    traefik_block = _service_block(output, "traefik", "authelia")
+
+    assert "--certificatesresolvers.cloudflare.acme.dnschallenge=true" in traefik_block
+    assert "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare" in traefik_block
+    assert "--certificatesresolvers.cloudflare.acme.storage=/etc/traefik/acme.json" in traefik_block
+    assert "CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}" in traefik_block
+
+
+def test_render_compose_cloudflare_dns_uses_real_email():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik"}, domain="media.example.com",
+            cloudflare_dns=True, cloudflare_email="me@example.com"
+        )
+    )
+
+    assert "--certificatesresolvers.cloudflare.acme.email=me@example.com" in output
+
+
+def test_render_compose_cloudflare_dns_adds_certresolver_label_to_every_routed_service():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik", "authelia"}, domain="media.example.com",
+            cloudflare_dns=True
+        )
+    )
+
+    jellyfin_block = _jellyfin_block(output)
+    assert "traefik.http.routers.jellyfin.tls.certresolver=cloudflare" in jellyfin_block
+
+
+def test_render_compose_omits_cloudflare_certresolver_when_disabled():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+    )
+
+    assert "certresolver" not in output
+    assert "CF_DNS_API_TOKEN" not in output
+
+
 def test_render_compose_amd_gpu_adds_device_and_group(tmp_path):
 
     with patch("installer.generate.detect_render_group_gid", return_value=105):
@@ -504,6 +577,68 @@ def test_render_env_gluetun_comment_points_to_real_provider_docs():
 
     assert "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers" in output
     assert "see docs" not in output
+
+
+def test_render_env_includes_vpn_placeholders_when_gluetun_enabled_via_custom_mode():
+    """
+    Regression lock for a real, pre-existing bug found while adding
+    Tailscale/Cloudflare support: this used to check
+    config.enabled_optional directly, which custom mode never
+    populates (it uses config.custom_services instead) - a custom-mode
+    stack with Gluetun enabled rendered a compose file referencing
+    ${VPN_SERVICE_PROVIDER}/etc. that .env never actually defined.
+    """
+
+    output = render_env(make_config("heavy", custom_services={"jellyfin", "gluetun"}))
+
+    assert "VPN_SERVICE_PROVIDER=changeme" in output
+    assert "WIREGUARD_PRIVATE_KEY=changeme" in output
+
+
+def test_render_env_includes_tailscale_placeholder_when_enabled():
+
+    output = render_env(make_config("heavy", {"tailscale"}))
+
+    assert "TS_AUTHKEY=changeme" in output
+    assert "https://login.tailscale.com/admin/settings/keys" in output
+
+
+def test_render_env_omits_tailscale_when_disabled():
+
+    output = render_env(make_config("light"))
+
+    assert "TS_AUTHKEY" not in output
+
+
+def test_render_env_tailscale_enabled_via_custom_mode():
+
+    output = render_env(make_config("heavy", custom_services={"jellyfin", "tailscale"}))
+
+    assert "TS_AUTHKEY=changeme" in output
+
+
+def test_render_env_includes_cloudflare_placeholders_when_enabled():
+
+    output = render_env(make_config("heavy", {"traefik"}, domain="media.example.com", cloudflare_dns=True))
+
+    assert "CF_DNS_API_TOKEN=changeme" in output
+    assert "CLOUDFLARE_ACME_EMAIL=changeme@example.com" in output
+    assert "dash.cloudflare.com/profile/api-tokens" in output
+
+
+def test_render_env_accepts_explicit_cloudflare_email():
+
+    config = make_config("heavy", {"traefik"}, domain="media.example.com", cloudflare_dns=True)
+    output = render_env(config, cloudflare_acme_email="me@example.com")
+
+    assert "CLOUDFLARE_ACME_EMAIL=me@example.com" in output
+
+
+def test_render_env_omits_cloudflare_when_disabled():
+
+    output = render_env(make_config("heavy", {"traefik"}, domain="media.example.com"))
+
+    assert "CF_DNS_API_TOKEN" not in output
 
 
 def _homepage_groups(output: str) -> dict[str, dict[str, dict]]:
@@ -744,6 +879,141 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "media" / "tv").is_dir()
     assert (media_path / "media" / "music").is_dir()
     assert (media_path / "media" / "books").is_dir()
+
+
+def test_write_stack_warns_when_tailscale_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"tailscale"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("TS_AUTHKEY" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_tailscale_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("TS_AUTHKEY" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_when_cloudflare_dns_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com",
+        cloudflare_dns=True
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("CF_DNS_API_TOKEN" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_when_cloudflare_dns_enabled_without_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        cloudflare_dns=True
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "isn't routing with a domain configured" in warning for warning in result["warnings"]
+    )
+    assert not any("CF_DNS_API_TOKEN" in warning for warning in result["warnings"])
+
+
+def test_write_stack_creates_acme_json_with_correct_permissions(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com",
+        cloudflare_dns=True
+    )
+
+    output_dir = tmp_path / "stack"
+    write_stack(config, output_dir=output_dir)
+
+    acme_path = output_dir / "config" / "traefik" / "acme.json"
+
+    assert acme_path.exists()
+    assert oct(acme_path.stat().st_mode)[-3:] == "600"
+
+
+def test_write_stack_never_overwrites_existing_acme_json(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com",
+        cloudflare_dns=True
+    )
+
+    output_dir = tmp_path / "stack"
+    acme_dir = output_dir / "config" / "traefik"
+    acme_dir.mkdir(parents=True)
+    acme_path = acme_dir / "acme.json"
+    acme_path.write_text('{"real": "certificate data"}')
+    acme_path.chmod(0o600)
+
+    write_stack(config, output_dir=output_dir)
+
+    assert acme_path.read_text() == '{"real": "certificate data"}'
+
+
+def test_write_stack_no_acme_json_without_cloudflare_dns(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com"
+    )
+
+    output_dir = tmp_path / "stack"
+    write_stack(config, output_dir=output_dir)
+
+    assert not (output_dir / "config" / "traefik" / "acme.json").exists()
 
 
 def test_write_stack_warns_for_readarr(tmp_path):

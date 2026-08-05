@@ -36,6 +36,8 @@ class ReviewScreen(Screen):
             gpu_vendor=self.app.gpu_vendor,
             custom_services=self.app.custom_services,
             domain=self.app.domain,
+            cloudflare_dns=self.app.cloudflare_dns,
+            cloudflare_email=self.app.cloudflare_email,
             auth_username=self.app.auth_username,
             auth_password_hash=self.app.auth_password_hash
         )
@@ -61,6 +63,9 @@ class ReviewScreen(Screen):
 
         if self.app.domain:
             summary += f"\nDomain: {self.app.domain}"
+
+        if self.app.cloudflare_dns:
+            summary += f"\nCloudflare DNS (real Let's Encrypt certs): enabled ({self.app.cloudflare_email})"
 
         if self.app.auth_username:
             summary += f"\nAuthelia admin username: {self.app.auth_username}"

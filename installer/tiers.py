@@ -52,6 +52,7 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("readarr", "Readarr", optional=True),
     ServiceDefinition("traefik", "Reverse proxy (Traefik)", optional=True),
     ServiceDefinition("authelia", "Authentication (Authelia)", optional=True),
+    ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
 ]

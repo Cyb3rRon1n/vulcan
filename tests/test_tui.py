@@ -1299,6 +1299,111 @@ async def test_service_selection_screen_domain_hidden_again_when_traefik_deselec
         await ctx.__aexit__(None, None, None)
 
 
+async def test_service_selection_screen_cloudflare_checkbox_hidden_without_traefik():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        assert app.screen.query_one("#cloudflare-dns-check", Checkbox).display is False
+        assert app.screen.query_one("#cloudflare-email-input", Input).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_cloudflare_checkbox_shown_when_traefik_selected():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        app.screen.query_one("#service-list", SelectionList).toggle("traefik")
+        await pilot.pause()
+
+        assert app.screen.query_one("#cloudflare-dns-check", Checkbox).display is True
+        # Email input stays hidden until the checkbox itself is checked.
+        assert app.screen.query_one("#cloudflare-email-input", Input).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_cloudflare_email_shown_when_checkbox_checked():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        app.screen.query_one("#service-list", SelectionList).toggle("traefik")
+        await pilot.pause()
+
+        app.screen.query_one("#cloudflare-dns-check", Checkbox).value = True
+        await pilot.pause()
+
+        assert app.screen.query_one("#cloudflare-email-input", Input).display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_stores_cloudflare_dns_and_email():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        app.screen.query_one("#service-list", SelectionList).toggle("traefik")
+        await pilot.pause()
+
+        app.screen.query_one("#domain-input", Input).value = "media.example.com"
+
+        app.screen.query_one("#cloudflare-dns-check", Checkbox).value = True
+        await pilot.pause()
+
+        app.screen.query_one("#cloudflare-email-input", Input).value = "me@example.com"
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.cloudflare_dns is True
+        assert app.cloudflare_email == "me@example.com"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_no_cloudflare_when_unchecked():
+
+    app, pilot, ctx = await _launch_at_service_selection_screen(
+        make_system_info(), tier_name="light"
+    )
+
+    try:
+
+        app.screen.query_one("#service-list", SelectionList).toggle("traefik")
+        await pilot.pause()
+
+        app.screen.query_one("#domain-input", Input).value = "media.example.com"
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.cloudflare_dns is False
+        assert app.cloudflare_email is None
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_service_selection_screen_continue_stores_domain_when_traefik_selected():
 
     app, pilot, ctx = await _launch_at_service_selection_screen(

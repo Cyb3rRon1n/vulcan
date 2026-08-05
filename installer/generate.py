@@ -101,6 +101,8 @@ class GenerationConfig:
     domain: str | None = None
     auth_username: str | None = None
     auth_password_hash: str | None = None
+    cloudflare_dns: bool = False
+    cloudflare_email: str | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -147,6 +149,8 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
             sorted(config.custom_services) if config.custom_services is not None else None
         ),
         "domain": config.domain,
+        "cloudflare_dns": config.cloudflare_dns,
+        "cloudflare_email": config.cloudflare_email,
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -234,7 +238,9 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
             detect_render_group_gid() if config.gpu_vendor in ("amd", "intel") else None
         ),
         domain=config.domain,
-        homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip)
+        homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip),
+        cloudflare_dns=config.cloudflare_dns,
+        cloudflare_email=config.cloudflare_email
     )
 
 
@@ -242,20 +248,38 @@ def render_env(
     config: GenerationConfig,
     vpn_service_provider: str = "changeme",
     vpn_type: str = "wireguard",
-    wireguard_private_key: str = "changeme"
+    wireguard_private_key: str = "changeme",
+    tailscale_authkey: str = "changeme",
+    cloudflare_dns_api_token: str = "changeme",
+    cloudflare_acme_email: str = "changeme@example.com"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
+    enabled = enabled_service_keys(config)
 
     return template.render(
         media_path=config.media_path,
         puid=config.puid,
         pgid=config.pgid,
         timezone=config.timezone,
-        gluetun_enabled="gluetun" in config.enabled_optional,
+        # Real, pre-existing bug fixed here: this used to check
+        # config.enabled_optional directly, which custom mode never
+        # populates (custom mode uses config.custom_services instead -
+        # see enabled_service_keys()) - a custom-mode stack with
+        # Gluetun enabled rendered a compose file referencing
+        # ${VPN_SERVICE_PROVIDER}/etc. that .env never actually
+        # defined. enabled_service_keys(config) is correct for both
+        # the tier+enabled_optional path and the custom_services path,
+        # matching what render_compose() already uses.
+        gluetun_enabled="gluetun" in enabled,
         vpn_service_provider=vpn_service_provider,
         vpn_type=vpn_type,
-        wireguard_private_key=wireguard_private_key
+        wireguard_private_key=wireguard_private_key,
+        tailscale_enabled="tailscale" in enabled,
+        tailscale_authkey=tailscale_authkey,
+        cloudflare_dns_enabled=config.cloudflare_dns,
+        cloudflare_dns_api_token=cloudflare_dns_api_token,
+        cloudflare_acme_email=cloudflare_acme_email
     )
 
 
@@ -416,7 +440,12 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         config,
         vpn_service_provider=_preserved_vpn_value(output_dir, "VPN_SERVICE_PROVIDER", "changeme"),
         vpn_type=_preserved_vpn_value(output_dir, "VPN_TYPE", "wireguard"),
-        wireguard_private_key=_preserved_vpn_value(output_dir, "WIREGUARD_PRIVATE_KEY", "changeme")
+        wireguard_private_key=_preserved_vpn_value(output_dir, "WIREGUARD_PRIVATE_KEY", "changeme"),
+        tailscale_authkey=_preserved_vpn_value(output_dir, "TS_AUTHKEY", "changeme"),
+        cloudflare_dns_api_token=_preserved_vpn_value(output_dir, "CF_DNS_API_TOKEN", "changeme"),
+        cloudflare_acme_email=_preserved_vpn_value(
+            output_dir, "CLOUDFLARE_ACME_EMAIL", config.cloudflare_email or "changeme@example.com"
+        )
     )
 
     compose_path.write_text(render_compose(config, host_ip))
@@ -425,6 +454,25 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     for key in enabled_service_keys(config):
         (output_dir / "config" / key).mkdir(parents=True, exist_ok=True)
+
+    if config.cloudflare_dns and "traefik" in enabled_service_keys(config):
+
+        # Traefik requires acme.json to be mode 600, and refuses to
+        # start (or silently can't obtain certs) if it's more open
+        # than that - a well-documented real gotcha, not obscure.
+        # Docker auto-creating a missing bind-mounted *file* is a
+        # separate known trap this sidesteps entirely: this reuses the
+        # existing ./config/traefik directory mount rather than a
+        # dedicated acme.json file mount, so the directory always
+        # exists by the time this runs. Only touched if missing -
+        # never overwrite real, already-issued certificate data on a
+        # regenerate.
+        acme_path = output_dir / "config" / "traefik" / "acme.json"
+
+        if not acme_path.exists():
+
+            acme_path.write_text("{}")
+            acme_path.chmod(0o600)
 
     media_path = Path(config.media_path)
     (media_path / "downloads").mkdir(parents=True, exist_ok=True)
@@ -452,11 +500,46 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     if "uptime-kuma" in enabled_service_keys(config):
         warnings.append(_uptime_kuma_reference(config, host_ip))
 
-    if "gluetun" in config.enabled_optional:
+    if "gluetun" in enabled_service_keys(config):
 
+        # Real, pre-existing bug fixed here too, same root cause as
+        # render_env()'s gluetun_enabled fix above: checking
+        # config.enabled_optional directly meant a custom-mode stack
+        # with Gluetun enabled never got this warning at all, even
+        # though .env genuinely needed real credentials filled in.
         warnings.append(
             "Gluetun requires real VPN provider credentials in stack/.env "
             "before it will connect - see the TODO comments there."
+        )
+
+    if "tailscale" in enabled_service_keys(config):
+
+        warnings.append(
+            "Tailscale requires a real auth key in stack/.env (TS_AUTHKEY) before it will "
+            "join your tailnet - generate one at "
+            "https://login.tailscale.com/admin/settings/keys. Once connected, every "
+            "host-published port in this stack (Jellyfin, Radarr, etc.) is reachable from "
+            "any device on your tailnet at this host's Tailscale address, with no "
+            "additional per-service setup."
+        )
+
+    if config.cloudflare_dns and not ("traefik" in enabled_service_keys(config) and config.domain):
+
+        warnings.append(
+            "Cloudflare DNS is enabled but Traefik isn't routing with a domain configured, "
+            "so there's no certificate resolver actually in use - enable Traefik with a "
+            "domain too for this to do anything."
+        )
+
+    elif config.cloudflare_dns:
+
+        warnings.append(
+            "Cloudflare DNS requires a real scoped API token in stack/.env "
+            "(CF_DNS_API_TOKEN, needs Zone:DNS:Edit on your domain's zone) and a real "
+            "contact email (CLOUDFLARE_ACME_EMAIL) before Traefik can request real "
+            "Let's Encrypt certificates - see the TODO comments there. Until then, "
+            "Traefik will fail to obtain a certificate and fall back to its self-signed "
+            "default."
         )
 
     if "traefik" in enabled_service_keys(config) and config.domain and "authelia" not in enabled_service_keys(config):

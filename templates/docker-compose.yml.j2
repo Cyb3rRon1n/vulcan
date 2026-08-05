@@ -18,6 +18,9 @@ services:
       - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.{{ domain }}`)"
       - "traefik.http.routers.jellyfin.entrypoints=websecure"
       - "traefik.http.routers.jellyfin.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.jellyfin.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.jellyfin.middlewares=authelia@docker"
@@ -64,6 +67,9 @@ services:
       - "traefik.http.routers.radarr.rule=Host(`radarr.{{ domain }}`)"
       - "traefik.http.routers.radarr.entrypoints=websecure"
       - "traefik.http.routers.radarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.radarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.radarr.middlewares=authelia@docker"
@@ -95,6 +101,9 @@ services:
       - "traefik.http.routers.sonarr.rule=Host(`sonarr.{{ domain }}`)"
       - "traefik.http.routers.sonarr.entrypoints=websecure"
       - "traefik.http.routers.sonarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.sonarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.sonarr.middlewares=authelia@docker"
@@ -125,6 +134,9 @@ services:
       - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.{{ domain }}`)"
       - "traefik.http.routers.prowlarr.entrypoints=websecure"
       - "traefik.http.routers.prowlarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.prowlarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.prowlarr.middlewares=authelia@docker"
@@ -161,6 +173,9 @@ services:
       - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.{{ domain }}`)"
       - "traefik.http.routers.qbittorrent.entrypoints=websecure"
       - "traefik.http.routers.qbittorrent.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.qbittorrent.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.qbittorrent.middlewares=authelia@docker"
@@ -193,6 +208,9 @@ services:
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{ domain }}`)"
       - "traefik.http.routers.sabnzbd.entrypoints=websecure"
       - "traefik.http.routers.sabnzbd.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.sabnzbd.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.sabnzbd.middlewares=authelia@docker"
@@ -239,6 +257,9 @@ services:
       - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{ domain }}`)"
       - "traefik.http.routers.jellyseerr.entrypoints=websecure"
       - "traefik.http.routers.jellyseerr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.jellyseerr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.jellyseerr.middlewares=authelia@docker"
@@ -270,6 +291,9 @@ services:
       - "traefik.http.routers.bazarr.rule=Host(`bazarr.{{ domain }}`)"
       - "traefik.http.routers.bazarr.entrypoints=websecure"
       - "traefik.http.routers.bazarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.bazarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.bazarr.middlewares=authelia@docker"
@@ -339,6 +363,9 @@ services:
       - "traefik.http.routers.lidarr.rule=Host(`lidarr.{{ domain }}`)"
       - "traefik.http.routers.lidarr.entrypoints=websecure"
       - "traefik.http.routers.lidarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.lidarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.lidarr.middlewares=authelia@docker"
@@ -370,6 +397,9 @@ services:
       - "traefik.http.routers.readarr.rule=Host(`readarr.{{ domain }}`)"
       - "traefik.http.routers.readarr.entrypoints=websecure"
       - "traefik.http.routers.readarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.readarr.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.readarr.loadbalancer.server.port=8787"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.readarr.middlewares=authelia@docker"
@@ -397,12 +427,25 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
 {% endif %}
+{% if cloudflare_dns %}
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.email={{ cloudflare_email or 'changeme@example.com' }}"
+      - "--certificatesresolvers.cloudflare.acme.storage=/etc/traefik/acme.json"
+{% endif %}
+{% if cloudflare_dns %}
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+{% endif %}
 {% if domain %}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.{{ domain }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.routers.dashboard.service=api@internal"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.dashboard.middlewares=authelia@docker"
@@ -441,6 +484,9 @@ services:
       - "traefik.http.routers.authelia.rule=Host(`authelia.{{ domain }}`)"
       - "traefik.http.routers.authelia.entrypoints=websecure"
       - "traefik.http.routers.authelia.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.authelia.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.authelia.loadbalancer.server.port=9091"
       - "traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/authz/forward-auth"
       - "traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true"
@@ -451,6 +497,29 @@ services:
         limits:
           cpus: "{{ limits.authelia.cpus }}"
           memory: "{{ limits.authelia.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'tailscale' in enabled %}
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: vulcan
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_ACCEPT_DNS=true
+    volumes:
+      - ./config/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.tailscale.cpus }}"
+          memory: "{{ limits.tailscale.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'homepage' in enabled %}
@@ -469,6 +538,9 @@ services:
       - "traefik.http.routers.homepage.rule=Host(`homepage.{{ domain }}`)"
       - "traefik.http.routers.homepage.entrypoints=websecure"
       - "traefik.http.routers.homepage.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.homepage.loadbalancer.server.port=3000"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.homepage.middlewares=authelia@docker"
@@ -495,6 +567,9 @@ services:
       - "traefik.http.routers.uptime-kuma.rule=Host(`uptime-kuma.{{ domain }}`)"
       - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
       - "traefik.http.routers.uptime-kuma.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.uptime-kuma.tls.certresolver=cloudflare"
+{% endif %}
       - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
 {% if 'authelia' in enabled %}
       - "traefik.http.routers.uptime-kuma.middlewares=authelia@docker"

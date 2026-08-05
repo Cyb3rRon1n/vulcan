@@ -48,6 +48,8 @@ class ServiceSelectionScreen(Screen):
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         default_domain = previous.get("domain") if previous else None
+        default_cloudflare_dns = bool(previous.get("cloudflare_dns")) if previous else False
+        default_cloudflare_email = previous.get("cloudflare_email") if previous else None
 
         yield Vertical(
             Static("Select services to include", id="title"),
@@ -62,8 +64,22 @@ class ServiceSelectionScreen(Screen):
                 id="domain-input",
                 tooltip=(
                     "You'll need to own this domain and point its subdomains at this host "
-                    "yourself - Vulcan doesn't create DNS records or set up Let's Encrypt/ACME."
+                    "yourself - Vulcan doesn't create DNS records for you."
                 )
+            ),
+            Checkbox(
+                "Domain's DNS is on Cloudflare - use real Let's Encrypt certificates",
+                value=default_cloudflare_dns, id="cloudflare-dns-check",
+                tooltip=(
+                    "Instead of Traefik's self-signed default certificate. You'll need a "
+                    "scoped Cloudflare API token (Zone:DNS:Edit) in stack/.env afterward."
+                )
+            ),
+            Input(
+                value=default_cloudflare_email or "",
+                placeholder="Contact email for Let's Encrypt",
+                id="cloudflare-email-input",
+                tooltip="Let's Encrypt uses this for certificate expiry notices."
             ),
             Input(
                 value="admin",
@@ -91,6 +107,11 @@ class ServiceSelectionScreen(Screen):
         self._update_gpu_visibility()
         self._update_domain_visibility()
         self._update_auth_visibility()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+
+        if event.checkbox.id == "cloudflare-dns-check":
+            self._update_domain_visibility()
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
         """
@@ -123,8 +144,16 @@ class ServiceSelectionScreen(Screen):
     def _update_domain_visibility(self) -> None:
 
         selected = set(self.query_one("#service-list", SelectionList).selected)
+        traefik_selected = "traefik" in selected
 
-        self.query_one("#domain-input", Input).display = "traefik" in selected
+        self.query_one("#domain-input", Input).display = traefik_selected
+
+        cloudflare_check = self.query_one("#cloudflare-dns-check", Checkbox)
+        cloudflare_check.display = traefik_selected
+
+        self.query_one("#cloudflare-email-input", Input).display = (
+            traefik_selected and cloudflare_check.value
+        )
 
     def _authelia_needs_setup(self) -> bool:
 
@@ -183,6 +212,17 @@ class ServiceSelectionScreen(Screen):
 
         self.app.domain = (
             (domain_input.value.strip() or None) if domain_input.display else None
+        )
+
+        cloudflare_check = self.query_one("#cloudflare-dns-check", Checkbox)
+        cloudflare_email_input = self.query_one("#cloudflare-email-input", Input)
+
+        self.app.cloudflare_dns = bool(
+            cloudflare_check.display and cloudflare_check.value and self.app.domain
+        )
+        self.app.cloudflare_email = (
+            (cloudflare_email_input.value.strip() or None)
+            if self.app.cloudflare_dns else None
         )
 
         self.app.push_screen(ReviewScreen())
