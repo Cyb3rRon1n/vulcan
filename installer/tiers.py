@@ -35,6 +35,12 @@ _LIGHT_SERVICES = [
     ServiceDefinition("sonarr", "Sonarr"),
     ServiceDefinition("prowlarr", "Prowlarr"),
     ServiceDefinition("qbittorrent", "qBittorrent"),
+    # Tier-agnostic, not Medium+-only - qBittorrent is present starting
+    # here too, and Gluetun is what actually keeps its torrent traffic
+    # from exposing a real IP to the swarm. Moved up from
+    # _MEDIUM_SERVICES so it protects qBittorrent at every tier that
+    # has it, not just Medium/Heavy.
+    ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True),
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
     ServiceDefinition("recyclarr", "Recyclarr", optional=True),
     ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True),
@@ -45,7 +51,6 @@ _MEDIUM_SERVICES = _LIGHT_SERVICES + [
     ServiceDefinition("jellyseerr", "Jellyseerr"),
     ServiceDefinition("bazarr", "Bazarr"),
     ServiceDefinition("flaresolverr", "FlareSolverr"),
-    ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True),
 ]
 
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
