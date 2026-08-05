@@ -340,6 +340,15 @@ def main(
         None, "--domain",
         help="Base domain for Traefik routing (e.g. media.example.com) - only used if traefik is enabled"
     ),
+    cloudflare_dns: bool = typer.Option(
+        False, "--cloudflare-dns",
+        help="Use Cloudflare DNS-01 for real Let's Encrypt certificates instead of Traefik's "
+        "self-signed default - only used if traefik is enabled with a domain"
+    ),
+    cloudflare_email: str | None = typer.Option(
+        None, "--cloudflare-email",
+        help="Contact email for Let's Encrypt - only used with --cloudflare-dns"
+    ),
     auth_username: str | None = typer.Option(
         None, "--auth-username",
         help="Authelia admin username - only used if authelia is enabled and not already configured"
@@ -380,6 +389,8 @@ def main(
         timezone=timezone,
         services=services,
         domain=domain,
+        cloudflare_dns=cloudflare_dns,
+        cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password=auth_password,
         offline=offline
@@ -402,6 +413,8 @@ def run_install(
     timezone: str | None,
     services: str | None,
     domain: str | None,
+    cloudflare_dns: bool = False,
+    cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None,
     offline: bool = False
@@ -460,7 +473,8 @@ def run_install(
 
     config = _gather_generation_config(
         info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, gpu, puid, pgid, timezone,
-        non_interactive, previous, custom_services_from_flag, domain, auth_username, auth_password
+        non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
+        cloudflare_email, auth_username, auth_password
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -551,6 +565,8 @@ def _gather_generation_config(
     previous: dict | None,
     custom_services_from_flag: set[str] | None,
     domain: str | None,
+    cloudflare_dns: bool = False,
+    cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None
 ) -> GenerationConfig:
@@ -687,14 +703,53 @@ def _gather_generation_config(
 
             console.print(
                 "You'll need to own this domain and point its subdomains at this host "
-                "yourself - Vulcan doesn't create DNS records or set up Let's Encrypt/ACME, "
-                "it uses Traefik's self-signed certificate."
+                "yourself - Vulcan doesn't create DNS records for you. By default it uses "
+                "Traefik's self-signed certificate; if your domain's DNS is on Cloudflare, "
+                "you can opt into real Let's Encrypt certificates instead (next question)."
             )
 
             domain_value = typer.prompt(
                 "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip)",
                 default=previous_domain or ""
             ) or None
+
+    cloudflare_dns_value = False
+    cloudflare_email_value = None
+
+    if domain_value:
+
+        previous_cloudflare_dns = previous.get("cloudflare_dns") if previous else False
+        previous_cloudflare_email = previous.get("cloudflare_email") if previous else None
+
+        if cloudflare_dns:
+            cloudflare_dns_value = True
+        elif non_interactive:
+            cloudflare_dns_value = bool(previous_cloudflare_dns)
+        else:
+            cloudflare_dns_value = typer.confirm(
+                "Is this domain's DNS managed by Cloudflare? If so, Vulcan can get you real "
+                "Let's Encrypt certificates instead of Traefik's self-signed one.",
+                default=previous_cloudflare_dns
+            )
+
+        if cloudflare_dns_value:
+
+            if cloudflare_email is not None:
+                cloudflare_email_value = cloudflare_email
+            elif non_interactive:
+                cloudflare_email_value = previous_cloudflare_email
+            else:
+
+                console.print(
+                    "You'll need a scoped Cloudflare API token (Zone:DNS:Edit on this "
+                    "domain's zone) in stack/.env before this actually works - Vulcan will "
+                    "remind you after generating."
+                )
+
+                cloudflare_email_value = typer.prompt(
+                    "Contact email for Let's Encrypt",
+                    default=previous_cloudflare_email or ""
+                ) or None
 
     auth_username_value = None
     auth_password_hash_value = None
@@ -880,6 +935,8 @@ def _gather_generation_config(
         gpu_vendor=gpu_vendor_to_use,
         custom_services=custom_services_selected,
         domain=domain_value,
+        cloudflare_dns=cloudflare_dns_value,
+        cloudflare_email=cloudflare_email_value,
         auth_username=auth_username_value,
         auth_password_hash=auth_password_hash_value
     )
@@ -909,6 +966,9 @@ def _generate_and_maybe_start(
 
     if config.domain:
         console.print(f"  Domain: {config.domain}")
+
+    if config.cloudflare_dns:
+        console.print(f"  Cloudflare DNS (real Let's Encrypt certs): enabled ({config.cloudflare_email})")
 
     if config.auth_username:
         console.print(f"  Authelia admin username: {config.auth_username}")

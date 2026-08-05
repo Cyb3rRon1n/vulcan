@@ -24,6 +24,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "readarr": "standard",
     "traefik": "light",
     "authelia": "light",
+    "tailscale": "light",
     "homepage": "light",
     "uptime-kuma": "light",
     "watchtower": "light",
