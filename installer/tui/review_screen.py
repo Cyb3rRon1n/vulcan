@@ -2,13 +2,13 @@ from pathlib import Path
 
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, LoadingIndicator, Static
+from textual.widgets import Button, Input, LoadingIndicator, Static
 
 from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
-from installer.generate import GenerationConfig, render_stack_summary, write_stack
+from installer.generate import GenerationConfig, render_stack_summary, resolve_ports, write_stack
 from installer.post_install import pull_stack, remove_orphaned_containers
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS
@@ -17,12 +17,27 @@ from installer.tiers import TIERS
 class ReviewScreen(Screen):
 
     DEFAULT_CSS = """
-    ReviewScreen {
-        align: center middle;
-    }
-
     #result {
         margin: 1 0;
+    }
+
+    #remap-fields {
+        height: auto;
+        margin: 1 0;
+    }
+
+    .remap-row {
+        height: auto;
+    }
+
+    .remap-label {
+        width: 34;
+        content-align: right middle;
+        padding-right: 1;
+    }
+
+    .remap-input {
+        width: 14;
     }
     """
 
@@ -84,19 +99,30 @@ class ReviewScreen(Screen):
                 if self.app.media_redundancy["redundant"] is False:
                     summary += "\n! No drive-level redundancy - a single drive failure would mean data loss."
 
-        yield Vertical(
+        yield VerticalScroll(
             Static(summary, id="summary"),
             Horizontal(
                 Button("Back", id="back"),
                 Button("Generate", id="generate"),
             ),
             Static("", id="result"),
+            Vertical(id="remap-fields"),
+            Static("", id="remap-error"),
+            Horizontal(
+                Button("Apply Remap", id="apply-remap"),
+                Button("Cancel Remap", id="cancel-remap"),
+                id="remap-actions",
+            ),
             LoadingIndicator(id="loading"),
             Horizontal(
                 Button("Start Stack Now", id="start", disabled=True),
                 Button("Pull Images Now", id="pull", disabled=True),
                 Button("Finish Without Starting", id="finish", disabled=True),
+            ),
+            Horizontal(
                 Button("Clean Up & Retry", id="cleanup-retry", disabled=True),
+                Button("Remap Ports", id="remap-ports", disabled=True),
+                id="conflict-actions",
             ),
         )
 
@@ -107,8 +133,12 @@ class ReviewScreen(Screen):
         self.query_one("#pull", Button).display = False
         self.query_one("#finish", Button).display = False
         self.query_one("#cleanup-retry", Button).display = False
+        self.query_one("#remap-ports", Button).display = False
+        self.query_one("#remap-fields", Vertical).display = False
+        self.query_one("#remap-error", Static).display = False
+        self.query_one("#remap-actions", Horizontal).display = False
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "generate":
             self._generate()
@@ -120,6 +150,12 @@ class ReviewScreen(Screen):
             self._pull_images()
         elif event.button.id == "cleanup-retry":
             self._cleanup_and_retry()
+        elif event.button.id == "remap-ports":
+            await self._show_remap_fields()
+        elif event.button.id == "apply-remap":
+            await self._apply_remap()
+        elif event.button.id == "cancel-remap":
+            await self._cancel_remap()
         elif event.button.id == "back":
             self.app.pop_screen()
 
@@ -162,6 +198,7 @@ class ReviewScreen(Screen):
 
         port_check = check_ports_available(self._compose_path)
         cleanup_button = self.query_one("#cleanup-retry", Button)
+        remap_button = self.query_one("#remap-ports", Button)
 
         if not port_check["available"]:
 
@@ -169,6 +206,23 @@ class ReviewScreen(Screen):
                 "Can't start - port(s) already in use:",
                 format_port_conflicts(port_check),
             ]
+
+            remappable = resolve_ports(self._config)
+
+            # Own-orphan ports are handled by Clean Up & Retry, not remapping
+            # (see _cleanup_and_retry) - remap only ever applies to the
+            # remaining, genuinely-unrelated conflicts.
+            self._remappable_conflicts = [
+                port for port in port_check["conflicts"]
+                if not port_check["own_orphan"].get(port)
+                and port_check["port_services"].get(port) in remappable
+            ]
+            unremappable_conflicts = [
+                port for port in port_check["conflicts"]
+                if not port_check["own_orphan"].get(port)
+                and port_check["port_services"].get(port) not in remappable
+            ]
+            self._port_check = port_check
 
             if any(port_check["own_orphan"].values()):
 
@@ -184,16 +238,33 @@ class ReviewScreen(Screen):
             else:
                 cleanup_button.display = False
 
-            lines.append(
-                "A port held by something else needs a different host port - "
-                "rerun with `vulcan --plain` for interactive remapping, or free "
-                "it manually and retry here."
-            )
+            if self._remappable_conflicts:
+
+                lines.append(
+                    "\"Remap Ports\" lets you type a new host port for each "
+                    "one still held by something else, then retries."
+                )
+                remap_button.display = True
+                remap_button.disabled = False
+
+            else:
+                remap_button.display = False
+
+            if unremappable_conflicts:
+
+                lines.append(
+                    "Port(s) " + ", ".join(str(p) for p in unremappable_conflicts)
+                    + " can't be remapped automatically - free them manually and retry."
+                )
 
             self.query_one("#result", Static).update("\n".join(lines))
             return
 
         cleanup_button.display = False
+        remap_button.display = False
+        self.query_one("#remap-fields", Vertical).display = False
+        self.query_one("#remap-error", Static).display = False
+        self.query_one("#remap-actions", Horizontal).display = False
         self.query_one("#start", Button).disabled = True
         self.query_one("#pull", Button).disabled = True
         self.query_one("#finish", Button).disabled = True
@@ -212,6 +283,97 @@ class ReviewScreen(Screen):
 
         self.query_one("#cleanup-retry", Button).display = False
         self._start_stack()
+
+    async def _show_remap_fields(self) -> None:
+
+        container = self.query_one("#remap-fields", Vertical)
+        await container.remove_children()
+
+        for port in self._remappable_conflicts:
+
+            service_key = self._port_check["port_services"][port]
+
+            await container.mount(
+                Horizontal(
+                    Static(f"New port for {service_key} (currently {port}):", classes="remap-label"),
+                    Input(placeholder=str(port), id=f"remap-input-{port}", classes="remap-input"),
+                    classes="remap-row",
+                )
+            )
+
+        # Apply/Cancel live in a fixed row outside the scrollable
+        # container (not mounted alongside the port rows above) so
+        # they stay reachable regardless of how many ports scroll past
+        # #remap-fields's own max-height - a real OutOfBounds failure,
+        # reproduced with 3+ simultaneous conflicts, when they were
+        # dynamically mounted inside it instead.
+        container.display = True
+        self.query_one("#remap-error", Static).update("")
+        self.query_one("#remap-error", Static).display = True
+        self.query_one("#remap-actions", Horizontal).display = True
+        self.query_one("#remap-ports", Button).disabled = True
+
+    async def _apply_remap(self) -> None:
+
+        error_widget = self.query_one("#remap-error", Static)
+        remappable = resolve_ports(self._config)
+        existing_values = set(remappable.values())
+        seen_new_ports: set[int] = set()
+        new_overrides: dict[str, int] = {}
+
+        for port in self._remappable_conflicts:
+
+            service_key = self._port_check["port_services"][port]
+            raw = self.query_one(f"#remap-input-{port}", Input).value.strip()
+
+            if not raw:
+                continue
+
+            try:
+                new_port = int(raw)
+            except ValueError:
+                error_widget.update(f"'{raw}' isn't a valid port number for {service_key} - not applied.")
+                return
+
+            if new_port in existing_values or new_port in seen_new_ports:
+                error_widget.update(
+                    f"Port {new_port} is already used by another service in this stack - not applied."
+                )
+                return
+
+            seen_new_ports.add(new_port)
+            new_overrides[service_key] = new_port
+
+        if not new_overrides:
+            error_widget.update("Enter at least one new port, or Cancel Remap.")
+            return
+
+        self._config.port_overrides.update(new_overrides)
+
+        try:
+            result = write_stack(self._config)
+        except OSError as exc:
+            error_widget.update(f"Failed to write the stack: {exc}")
+            return
+
+        self._compose_path = result["compose_path"]
+        self._env_path = result["env_path"]
+
+        await self._hide_remap_fields()
+        self._start_stack()
+
+    async def _cancel_remap(self) -> None:
+
+        await self._hide_remap_fields()
+
+    async def _hide_remap_fields(self) -> None:
+
+        container = self.query_one("#remap-fields", Vertical)
+        await container.remove_children()
+        container.display = False
+        self.query_one("#remap-error", Static).display = False
+        self.query_one("#remap-actions", Horizontal).display = False
+        self.query_one("#remap-ports", Button).disabled = False
 
     def _pull_images(self) -> None:
 
