@@ -1,9 +1,13 @@
+import re
 from unittest.mock import MagicMock, patch
 
 import yaml
 
 from installer.generate import (
+    TEMPLATES_DIR,
+    WEB_FACING_SERVICES,
     GenerationConfig,
+    _HOMEPAGE_GROUPS,
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,
@@ -2222,3 +2226,28 @@ def test_render_homepage_services_creates_authelia_tile_when_routed():
     groups = _homepage_groups(output)
 
     assert groups["Security"]["Authentication (Authelia)"]["href"] == "https://authelia.media.example.com"
+
+
+def test_homepage_groups_match_web_facing_services():
+    """_HOMEPAGE_GROUPS's flattened membership must stay exactly
+    WEB_FACING_SERVICES minus Homepage itself (no self-tile) - a real
+    drift risk (see WEB_FACING_SERVICES's own comment in generate.py)
+    now caught here instead of silently going stale."""
+
+    flattened = {key for keys in _HOMEPAGE_GROUPS.values() for key in keys}
+
+    assert flattened == WEB_FACING_SERVICES - {"homepage"}
+
+
+def test_traefik_template_routes_match_web_facing_services():
+    """The Traefik template's per-service label blocks are the other
+    half of the same drift risk - every WEB_FACING_SERVICES member
+    except Traefik itself (routed via its own separate dashboard block,
+    not the per-service pattern) must have a
+    `traefik.http.routers.<key>.rule=Host` line in the real template."""
+
+    template_text = (TEMPLATES_DIR / "docker-compose.yml.j2").read_text()
+    routed = set(re.findall(r"traefik\.http\.routers\.([\w-]+)\.rule=Host", template_text))
+    routed.discard("dashboard")  # Traefik's own router, not a per-service key
+
+    assert routed == WEB_FACING_SERVICES - {"traefik"}

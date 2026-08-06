@@ -27,13 +27,30 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 STACK_DIR = Path("stack")
 STATE_FILENAME = ".vulcan-state.json"
 
-# Homepage tile groups/ports - deliberately mirrors the same web-facing
-# service set the Traefik template's per-service labels already target
-# (minus Homepage itself), not a shared constant with that template -
-# see CLAUDE.md for why. Ports here are each service's own host-published
-# port (what a browser actually hits), not the container-internal port
-# Traefik's labels use - the opposite convention, and it matters for
-# SABnzbd specifically (8081 here, not its internal 8080).
+# Every service with its own routable web UI - the single source of
+# truth both Homepage's tile groups (below) and the Traefik template's
+# per-service labels (templates/docker-compose.yml.j2) draw from,
+# closing a real drift risk this project has hit before (the "17 known
+# services" count going stale, twice - see CLAUDE.md). "traefik" and
+# "homepage" both appear here despite neither routing/tiling itself the
+# normal way: Traefik gets a tile (pointing at its own dashboard) but no
+# per-service label block of its own, Homepage gets a label block (it's
+# routable like anything else) but no tile of itself. So each consumer
+# below derives its own view by excluding just itself -
+# WEB_FACING_SERVICES - {"traefik"} is exactly the set of services with
+# a `{% if 'traefik' in enabled and domain %}` label block in the
+# template, and WEB_FACING_SERVICES - {"homepage"} is exactly the flat
+# union of _HOMEPAGE_GROUPS's values - both checked by
+# tests/test_generate.py so the two can't silently drift apart again.
+WEB_FACING_SERVICES: frozenset[str] = frozenset({
+    "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
+    "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
+    "uptime-kuma", "traefik", "homepage",
+})
+
+# Homepage tile groups - grouping/ordering is presentation-specific and
+# stays hand-written, but its flattened membership is cross-checked
+# against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "jellyseerr"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
