@@ -46,7 +46,6 @@ All three originally-planned phases are complete; everything below shipped after
 - [ ] **`detect_gpu()` has no ARM SBC-style detection** (e.g. a Raspberry Pi's VideoCore/V4L2 stack) — falls back cleanly to software-only Jellyfin transcoding today, but hardware transcoding on real ARM SBCs was never in scope.
 - [ ] **Watch for a real stable Readarr release.** Currently pinned to `0.4.19-nightly` (over a year stale as of this writing) because it's the only tag LinuxServer publishes that actually works — re-pin once a real `:latest`-equivalent exists.
 - [ ] **A shared constant for the Traefik/Homepage web-facing service set.** Both currently maintain their own independent per-service condition list; flagged as a real follow-up when Homepage pre-seeding shipped, never folded in since neither slice needed it enough to justify an unrelated template refactor.
-- [ ] **Remove `presets/`.** Empty, unreferenced directory left over from the original scaffold at the repo root — not wired to anything.
 - [ ] **Interactive port remapping in the TUI.** Deliberately scoped out of the port-conflict override slice — the auto-cleanup button shipped there, but remapping a conflicting port still needs `vulcan --plain`. Would need dynamically mounted `Input`s per conflicting port inside `ReviewScreen`'s already-tight layout budget.
 
 ## Deliberately out of scope
