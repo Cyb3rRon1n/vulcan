@@ -2211,6 +2211,264 @@ async def test_review_screen_own_orphan_conflict_shows_cleanup_button_and_retrie
         await ctx.__aexit__(None, None, None)
 
 
+async def test_review_screen_remap_button_shown_for_unrelated_conflict():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: 'container "nginx" (image nginx:alpine)'},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: False},
+            }
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+        assert app.screen.query_one("#remap-ports", Button).display is True
+        assert app.screen.query_one("#cleanup-retry", Button).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_remap_flow_applies_new_port_and_starts():
+    """
+    The real interactive-remap sub-flow the TUI never had before: type a
+    replacement host port into a dynamically mounted Input, apply it,
+    and the stack regenerates and retries starting - same shape as the
+    CLI's --plain remap prompt, adapted to the TUI's widget model.
+    """
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        conflict_then_clear = [
+            {
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: 'container "nginx" (image nginx:alpine)'},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: False},
+            },
+            {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+        ]
+
+        mock_proc = MagicMock(returncode=0)
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available", side_effect=conflict_then_clear
+        ), patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ) as mock_write_stack, patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            await pilot.click("#remap-ports")
+            await pilot.pause()
+
+            input_widget = app.screen.query_one("#remap-input-8080", Input)
+            input_widget.value = "9090"
+
+            await pilot.click("#apply-remap")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert app.port_overrides == {"qbittorrent": 9090}
+        # write_stack called once for the initial generate, once for the remap
+        assert mock_write_stack.call_count == 1
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_remap_rejects_colliding_port():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: 'container "nginx" (image nginx:alpine)'},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: False},
+            }
+        ), patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ) as mock_write_stack:
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            await pilot.click("#remap-ports")
+            await pilot.pause()
+
+            input_widget = app.screen.query_one("#remap-input-8080", Input)
+            input_widget.value = "7878"  # radarr's own default port - a real collision
+
+            await pilot.click("#apply-remap")
+            await pilot.pause()
+
+        mock_write_stack.assert_not_called()
+        error = app.screen.query_one("#remap-error", Static).content
+        assert "7878" in error
+        assert "already used" in error
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_remap_reachable_with_many_simultaneous_conflicts():
+    """
+    A real layout hazard, reproduced and fixed, not just reasoned about:
+    with enough simultaneous conflicting ports, the dynamically-added
+    rows push Apply/Cancel below the 80x24 test viewport - the exact
+    class of OutOfBounds failure this project has hit before with
+    TierConfigScreen (see CLAUDE.md). ReviewScreen's root container is
+    a VerticalScroll for exactly this reason; a real user would need to
+    scroll to see off-screen content too, so this scrolls the target
+    into view first, the same as a real click would require.
+    """
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        conflict_then_clear = [
+            {
+                "available": False,
+                "conflicts": [8080, 7878, 8989],
+                "owners": {8080: "x", 7878: "y", 8989: "z"},
+                "port_services": {8080: "qbittorrent", 7878: "radarr", 8989: "sonarr"},
+                "own_orphan": {8080: False, 7878: False, 8989: False},
+            },
+            {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+        ]
+
+        mock_proc = MagicMock(returncode=0)
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available", side_effect=conflict_then_clear
+        ), patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ), patch(
+            "installer.tui.review_screen.run_docker_command", return_value=mock_proc
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            await pilot.click("#remap-ports")
+            await pilot.pause()
+
+            for port, new_port in ((8080, 9080), (7878, 9878), (8989, 9989)):
+                input_widget = app.screen.query_one(f"#remap-input-{port}", Input)
+                input_widget.scroll_visible(animate=False)
+                await pilot.pause()
+                input_widget.value = str(new_port)
+
+            apply_button = app.screen.query_one("#apply-remap", Button)
+            apply_button.scroll_visible(animate=False)
+            await pilot.pause()
+
+            await pilot.click("#apply-remap")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        assert app.port_overrides == {"qbittorrent": 9080, "radarr": 9878, "sonarr": 9989}
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_remap_cancel_hides_fields():
+
+    app, pilot, ctx = await _launch_at_review_screen(make_system_info())
+
+    try:
+
+        with patch(
+            "installer.tui.review_screen.write_stack", return_value=REVIEW_WRITE_RESULT
+        ):
+
+            await pilot.click("#generate")
+            await pilot.pause()
+
+        with patch(
+            "installer.tui.review_screen.check_ports_available",
+            return_value={
+                "available": False,
+                "conflicts": [8080],
+                "owners": {8080: 'container "nginx" (image nginx:alpine)'},
+                "port_services": {8080: "qbittorrent"},
+                "own_orphan": {8080: False},
+            }
+        ):
+
+            await pilot.click("#start")
+            await pilot.pause()
+
+            await pilot.click("#remap-ports")
+            await pilot.pause()
+
+            assert app.screen.query_one("#remap-fields").display is True
+
+            await pilot.click("#cancel-remap")
+            await pilot.pause()
+
+        assert app.screen.query_one("#remap-fields").display is False
+        assert app.screen.query_one("#remap-ports", Button).disabled is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_review_screen_pull_images_success_exits_cleanly():
 
     app, pilot, ctx = await _launch_at_review_screen(make_system_info())
