@@ -409,12 +409,24 @@ def render_authelia_users_database(username: str, displayname: str, password_has
     }, sort_keys=False)
 
 
-def render_authelia_configuration(config: GenerationConfig) -> str:
+def render_authelia_configuration(config: GenerationConfig, host_ip: str | None) -> str:
 
     template = _jinja_env().get_template("authelia-configuration.yml.j2")
 
+    # Authelia's own config validator fatally rejects a session cookie
+    # domain that isn't a real domain (needs a period) or a real IP address -
+    # rendering config.domain verbatim produced a literal "domain: 'None'"
+    # whenever Authelia was enabled without one configured, which crash-loops
+    # instead of the "starts but does nothing useful" the write_stack()
+    # warning promises. Falling back to the real detected host IP (or the
+    # loopback address if even that's unavailable) is a valid cookie domain
+    # either way, so the container genuinely starts - it just can't be
+    # reached usefully without Traefik + a real domain, same as documented.
+    cookie_domain = config.domain or host_ip or "127.0.0.1"
+
     return template.render(
         domain=config.domain,
+        cookie_domain=cookie_domain,
         homepage_enabled="homepage" in enabled_service_keys(config)
     )
 
@@ -623,7 +635,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         configuration_path = authelia_dir / "configuration.yml"
 
         if not configuration_path.exists():
-            configuration_path.write_text(render_authelia_configuration(config))
+            configuration_path.write_text(render_authelia_configuration(config, host_ip))
 
         users_database_path = authelia_dir / "users_database.yml"
 

@@ -1955,7 +1955,8 @@ def test_render_authelia_users_database_output_shape():
 def test_render_authelia_configuration_uses_domain_for_session_cookie():
 
     output = render_authelia_configuration(
-        make_config("heavy", custom_services={"authelia", "traefik"}, domain="media.example.com")
+        make_config("heavy", custom_services={"authelia", "traefik"}, domain="media.example.com"),
+        host_ip="192.168.1.100"
     )
     parsed = yaml.safe_load(output)
 
@@ -1968,6 +1969,41 @@ def test_render_authelia_configuration_uses_domain_for_session_cookie():
     assert "jwt_secret" not in parsed.get("identity_validation", {}).get("reset_password", {})
     assert "secret" not in parsed["session"]
     assert "encryption_key" not in parsed["storage"]
+
+
+def test_render_authelia_configuration_falls_back_to_host_ip_without_domain():
+
+    # Real bug found via a live ARM64 verification run: rendering `domain`
+    # verbatim with no domain configured produced a literal "domain: 'None'",
+    # which Authelia's own config validator fatally rejects (a cookie domain
+    # needs a period or to be a real IP) - it crash-looped instead of
+    # starting, contradicting write_stack()'s own warning that it "starts
+    # but does nothing useful" without Traefik + a domain. `authelia_url` is
+    # a separate, *required* field (confirmed by re-testing against a real
+    # container after first trying to omit it) - it falls back to Authelia's
+    # own container port directly rather than a fictional "authelia.<ip>"
+    # subdomain, which wouldn't resolve to anything.
+    output = render_authelia_configuration(
+        make_config("heavy", custom_services={"authelia"}, domain=None),
+        host_ip="192.168.1.100"
+    )
+    parsed = yaml.safe_load(output)
+
+    cookie = parsed["session"]["cookies"][0]
+    assert cookie["domain"] == "192.168.1.100"
+    assert cookie["authelia_url"] == "https://192.168.1.100:9091"
+    assert "default_redirection_url" not in cookie
+
+
+def test_render_authelia_configuration_falls_back_to_loopback_without_domain_or_host_ip():
+
+    output = render_authelia_configuration(
+        make_config("heavy", custom_services={"authelia"}, domain=None),
+        host_ip=None
+    )
+    parsed = yaml.safe_load(output)
+
+    assert parsed["session"]["cookies"][0]["domain"] == "127.0.0.1"
 
 
 def test_render_decluttarr_config_includes_only_enabled_arr_instances():
@@ -2041,7 +2077,8 @@ def test_render_authelia_configuration_redirects_to_homepage_when_enabled():
             "heavy",
             custom_services={"authelia", "traefik", "homepage"},
             domain="media.example.com"
-        )
+        ),
+        host_ip="192.168.1.100"
     )
     parsed = yaml.safe_load(output)
 
