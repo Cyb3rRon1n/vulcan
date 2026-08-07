@@ -18,11 +18,19 @@ access_control:
 session:
   cookies:
     - name: 'authelia_session'
-      domain: '{{ domain }}'
+      domain: '{{ cookie_domain }}'
+{% if domain %}
       authelia_url: 'https://authelia.{{ domain }}'
+{% else %}
+      # authelia_url is a required field - with no real domain configured
+      # (see cookie_domain's fallback above), this points at Authelia's own
+      # container port directly rather than a fictional "authelia.<ip>"
+      # subdomain, which wouldn't resolve to anything.
+      authelia_url: 'https://{{ cookie_domain }}:9091'
+{% endif %}
       expiration: '1 hour'
       inactivity: '5 minutes'
-{% if homepage_enabled %}
+{% if homepage_enabled and domain %}
       default_redirection_url: 'https://homepage.{{ domain }}'
 {% endif %}
 

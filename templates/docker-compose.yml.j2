@@ -643,6 +643,12 @@ services:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=86400
       - TZ=${TZ}
+      # containrrr/watchtower:latest's bundled Docker client defaults to a
+      # stale API version (1.25) instead of negotiating with the real daemon,
+      # which modern Docker Engine (min supported API 1.40+) rejects outright
+      # and then nil-pointer-panics on. Pinning a conservative, broadly
+      # compatible version (Docker 20.10+, released 2020) works around it.
+      - DOCKER_API_VERSION=1.41
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
