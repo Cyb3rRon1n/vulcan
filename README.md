@@ -1,4 +1,8 @@
-# Vulcan
+<p align="center">
+  <img src="docs/logo.svg" alt="Vulcan logo" width="120">
+</p>
+
+<h1 align="center">Vulcan</h1>
 
 <p align="center">
   <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml"><img src="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
