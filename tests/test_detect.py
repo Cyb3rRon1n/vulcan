@@ -62,6 +62,55 @@ FAKE_CPUINFO = (
     "cpu MHz\t\t: 3600.000\n"
 )
 
+# Real ARM64 /proc/cpuinfo shape - no "model name" line at all (the x86
+# convention), just per-core implementer/architecture/part/revision
+# fields. 0x41/0xd08 are the genuine, documented ARM Ltd. MIDR_EL1 values
+# for a Cortex-A72 (e.g. a real Raspberry Pi 4's own cpuinfo).
+FAKE_CPUINFO_ARM = (
+    "processor\t: 0\n"
+    "BogoMIPS\t: 108.00\n"
+    "Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid\n"
+    "CPU implementer\t: 0x41\n"
+    "CPU architecture: 8\n"
+    "CPU variant\t: 0x0\n"
+    "CPU part\t: 0xd08\n"
+    "CPU revision\t: 3\n"
+)
+
+# Same shape, but a part ID this project's own small lookup table doesn't
+# recognize - exercises the "known vendor, unrecognized core" fallback
+# tier rather than the fully-decoded one.
+FAKE_CPUINFO_ARM_UNKNOWN_PART = (
+    "processor\t: 0\n"
+    "CPU implementer\t: 0x41\n"
+    "CPU architecture: 8\n"
+    "CPU part\t: 0xfff\n"
+)
+
+
+def _multi_file_open(files: dict[str, str | None]):
+    """A builtins.open stand-in that returns different fake content per
+    path - a plain mock_open() can't do this (it returns the same content
+    regardless of which file is opened), but detect_cpu()'s ARM fallback
+    path now genuinely opens two different real files in sequence
+    (/proc/cpuinfo, then /proc/device-tree/model). A path mapped to None
+    raises OSError, the same "not present" shape a real missing file
+    produces; a path not in the dict at all is a real test bug, so it
+    raises too rather than silently returning something."""
+
+    def _open(path, *args, **kwargs):
+
+        if path not in files:
+            raise AssertionError(f"unexpected open() call for {path!r}")
+
+        content = files[path]
+        if content is None:
+            raise OSError(f"no such file: {path}")
+
+        return mock_open(read_data=content)(path, *args, **kwargs)
+
+    return _open
+
 FAKE_OS_RELEASE = (
     'NAME="Fedora Linux"\n'
     'VERSION="44 (Workstation Edition)"\n'
@@ -98,6 +147,61 @@ def test_detect_cpu_handles_missing_proc_cpuinfo():
         "cpu_cores_logical": 8,
         "cpu_model": None
     }
+
+
+def test_detect_cpu_falls_back_to_device_tree_model_on_arm():
+
+    # The device tree's own real board-model string wins over decoding
+    # implementer/part IDs whenever it's actually available - a genuine
+    # board name ("Raspberry Pi 4 Model B Rev 1.4") is a better answer
+    # than a decoded chip name ("ARM Cortex-A72") even though both are
+    # technically correct here.
+    files = {
+        "/proc/cpuinfo": FAKE_CPUINFO_ARM,
+        "/proc/device-tree/model": "Raspberry Pi 4 Model B Rev 1.4\x00",
+    }
+
+    with patch(
+        "installer.detect.psutil.cpu_count", side_effect=[4, 4]
+    ), patch("builtins.open", side_effect=_multi_file_open(files)):
+
+        result = detect_cpu()
+
+    assert result["cpu_model"] == "Raspberry Pi 4 Model B Rev 1.4"
+
+
+def test_detect_cpu_falls_back_to_implementer_part_decode_without_device_tree():
+
+    # No device tree at all (some ACPI-based ARM servers) - falls back to
+    # decoding the real implementer/part IDs /proc/cpuinfo does carry.
+    files = {
+        "/proc/cpuinfo": FAKE_CPUINFO_ARM,
+        "/proc/device-tree/model": None,
+    }
+
+    with patch(
+        "installer.detect.psutil.cpu_count", side_effect=[4, 4]
+    ), patch("builtins.open", side_effect=_multi_file_open(files)):
+
+        result = detect_cpu()
+
+    assert result["cpu_model"] == "ARM Cortex-A72"
+
+
+def test_detect_cpu_decode_falls_back_to_vendor_only_for_unrecognized_part():
+
+    files = {
+        "/proc/cpuinfo": FAKE_CPUINFO_ARM_UNKNOWN_PART,
+        "/proc/device-tree/model": None,
+    }
+
+    with patch(
+        "installer.detect.psutil.cpu_count", side_effect=[4, 4]
+    ), patch("builtins.open", side_effect=_multi_file_open(files)):
+
+        result = detect_cpu()
+
+    assert result["cpu_model"] == "ARM (part 0xfff)"
 
 
 def test_detect_memory_converts_bytes_to_gb():
