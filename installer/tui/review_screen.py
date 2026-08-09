@@ -57,7 +57,8 @@ class ReviewScreen(Screen):
             cloudflare_email=self.app.cloudflare_email,
             auth_username=self.app.auth_username,
             auth_password_hash=self.app.auth_password_hash,
-            port_overrides=self.app.port_overrides
+            port_overrides=self.app.port_overrides,
+            watchtower_notification_url=self.app.watchtower_notification_url
         )
 
     def compose(self) -> ComposeResult:

@@ -6,7 +6,7 @@ from textual.widgets import Button, Checkbox, Input, LoadingIndicator, Selection
 from textual.widgets.selection_list import Selection
 
 from installer.auth import hash_authelia_password
-from installer.generate import STACK_DIR
+from installer.generate import STACK_DIR, watchtower_notification_configured
 from installer.tiers import ALL_SERVICES, TIERS
 from installer.tui.review_screen import ReviewScreen
 
@@ -93,6 +93,15 @@ class ServiceSelectionScreen(Screen):
                 id="auth-password-input",
                 tooltip="Remember this - it won't be shown again."
             ),
+            Input(
+                placeholder="Watchtower notification URL (optional)",
+                id="watchtower-notification-input",
+                tooltip=(
+                    "Shoutrrr-format URL for Watchtower update alerts (e.g. "
+                    "discord://token@channel) - leave blank to skip. Format per service: "
+                    "https://containrrr.dev/shoutrrr/latest/services/overview/"
+                )
+            ),
             Static("", id="auth-result"),
             LoadingIndicator(id="auth-loading"),
             Horizontal(
@@ -107,6 +116,7 @@ class ServiceSelectionScreen(Screen):
         self._update_gpu_visibility()
         self._update_domain_visibility()
         self._update_auth_visibility()
+        self._update_watchtower_notification_visibility()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
 
@@ -133,6 +143,7 @@ class ServiceSelectionScreen(Screen):
         self._update_gpu_visibility()
         self._update_domain_visibility()
         self._update_auth_visibility()
+        self._update_watchtower_notification_visibility()
 
     def _update_gpu_visibility(self) -> None:
 
@@ -153,6 +164,14 @@ class ServiceSelectionScreen(Screen):
 
         self.query_one("#cloudflare-email-input", Input).display = (
             traefik_selected and cloudflare_check.value
+        )
+
+    def _update_watchtower_notification_visibility(self) -> None:
+
+        selected = set(self.query_one("#service-list", SelectionList).selected)
+
+        self.query_one("#watchtower-notification-input", Input).display = (
+            "watchtower" in selected and not watchtower_notification_configured(STACK_DIR)
         )
 
     def _authelia_needs_setup(self) -> bool:
@@ -223,6 +242,13 @@ class ServiceSelectionScreen(Screen):
         self.app.cloudflare_email = (
             (cloudflare_email_input.value.strip() or None)
             if self.app.cloudflare_dns else None
+        )
+
+        notification_input = self.query_one("#watchtower-notification-input", Input)
+
+        self.app.watchtower_notification_url = (
+            notification_input.value.strip() or None
+            if notification_input.display else None
         )
 
         self.app.push_screen(ReviewScreen())

@@ -34,6 +34,7 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 - **Private remote access** — optional Tailscale integration puts every host-published port in your stack on your own tailnet, reachable from anywhere with no port-forwarding and no public exposure at all.
 - **Automated queue cleanup** — optional Decluttarr integration removes stalled or failed downloads from Radarr/Sonarr's queue and triggers a fresh search, so one dead torrent doesn't quietly stall your automation.
 - **Pre-seeded dashboard, your choice of two** — optional Homepage and/or Dashy dashboards, available at every tier and independently enable-able, both boot with real, grouped tiles for your actual stack instead of a blank page.
+- **Update notifications** — Watchtower can alert you (Discord, ntfy, Gotify, and more) when it updates a container, via a Shoutrrr-format URL you provide once.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.

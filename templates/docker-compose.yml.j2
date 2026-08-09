@@ -686,6 +686,9 @@ services:
       # and then nil-pointer-panics on. Pinning a conservative, broadly
       # compatible version (Docker 20.10+, released 2020) works around it.
       - DOCKER_API_VERSION=1.41
+{% if watchtower_notification_url %}
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}
+{% endif %}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:

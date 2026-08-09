@@ -158,6 +158,7 @@ class GenerationConfig:
     cloudflare_dns: bool = False
     cloudflare_email: str | None = None
     port_overrides: dict[str, int] = field(default_factory=dict)
+    watchtower_notification_url: str | None = None
 
 
 def resolve_ports(config: GenerationConfig) -> dict[str, int]:
@@ -264,6 +265,21 @@ def _preserved_vpn_value(output_dir: Path, key: str, default: str) -> str:
     return default
 
 
+def watchtower_notification_configured(output_dir: Path = STACK_DIR) -> bool:
+    """
+    Whether a real Watchtower notification URL already exists in
+    stack/.env - used by the CLI/TUI to skip re-prompting on a
+    regenerate, the same "already configured, leave it alone" rule
+    Authelia's users_database.yml check already follows. Never returns
+    the value itself, only whether one exists - a Shoutrrr URL embeds a
+    real credential (e.g. discord://token@channel), the same class as
+    TS_AUTHKEY/CF_DNS_API_TOKEN, which this project never echoes back
+    at a prompt.
+    """
+
+    return bool(_preserved_vpn_value(Path(output_dir), "WATCHTOWER_NOTIFICATION_URL", ""))
+
+
 def _jinja_env() -> Environment:
 
     return Environment(
@@ -299,7 +315,9 @@ def _homepage_allowed_hosts(config: GenerationConfig, enabled: set[str], host_ip
     return ",".join(hosts)
 
 
-def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
+def render_compose(
+    config: GenerationConfig, host_ip: str | None = None, watchtower_notification_url: str = ""
+) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
     enabled = enabled_service_keys(config)
@@ -315,7 +333,17 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip),
         cloudflare_dns=config.cloudflare_dns,
         cloudflare_email=config.cloudflare_email,
-        ports=resolve_ports(config)
+        ports=resolve_ports(config),
+        # Deliberately no placeholder here, unlike Gluetun/Tailscale/
+        # Cloudflare's "changeme" defaults - notifications aren't
+        # required for Watchtower to function (it just updates
+        # silently without them), and this project has already hit one
+        # real Watchtower crash-loop bug (see the DOCKER_API_VERSION
+        # fix above) with no live Docker here to verify Shoutrrr's own
+        # tolerance for a garbage URL string. Omitting the env var
+        # entirely when unconfigured is Watchtower's own long-standing
+        # default behavior, already known safe.
+        watchtower_notification_url=watchtower_notification_url
     )
 
 
@@ -326,7 +354,8 @@ def render_env(
     wireguard_private_key: str = "changeme",
     tailscale_authkey: str = "changeme",
     cloudflare_dns_api_token: str = "changeme",
-    cloudflare_acme_email: str = "changeme@example.com"
+    cloudflare_acme_email: str = "changeme@example.com",
+    watchtower_notification_url: str = ""
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -354,7 +383,9 @@ def render_env(
         tailscale_authkey=tailscale_authkey,
         cloudflare_dns_enabled=config.cloudflare_dns,
         cloudflare_dns_api_token=cloudflare_dns_api_token,
-        cloudflare_acme_email=cloudflare_acme_email
+        cloudflare_acme_email=cloudflare_acme_email,
+        watchtower_enabled="watchtower" in enabled,
+        watchtower_notification_url=watchtower_notification_url
     )
 
 
@@ -641,6 +672,34 @@ def _arr_setup_reference(config: GenerationConfig) -> str | None:
     )
 
 
+def _arr_notification_reference(config: GenerationConfig) -> str | None:
+    """
+    Radarr/Sonarr/Lidarr/Readarr's own notification integrations
+    (Discord, ntfy, Gotify, Apprise, and more) live under Settings >
+    Connect in each app's own UI - stored in that app's database, the
+    same reason _arr_setup_reference() can't pre-fill Prowlarr's own
+    sync either. Nothing for Vulcan to generate here, just a pointer so
+    it's not a "go figure this out yourself" gap. Watchtower's own
+    notification wiring (see write_stack()) is the one real exception
+    in this stack - a plain env var, not a database-backed UI setting.
+    """
+
+    enabled = enabled_service_keys(config)
+    arr_apps = [key for key in ("radarr", "sonarr", "lidarr", "readarr") if key in enabled]
+
+    if not arr_apps:
+        return None
+
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+    names = ", ".join(display_names[key] for key in arr_apps)
+
+    return (
+        f"{names} can each send their own notifications (Discord, ntfy, Gotify, Apprise, and "
+        "more) under Settings > Connect in their own UI - there's no config file for Vulcan to "
+        "pre-fill here, since these are stored in each app's own database."
+    )
+
+
 def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
 
     enabled = enabled_service_keys(config)
@@ -681,6 +740,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     # logic further down that already used to be its first use.
     host_ip = detect_host_ip()
 
+    # Same preservation as every other real credential below - a value
+    # already typed in on a previous run survives a regenerate. Unlike
+    # those, the fallback is "" (nothing), never "changeme" - see
+    # render_compose()'s own comment for why this one is genuinely
+    # unconfigured-by-default rather than a placeholder.
+    watchtower_notification_url = _preserved_vpn_value(
+        output_dir, "WATCHTOWER_NOTIFICATION_URL", config.watchtower_notification_url or ""
+    )
+
     # Read any existing .env before it gets overwritten - a real Gluetun
     # VPN credential the user already filled in must survive a regenerate,
     # not get reset back to a placeholder.
@@ -693,10 +761,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         cloudflare_dns_api_token=_preserved_vpn_value(output_dir, "CF_DNS_API_TOKEN", "changeme"),
         cloudflare_acme_email=_preserved_vpn_value(
             output_dir, "CLOUDFLARE_ACME_EMAIL", config.cloudflare_email or "changeme@example.com"
-        )
+        ),
+        watchtower_notification_url=watchtower_notification_url
     )
 
-    compose_path.write_text(render_compose(config, host_ip))
+    compose_path.write_text(render_compose(config, host_ip, watchtower_notification_url))
     env_path.write_text(env_content)
     save_state(config, output_dir)
 
@@ -764,6 +833,20 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     if arr_reference:
         warnings.append(arr_reference)
+
+    arr_notification_reference = _arr_notification_reference(config)
+
+    if arr_notification_reference:
+        warnings.append(arr_notification_reference)
+
+    if "watchtower" in enabled_service_keys(config) and not watchtower_notification_url:
+
+        warnings.append(
+            "Watchtower has no update-notification URL configured - it'll still update "
+            "containers silently, just won't tell you when it does. Add a Shoutrrr-format URL "
+            "(e.g. discord://token@channel) via --notification-url or the TUI to enable alerts "
+            "- format per service: https://containrrr.dev/shoutrrr/latest/services/overview/"
+        )
 
     if "uptime-kuma" in enabled_service_keys(config):
         warnings.append(_uptime_kuma_reference(config, host_ip))
