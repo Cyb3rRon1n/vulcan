@@ -45,19 +45,23 @@ STATE_FILENAME = ".vulcan-state.json"
 WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
-    "uptime-kuma", "traefik", "homepage",
+    "uptime-kuma", "traefik", "homepage", "dashy",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
 # stays hand-written, but its flattened membership is cross-checked
-# against WEB_FACING_SERVICES above by test_generate.py.
+# against WEB_FACING_SERVICES above by test_generate.py. "dashy" lives
+# here too (in Infrastructure, alongside Traefik) since Homepage tiles
+# it like any other enabled web-facing service when both dashboards are
+# turned on - it just never appears in its own group, the same
+# self-exclusion "homepage" already gets everywhere this table is used.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "jellyseerr"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
     "Security": ["authelia"],
-    "Infrastructure": ["traefik"],
+    "Infrastructure": ["traefik", "dashy"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -75,11 +79,24 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "homepage": 3000,
     "authelia": 9091,
     "maintainerr": 6246,
+    # Dashy's own real documented convention (its example
+    # docker-compose.yml, confirmed by fetching it directly) publishes
+    # host port 4000 against its container's internal 8080.
+    "dashy": 4000,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
     # the way every other service here does.
 }
+
+# Dashy's own icon field genuinely accepts a plain image URL (confirmed
+# via its real docs, unlike Homepage which bundles the Dashboard Icons
+# set internally and only needs a bare filename) - reusing the same
+# public Dashboard Icons CDN Homepage's own icons already come from
+# keeps both dashboards' tiles visually consistent with zero new
+# mapping table, and every key used below was checked to actually
+# resolve against it before relying on it.
+_DASHY_ICON_URL = "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{key}.png"
 
 # One real, plain-language sentence per service - gethomepage.dev's own
 # documented `description:` field, shown under the tile name so a tile
@@ -103,6 +120,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
+    "dashy": "Alternative dashboard to Homepage",
 }
 
 
@@ -394,6 +412,56 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
     return yaml.safe_dump(groups, sort_keys=False)
 
 
+def render_dashy_config(config: GenerationConfig, host_ip: str | None) -> str:
+    """
+    Dashy's real schema (confirmed by fetching its own real, current
+    user-data/conf.yml directly, not assumed): pageInfo/appConfig/
+    sections, each section a {name, items} pair - a genuinely different
+    shape from Homepage's flat list-of-single-key-dicts groups, so this
+    reuses the same _HOMEPAGE_GROUPS/_service_href() data every other
+    dashboard-tile function here already does rather than duplicating a
+    second copy of "which services get tiled, in what groups."
+    Excludes "dashy" itself from its own Infrastructure group - it's
+    only in that table so *Homepage's* tiles can include Dashy, not so
+    Dashy tiles itself.
+    """
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+
+    sections = []
+
+    for group_name, keys in _HOMEPAGE_GROUPS.items():
+
+        items = []
+
+        for key in keys:
+
+            if key == "dashy" or key not in enabled:
+                continue
+
+            href = _service_href(key, config, host_ip)
+
+            if href is None:
+                continue
+
+            items.append({
+                "title": display_names[key],
+                "description": _HOMEPAGE_DESCRIPTIONS[key],
+                "icon": _DASHY_ICON_URL.format(key=key),
+                "url": href
+            })
+
+        if items:
+            sections.append({"name": group_name, "items": items})
+
+    return yaml.safe_dump({
+        "pageInfo": {"title": "Vulcan"},
+        "appConfig": {"theme": "colorful"},
+        "sections": sections
+    }, sort_keys=False)
+
+
 def render_authelia_users_database(username: str, displayname: str, password_hash: str) -> str:
 
     return yaml.safe_dump({
@@ -487,11 +555,18 @@ def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
     if "homepage" in enabled:
         lines.append(f"  Homepage (dashboard): {_service_href('homepage', config, host_ip)}")
 
+    if "dashy" in enabled:
+        lines.append(f"  Dashy (dashboard): {_service_href('dashy', config, host_ip)}")
+
     lines.extend(
         f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
         for keys in _HOMEPAGE_GROUPS.values()
         for key in keys
-        if key in enabled
+        # "dashy" is only in _HOMEPAGE_GROUPS so Homepage's own tiles
+        # can include it - it already got its own explicit line above,
+        # same self-exclusion reasoning "homepage" gets by simply never
+        # being a member of this table to begin with.
+        if key in enabled and key != "dashy"
     )
 
     return "\n".join(lines)
@@ -572,6 +647,21 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "Homepage was pre-seeded with tiles for your enabled services at "
                 "stack/config/homepage/services.yaml - edit it directly to customize "
                 "further; Vulcan won't overwrite it on a later regenerate."
+            )
+
+    if "dashy" in enabled_service_keys(config):
+
+        dashy_config_path = output_dir / "config" / "dashy" / "conf.yml"
+
+        if not dashy_config_path.exists():
+
+            dashy_config_path.parent.mkdir(parents=True, exist_ok=True)
+            dashy_config_path.write_text(render_dashy_config(config, host_ip))
+
+            warnings.append(
+                "Dashy was pre-seeded with tiles for your enabled services at "
+                "stack/config/dashy/conf.yml - edit it directly to customize further; "
+                "Vulcan won't overwrite it on a later regenerate."
             )
 
     if "uptime-kuma" in enabled_service_keys(config):

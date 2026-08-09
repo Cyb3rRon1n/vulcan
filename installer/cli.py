@@ -329,6 +329,7 @@ def main(
     sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
     recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
     homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
+    dashy: bool | None = typer.Option(None, "--dashy/--no-dashy"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -384,6 +385,7 @@ def main(
         sabnzbd=sabnzbd,
         recyclarr=recyclarr,
         homepage=homepage,
+        dashy=dashy,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -408,6 +410,7 @@ def run_install(
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
+    dashy: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -474,7 +477,7 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, gpu, puid, pgid, timezone,
+        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, dashy, gpu, puid, pgid, timezone,
         non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
         cloudflare_email, auth_username, auth_password
     )
@@ -559,6 +562,7 @@ def _gather_generation_config(
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
+    dashy: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -882,6 +886,29 @@ def _gather_generation_config(
         if enable_homepage:
             enabled_optional.add("homepage")
 
+    if custom_services_selected is None:
+
+        # Opt-in, not opt-out, unlike Homepage - this is an alternative
+        # dashboard for users who prefer its UI, not a broadly-valuable
+        # default the way Homepage was promoted to. Nothing stops both
+        # from being enabled at once; this only decides what a fresh
+        # install starts with.
+        dashy_default = "dashy" in previous["enabled_optional"] if previous else False
+
+        if dashy is None:
+
+            enable_dashy = dashy_default if non_interactive else typer.confirm(
+                "Enable Dashy dashboard? An alternative to Homepage - enable either, "
+                "neither, or both.",
+                default=dashy_default
+            )
+
+        else:
+            enable_dashy = dashy
+
+        if enable_dashy:
+            enabled_optional.add("dashy")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -1102,6 +1129,7 @@ def _generate_and_maybe_start(
     console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
     console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
     console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:

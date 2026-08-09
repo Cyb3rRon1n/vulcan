@@ -1,6 +1,6 @@
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
@@ -13,12 +13,12 @@ from installer.tui.service_selection_screen import ServiceSelectionScreen
 class TierConfigScreen(Screen):
 
     DEFAULT_CSS = """
-    TierConfigScreen {
-        align: center middle;
-    }
-
     #tier-error {
         margin: 1 0;
+    }
+
+    .checkbox-row {
+        height: 3;
     }
     """
 
@@ -48,12 +48,13 @@ class TierConfigScreen(Screen):
             ("homepage" in previous["enabled_optional"]) or (previous.get("tier") == "heavy")
             if previous else True
         )
+        dashy_default = "dashy" in previous["enabled_optional"] if previous else False
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
         gpu_label = f"Enable GPU passthrough ({gpu_vendor})" if gpu_vendor else "Enable GPU passthrough"
 
-        yield Vertical(
+        yield VerticalScroll(
             Static(
                 f"Recommended tier: {recommendation.tier.display_name} - "
                 f"{recommendation.explanation}",
@@ -89,6 +90,7 @@ class TierConfigScreen(Screen):
                         "each app's real API key added to its config after first start."
                     )
                 ),
+                classes="checkbox-row"
             ),
             Horizontal(
                 Checkbox(
@@ -108,6 +110,17 @@ class TierConfigScreen(Screen):
                     "Enable Homepage dashboard", value=homepage_default, id="homepage-check",
                     tooltip="A dashboard with tiles linking to every enabled service - pre-seeded automatically, safe to accept."
                 ),
+                classes="checkbox-row"
+            ),
+            Horizontal(
+                Checkbox(
+                    "Enable Dashy dashboard", value=dashy_default, id="dashy-check",
+                    tooltip=(
+                        "An alternative dashboard to Homepage, pre-seeded with tiles for every "
+                        "enabled service - enable either, neither, or both."
+                    )
+                ),
+                classes="checkbox-row"
             ),
             Input(
                 value=str(default_puid), type="integer", placeholder="PUID", id="puid-input",
@@ -127,6 +140,7 @@ class TierConfigScreen(Screen):
                 Button("Continue", id="continue"),
                 Button("Customize Services", id="customize"),
             ),
+            can_focus=False
         )
 
     def on_mount(self) -> None:
@@ -235,6 +249,9 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#homepage-check", Checkbox).value:
             enabled_optional.add("homepage")
+
+        if self.query_one("#dashy-check", Checkbox).value:
+            enabled_optional.add("dashy")
 
         gpu_vendor_to_use = None
 

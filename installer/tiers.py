@@ -52,6 +52,11 @@ _LIGHT_SERVICES = [
     # duplicate of it.
     ServiceDefinition("maintainerr", "Maintainerr (library cleanup)", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
+    # A second, independent dashboard option, not a replacement for
+    # Homepage - both are just optional toggles like every other
+    # tier-agnostic service here, so a user can enable either, neither,
+    # or both depending on which UI they prefer.
+    ServiceDefinition("dashy", "Dashy dashboard", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
