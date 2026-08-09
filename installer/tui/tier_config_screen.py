@@ -4,7 +4,12 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
-from installer.generate import default_puid_pgid, default_timezone
+from installer.generate import (
+    STACK_DIR,
+    default_puid_pgid,
+    default_timezone,
+    watchtower_notification_configured,
+)
 from installer.tiers import TIERS, recommend_tier, tier_description
 from installer.tui.review_screen import ReviewScreen
 from installer.tui.service_selection_screen import ServiceSelectionScreen
@@ -143,6 +148,15 @@ class TierConfigScreen(Screen):
                 value=default_tz, placeholder="Timezone", id="timezone-input",
                 tooltip="IANA timezone name (e.g. America/New_York) - used by every container for correct local timestamps."
             ),
+            Input(
+                placeholder="Watchtower notification URL (optional)",
+                id="watchtower-notification-input",
+                tooltip=(
+                    "Shoutrrr-format URL for Watchtower update alerts (e.g. "
+                    "discord://token@channel) - leave blank to skip. Format per service: "
+                    "https://containrrr.dev/shoutrrr/latest/services/overview/"
+                )
+            ),
             Static("", id="tier-error"),
             Horizontal(
                 Button("Back", id="back"),
@@ -179,6 +193,17 @@ class TierConfigScreen(Screen):
         # exposure Gluetun protects against, so the checkbox is just
         # always visible now, same as SABnzbd/Recyclarr/Homepage.
         self.query_one("#gpu-check", Checkbox).display = tier_id == "heavy" and bool(gpu_vendor)
+
+        # Watchtower is a non-optional Heavy-tier default (unlike
+        # Traefik/Authelia, which are custom-mode only) - reachable
+        # from this plain flow whenever Heavy is selected, not just via
+        # ServiceSelectionScreen's own copy of this same field. Skipped
+        # entirely once a real value already exists in stack/.env, the
+        # same "already configured, leave it alone" rule Authelia's
+        # setup screen follows - never shows the value back.
+        self.query_one("#watchtower-notification-input", Input).display = (
+            tier_id == "heavy" and not watchtower_notification_configured(STACK_DIR)
+        )
 
         # Reuses #tier-error rather than a new row - there's no room for
         # one (this screen's #continue/#back already sit at the bottom
@@ -270,6 +295,13 @@ class TierConfigScreen(Screen):
             and self.query_one("#gpu-check", Checkbox).value
         ):
             gpu_vendor_to_use = self.app.system_info.gpu_vendor
+
+        notification_input = self.query_one("#watchtower-notification-input", Input)
+
+        self.app.watchtower_notification_url = (
+            notification_input.value.strip() or None
+            if notification_input.display else None
+        )
 
         self._store_common_fields(puid, pgid)
         self.app.enabled_optional = enabled_optional

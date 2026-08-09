@@ -37,6 +37,7 @@ class VulcanApp(App):
         self.auth_username: str | None = None
         self.auth_password_hash: str | None = None
         self.port_overrides: dict[str, int] = {}
+        self.watchtower_notification_url: str | None = None
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen())

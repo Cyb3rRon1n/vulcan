@@ -468,6 +468,15 @@ async def _launch_at_tier_config_screen(
     app.media_path = media_path
     app.push_screen(TierConfigScreen())
     await pilot.pause()
+    # A second pause, not one: mount -> auto-focus -> on_descendant_focus's
+    # #tier-error write is a real multi-step async sequence, and under
+    # heavy parallel test-suite load a single pause doesn't always give
+    # it enough wall-clock time to fully settle before the very next
+    # simulated click - a genuine, if rare, race, not a product bug
+    # (never reproduces run in isolation). Screens gained more content
+    # over time (Dashy's checkbox, the Watchtower notification input),
+    # making that first settle window marginally more likely to lose.
+    await pilot.pause()
 
     return app, pilot, ctx
 
@@ -1046,6 +1055,74 @@ async def test_tier_config_screen_sabnzbd_recyclarr_homepage_gpu_timezone_toolti
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_watchtower_notification_input_visible_only_at_heavy_tier(tmp_path):
+
+    with patch("installer.tui.tier_config_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+        try:
+
+            await pilot.click("#light")
+            await pilot.pause()
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is False
+
+            await pilot.click("#heavy")
+            await pilot.pause()
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_watchtower_notification_input_hidden_when_already_configured(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / ".env").write_text("WATCHTOWER_NOTIFICATION_URL=discord://token@channel\n")
+
+    with patch("installer.tui.tier_config_screen.STACK_DIR", stack_dir):
+
+        app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+        try:
+
+            await pilot.click("#heavy")
+            await pilot.pause()
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_at_heavy_stores_notification_url(tmp_path):
+
+    with patch("installer.tui.tier_config_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+        try:
+
+            await pilot.click("#heavy")
+            await pilot.pause()
+
+            notification_input = app.screen.query_one("#watchtower-notification-input", Input)
+            notification_input.scroll_visible(animate=False)
+            await pilot.pause()
+            notification_input.value = "discord://token@channel"
+
+            app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+            await pilot.pause()
+            await pilot.click("#continue")
+            await pilot.pause()
+
+            assert app.watchtower_notification_url == "discord://token@channel"
+            assert isinstance(app.screen, ReviewScreen)
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_focus_shows_real_tooltip_in_error_line():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
@@ -1383,6 +1460,81 @@ async def test_service_selection_screen_continue_no_gpu_vendor_when_unchecked():
 
     finally:
         await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_watchtower_notification_hidden_without_watchtower(tmp_path):
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(make_system_info(), tier_name="light")
+
+        try:
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is False
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_watchtower_notification_shown_when_selected(tmp_path):
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(make_system_info(), tier_name="light")
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("watchtower")
+            await pilot.pause()
+
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_watchtower_notification_hidden_when_already_configured(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / ".env").write_text("WATCHTOWER_NOTIFICATION_URL=discord://token@channel\n")
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", stack_dir):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(make_system_info(), tier_name="light")
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("watchtower")
+            await pilot.pause()
+
+            assert app.screen.query_one("#watchtower-notification-input", Input).display is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_service_selection_screen_continue_stores_watchtower_notification_url(tmp_path):
+
+    with patch("installer.tui.service_selection_screen.STACK_DIR", tmp_path / "stack"):
+
+        app, pilot, ctx = await _launch_at_service_selection_screen(make_system_info(), tier_name="light")
+
+        try:
+
+            service_list = app.screen.query_one("#service-list", SelectionList)
+            service_list.toggle("watchtower")
+            await pilot.pause()
+
+            app.screen.query_one("#watchtower-notification-input", Input).value = "ntfy://topic"
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+            assert app.watchtower_notification_url == "ntfy://topic"
+
+        finally:
+            await ctx.__aexit__(None, None, None)
 
 
 async def test_service_selection_screen_domain_hidden_without_traefik_selected():

@@ -353,7 +353,7 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\ny\ny\n"
+            input="\n\n\n\n\n\ny\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -383,7 +383,7 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
-            input="\n\n\n\n\n\ny\n"
+            input="\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1070,7 +1070,7 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\ny\nn\n"
+            input="\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1309,6 +1309,127 @@ def test_non_interactive_fresh_install_defaults_dashy_disabled(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     assert "dashy" not in config.enabled_optional
+
+
+def test_non_interactive_heavy_with_explicit_notification_url_flag(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--notification-url", "discord://token@channel",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.watchtower_notification_url == "discord://token@channel"
+
+
+def test_non_interactive_heavy_without_notification_url_leaves_it_unset(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "heavy", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.watchtower_notification_url is None
+
+
+def test_non_interactive_light_tier_never_asks_about_notification_url(tmp_path):
+    """
+    Watchtower doesn't exist at Light tier at all - the question must
+    stay silently unreachable, not just default to None by luck.
+    """
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--notification-url", "discord://token@channel",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.watchtower_notification_url is None
+
+
+def test_notification_url_prompt_skipped_when_already_configured(tmp_path):
+
+    media_path = str(tmp_path / "media")
+    stack_dir = tmp_path / "stack"
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.watchtower_notification_configured", return_value=True
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--plain", "--tier", "heavy", "--media-path", media_path,
+                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+            ],
+            input="\n\n\n\n\n\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Watchtower can send an update notification" not in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.watchtower_notification_url is None
 
 
 def test_non_interactive_fresh_install_defaults_homepage_enabled(tmp_path):
@@ -2294,7 +2415,7 @@ def test_interactive_customize_accepted_with_edited_service_list(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\njellyfin,homepage,watchtower\ny\n"
+            input="y\njellyfin,homepage,watchtower\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output

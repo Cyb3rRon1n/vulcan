@@ -31,6 +31,7 @@ from installer.generate import (
     load_previous_state,
     render_stack_summary,
     resolve_ports,
+    watchtower_notification_configured,
     write_stack,
 )
 from installer.post_install import (
@@ -360,6 +361,11 @@ def main(
         None, "--auth-password",
         help="Authelia admin password - only used if authelia is enabled and not already configured"
     ),
+    notification_url: str | None = typer.Option(
+        None, "--notification-url",
+        help="Shoutrrr-format URL for Watchtower update notifications (e.g. discord://token@channel) "
+        "- only used if watchtower is enabled and not already configured"
+    ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
     offline: bool = typer.Option(
         False, "--offline",
@@ -397,6 +403,7 @@ def main(
         cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password=auth_password,
+        notification_url=notification_url,
         offline=offline
     )
 
@@ -422,6 +429,7 @@ def run_install(
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None,
+    notification_url: str | None = None,
     offline: bool = False
 ):
 
@@ -479,7 +487,7 @@ def run_install(
     config = _gather_generation_config(
         info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, dashy, gpu, puid, pgid, timezone,
         non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
-        cloudflare_email, auth_username, auth_password
+        cloudflare_email, auth_username, auth_password, notification_url
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -574,7 +582,8 @@ def _gather_generation_config(
     cloudflare_dns: bool = False,
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
-    auth_password: str | None = None
+    auth_password: str | None = None,
+    notification_url: str | None = None
 ) -> GenerationConfig:
 
     if previous is not None:
@@ -938,6 +947,33 @@ def _gather_generation_config(
         if enable_gpu:
             gpu_vendor_to_use = info.gpu_vendor
 
+    watchtower_notification_url_value = None
+
+    watchtower_included = "watchtower" in (
+        custom_services_selected if custom_services_selected is not None
+        else {service.key for service in chosen_tier.services}
+    )
+
+    # Skip re-asking if a real value already exists in stack/.env (same
+    # "already configured, leave it alone" rule Authelia's own
+    # users_database.yml check follows) - the real value is never
+    # echoed back, only its presence is checked.
+    if watchtower_included and not watchtower_notification_configured(STACK_DIR):
+
+        if notification_url is not None:
+            watchtower_notification_url_value = notification_url
+        elif not non_interactive:
+
+            console.print(
+                "Watchtower can send an update notification (Discord, ntfy, Gotify, and more) "
+                "via a Shoutrrr-format URL - format per service: "
+                "https://containrrr.dev/shoutrrr/latest/services/overview/"
+            )
+
+            watchtower_notification_url_value = typer.prompt(
+                "Watchtower notification URL (leave blank to skip)", default=""
+            ) or None
+
     default_puid, default_pgid = default_puid_pgid()
     default_tz = default_timezone()
 
@@ -983,7 +1019,8 @@ def _gather_generation_config(
         cloudflare_email=cloudflare_email_value,
         auth_username=auth_username_value,
         auth_password_hash=auth_password_hash_value,
-        port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {}
+        port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {},
+        watchtower_notification_url=watchtower_notification_url_value
     )
 
 

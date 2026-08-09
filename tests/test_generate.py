@@ -1134,12 +1134,14 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     result = write_stack(config, output_dir=output_dir)
 
     assert result["success"] is True
-    # No optional extras enabled, so the only warning is the *arr
-    # app-to-app connection reference - every core service in this
-    # tier (Prowlarr, Radarr/Sonarr, qBittorrent, Bazarr, Jellyseerr)
-    # has a real pairing to report.
-    assert len(result["warnings"]) == 1
-    assert "Connect your *arr apps to finish setup" in result["warnings"][0]
+    # No optional extras enabled, so the only warnings are the *arr
+    # app-to-app connection reference and its notification-setup
+    # counterpart - every core service in this tier (Prowlarr,
+    # Radarr/Sonarr, qBittorrent, Bazarr, Jellyseerr) has a real
+    # pairing to report for both.
+    assert len(result["warnings"]) == 2
+    assert any("Connect your *arr apps to finish setup" in w for w in result["warnings"])
+    assert any("can each send their own notifications" in w for w in result["warnings"])
 
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
@@ -1925,6 +1927,143 @@ def test_write_stack_no_arr_setup_reference_without_prowlarr_or_front_ends(tmp_p
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("Connect your *arr apps" in warning for warning in result["warnings"])
+
+
+def test_write_stack_arr_notification_reference_names_enabled_apps(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin", "radarr", "lidarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    reference = [w for w in result["warnings"] if "can each send their own notifications" in w][0]
+    assert "Radarr" in reference
+    assert "Lidarr" in reference
+    assert "Sonarr" not in reference
+    assert "Settings > Connect" in reference
+
+
+def test_write_stack_no_arr_notification_reference_without_arr_apps(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin", "prowlarr"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("can each send their own notifications" in w for w in result["warnings"])
+
+
+def test_write_stack_watchtower_notification_url_written_to_env_and_compose(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        watchtower_notification_url="discord://token@channel"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    env_content = (tmp_path / "stack" / ".env").read_text()
+    compose_content = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "WATCHTOWER_NOTIFICATION_URL=discord://token@channel" in env_content
+    assert "WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}" in compose_content
+    assert not any("Watchtower has no update-notification" in w for w in result["warnings"])
+
+
+def test_write_stack_watchtower_no_notification_url_omits_env_and_compose_var(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    env_content = (tmp_path / "stack" / ".env").read_text()
+    compose_content = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "WATCHTOWER_NOTIFICATION_URL" not in env_content
+    assert "WATCHTOWER_NOTIFICATION_URL" not in compose_content
+    assert any("Watchtower has no update-notification" in w for w in result["warnings"])
+
+
+def test_write_stack_watchtower_notification_url_preserved_on_regenerate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        watchtower_notification_url="discord://token@channel"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    # Regenerate with no notification URL passed at all - the real
+    # value already in .env must survive, the same rule every other
+    # real credential in this project already follows.
+    regenerate_config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(regenerate_config, output_dir=tmp_path / "stack")
+
+    env_content = (tmp_path / "stack" / ".env").read_text()
+    assert "WATCHTOWER_NOTIFICATION_URL=discord://token@channel" in env_content
+    assert not any("Watchtower has no update-notification" in w for w in result["warnings"])
+
+
+def test_watchtower_notification_configured_reflects_real_env_state(tmp_path):
+
+    from installer.generate import watchtower_notification_configured
+
+    stack_dir = tmp_path / "stack"
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    write_stack(config, output_dir=stack_dir)
+    assert watchtower_notification_configured(stack_dir) is False
+
+    config.watchtower_notification_url = "ntfy://topic"
+    write_stack(config, output_dir=stack_dir)
+    assert watchtower_notification_configured(stack_dir) is True
 
 
 def test_render_stack_summary_lists_homepage_first_when_enabled():
