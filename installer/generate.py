@@ -89,6 +89,23 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     # the way every other service here does.
 }
 
+# Container-internal ports, for one service to tell another where to
+# reach it over the compose network - deliberately a separate table
+# from _HOMEPAGE_PORTS above, not a reuse: _HOMEPAGE_PORTS is the
+# host-published, user-browser-facing, remappable side, and it
+# genuinely differs from the container-internal side for SABnzbd
+# (8081 published vs. 8080 internal, to avoid qBittorrent's own 8080) -
+# reusing it here would generate a real wrong URL for that one case.
+_ARR_CONTAINER_PORTS: dict[str, int] = {
+    "jellyfin": 8096,
+    "radarr": 7878,
+    "sonarr": 8989,
+    "lidarr": 8686,
+    "readarr": 8787,
+    "qbittorrent": 8080,
+    "sabnzbd": 8080,
+}
+
 # Dashy's own icon field genuinely accepts a plain image URL (confirmed
 # via its real docs, unlike Homepage which bundles the Dashboard Icons
 # set internally and only needs a bare filename) - reusing the same
@@ -545,6 +562,85 @@ def _uptime_kuma_reference(config: GenerationConfig, host_ip: str | None) -> str
     )
 
 
+def _container_url(key: str, enabled: set[str]) -> str:
+    """
+    Container-internal DNS name + port, for one service to reach
+    another over the compose network - deliberately not
+    resolve_ports()/_HOMEPAGE_PORTS (those are host-published,
+    user-browser-facing, remappable). qBittorrent behind Gluetun has
+    no network identity of its own (network_mode: service:gluetun),
+    the same exception render_decluttarr_config()/_service_href()
+    already carry for exactly this reason.
+    """
+
+    if key == "qbittorrent" and "gluetun" in enabled:
+        return f"http://gluetun:{_ARR_CONTAINER_PORTS['qbittorrent']}"
+
+    return f"http://{key}:{_ARR_CONTAINER_PORTS[key]}"
+
+
+def _arr_setup_reference(config: GenerationConfig) -> str | None:
+    """
+    The real app-to-app integrations Vulcan can't wire up itself -
+    Prowlarr -> *arr apps, each *arr app -> its download client(s),
+    Bazarr -> Radarr/Sonarr, Jellyseerr -> Jellyfin/Radarr/Sonarr.
+    Every one of these needs a real API key generated the first time
+    the *target* app starts, which doesn't exist yet at generate time -
+    so this can't pre-fill the connection the way Recyclarr/Decluttarr's
+    base_urls are pre-filled, only tell the user exactly where to paste
+    it once they have it. Returns None when nothing enabled actually
+    has a real pairing to report, so write_stack() adds no warning at
+    all rather than an empty one.
+    """
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+    lines = []
+
+    arr_apps = [key for key in ("radarr", "sonarr", "lidarr", "readarr") if key in enabled]
+
+    if "prowlarr" in enabled and arr_apps:
+
+        lines.append("  Prowlarr -> add under Settings > Apps:")
+        lines.extend(f"    {display_names[key]}: {_container_url(key, enabled)}" for key in arr_apps)
+
+    download_clients = [key for key in ("qbittorrent", "sabnzbd") if key in enabled]
+
+    for arr_key in arr_apps:
+
+        if download_clients:
+
+            lines.append(f"  {display_names[arr_key]} -> add under Settings > Download Clients:")
+            lines.extend(
+                f"    {display_names[key]}: {_container_url(key, enabled)}" for key in download_clients
+            )
+
+    bazarr_targets = [key for key in ("radarr", "sonarr") if key in enabled]
+
+    if "bazarr" in enabled and bazarr_targets:
+
+        lines.append("  Bazarr -> connect under Settings > Radarr/Sonarr:")
+        lines.extend(f"    {display_names[key]}: {_container_url(key, enabled)}" for key in bazarr_targets)
+
+    jellyseerr_targets = [key for key in ("jellyfin", "radarr", "sonarr") if key in enabled]
+
+    if "jellyseerr" in enabled and jellyseerr_targets:
+
+        lines.append("  Jellyseerr -> connect through its own setup wizard:")
+        lines.extend(
+            f"    {display_names[key]}: {_container_url(key, enabled)}" for key in jellyseerr_targets
+        )
+
+    if not lines:
+        return None
+
+    return (
+        "Connect your *arr apps to finish setup - each connection still needs a real API key "
+        "pasted in from the target app's own Settings > General page (Vulcan can't generate "
+        "these, they're only created the first time each app starts):\n" + "\n".join(lines)
+    )
+
+
 def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
 
     enabled = enabled_service_keys(config)
@@ -663,6 +759,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "stack/config/dashy/conf.yml - edit it directly to customize further; "
                 "Vulcan won't overwrite it on a later regenerate."
             )
+
+    arr_reference = _arr_setup_reference(config)
+
+    if arr_reference:
+        warnings.append(arr_reference)
 
     if "uptime-kuma" in enabled_service_keys(config):
         warnings.append(_uptime_kuma_reference(config, host_ip))

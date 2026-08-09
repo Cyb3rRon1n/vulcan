@@ -1134,7 +1134,12 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     result = write_stack(config, output_dir=output_dir)
 
     assert result["success"] is True
-    assert result["warnings"] == []
+    # No optional extras enabled, so the only warning is the *arr
+    # app-to-app connection reference - every core service in this
+    # tier (Prowlarr, Radarr/Sonarr, qBittorrent, Bazarr, Jellyseerr)
+    # has a real pairing to report.
+    assert len(result["warnings"]) == 1
+    assert "Connect your *arr apps to finish setup" in result["warnings"][0]
 
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
@@ -1411,7 +1416,7 @@ def test_write_stack_no_sabnzbd_warning_when_disabled(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("sabnzbd" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_warns_when_recyclarr_enabled(tmp_path):
@@ -1462,7 +1467,7 @@ def test_write_stack_no_recyclarr_warning_when_disabled(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("recyclarr" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_creates_decluttarr_config_on_first_generate(tmp_path):
@@ -1514,7 +1519,7 @@ def test_write_stack_no_decluttarr_warning_when_disabled(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("decluttarr" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_never_overwrites_existing_decluttarr_config(tmp_path):
@@ -1576,7 +1581,7 @@ def test_write_stack_no_maintainerr_warning_when_disabled(tmp_path):
 
     result = write_stack(config, output_dir=tmp_path / "stack")
 
-    assert result["warnings"] == []
+    assert not any("maintainerr" in warning.lower() for warning in result["warnings"])
 
 
 def test_write_stack_warns_when_traefik_domain_configured(tmp_path):
@@ -1839,6 +1844,87 @@ def test_write_stack_no_uptime_kuma_reference_when_disabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("one-time setup" in warning for warning in result["warnings"])
+
+
+def test_write_stack_arr_setup_reference_covers_prowlarr_and_download_clients(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"sabnzbd"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    arr_warnings = [w for w in result["warnings"] if "Connect your *arr apps" in w]
+    assert len(arr_warnings) == 1
+
+    reference = arr_warnings[0]
+    assert "Prowlarr -> add under Settings > Apps:" in reference
+    assert "Radarr: http://radarr:7878" in reference
+    assert "Sonarr: http://sonarr:8989" in reference
+    assert "Radarr -> add under Settings > Download Clients:" in reference
+    assert "qBittorrent: http://qbittorrent:8080" in reference
+    assert "SABnzbd: http://sabnzbd:8080" in reference
+    # Container-internal, never the host-published/remapped side
+    assert "8081" not in reference
+
+
+def test_write_stack_arr_setup_reference_qbittorrent_uses_gluetun_hostname(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"gluetun"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    reference = [w for w in result["warnings"] if "Connect your *arr apps" in w][0]
+    assert "qBittorrent: http://gluetun:8080" in reference
+    assert "http://qbittorrent:8080" not in reference
+
+
+def test_write_stack_arr_setup_reference_covers_bazarr_and_jellyseerr(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["medium"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    reference = [w for w in result["warnings"] if "Connect your *arr apps" in w][0]
+    assert "Bazarr -> connect under Settings > Radarr/Sonarr:" in reference
+    assert "Jellyseerr -> connect through its own setup wizard:" in reference
+    assert "Jellyfin: http://jellyfin:8096" in reference
+
+
+def test_write_stack_no_arr_setup_reference_without_prowlarr_or_front_ends(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"jellyfin"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("Connect your *arr apps" in warning for warning in result["warnings"])
 
 
 def test_render_stack_summary_lists_homepage_first_when_enabled():
