@@ -46,9 +46,89 @@ class SystemInfo:
     os_pretty_name: str | None
 
 
+# Real, stable ARM Ltd. MIDR_EL1 implementer/part values (documented in
+# ARM's own architecture reference manual, and the exact same table the
+# Linux kernel itself and util-linux's lscpu carry) - the last-resort
+# fallback below for a system with no /proc/device-tree/model at all
+# (some ACPI-based ARM servers). Deliberately not exhaustive - just the
+# implementers/cores a homelab box is actually likely to report.
+_ARM_IMPLEMENTERS = {
+    "0x41": "ARM",
+    "0x42": "Broadcom",
+    "0x43": "Cavium",
+    "0x4e": "NVIDIA",
+    "0x50": "APM",
+    "0x51": "Qualcomm",
+    "0x61": "Apple",
+    "0xc0": "Ampere",
+}
+
+_ARM_CORTEX_PARTS = {
+    "0xd03": "Cortex-A53",
+    "0xd04": "Cortex-A35",
+    "0xd05": "Cortex-A55",
+    "0xd07": "Cortex-A57",
+    "0xd08": "Cortex-A72",
+    "0xd09": "Cortex-A73",
+    "0xd0a": "Cortex-A75",
+    "0xd0b": "Cortex-A76",
+    "0xd0c": "Neoverse-N1",
+    "0xd40": "Neoverse-V1",
+    "0xd41": "Cortex-A78",
+    "0xd44": "Cortex-X1",
+    "0xd49": "Neoverse-N2",
+}
+
+
+def _read_device_tree_model() -> str | None:
+
+    # /proc/device-tree/model is the real, standard way ARM Linux exposes
+    # a human-readable board name (the DTB's own "model" property) -
+    # present on virtually every ARM SBC (Raspberry Pi's own docs point at
+    # this exact file), and a far more direct answer than decoding
+    # implementer/part IDs into a chip name. The raw file is null-
+    # terminated, so the trailing \x00 has to be stripped explicitly or
+    # it survives into the returned string.
+    try:
+
+        with open("/proc/device-tree/model") as f:
+            model = f.read().strip("\x00").strip()
+
+        return model or None
+
+    except OSError:
+        return None
+
+
+def _decode_arm_cpuinfo(implementer: str | None, part: str | None) -> str | None:
+
+    # Last-resort fallback for an ARM system with no device tree at all -
+    # decodes the real, stable implementer/part fields /proc/cpuinfo does
+    # expose on every ARM64 kernel, even though there's no single human-
+    # readable "model name" line the way x86 has. Degrades gracefully
+    # through three tiers: a known core on a known vendor, a known vendor
+    # with an unrecognized core, or neither - never silently drops the
+    # raw IDs once we know they exist.
+    if not implementer or not part:
+        return None
+
+    vendor = _ARM_IMPLEMENTERS.get(implementer.lower())
+    core = _ARM_CORTEX_PARTS.get(part.lower()) if implementer.lower() == "0x41" else None
+
+    if vendor and core:
+        return f"{vendor} {core}"
+
+    if vendor:
+        return f"{vendor} (part {part})"
+
+    return f"Unknown ARM CPU (implementer {implementer}, part {part})"
+
+
 def detect_cpu() -> dict:
 
     cpu_model = None
+    implementer = None
+    part = None
 
     try:
 
@@ -56,13 +136,32 @@ def detect_cpu() -> dict:
 
             for line in f:
 
-                if line.startswith("model name"):
+                key, sep, value = line.partition(":")
+                if not sep:
+                    continue
 
-                    cpu_model = line.split(":", 1)[1].strip()
-                    break
+                key = key.strip().lower()
+                value = value.strip()
+
+                if key == "model name" and cpu_model is None:
+                    cpu_model = value
+                elif key == "cpu implementer" and implementer is None:
+                    implementer = value
+                elif key == "cpu part" and part is None:
+                    part = value
 
     except OSError:
         cpu_model = None
+
+    if cpu_model is None:
+
+        # x86's "model name" line simply doesn't exist on a real ARM64
+        # kernel - fall back to the device tree's real board model, then
+        # to decoding the real implementer/part IDs /proc/cpuinfo does
+        # carry there instead. Neither fallback ever triggers on x86,
+        # where "model name" is always present and this branch is never
+        # reached.
+        cpu_model = _read_device_tree_model() or _decode_arm_cpuinfo(implementer, part)
 
     return {
         "cpu_cores_physical": psutil.cpu_count(logical=False),
