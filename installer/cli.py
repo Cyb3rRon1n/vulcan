@@ -44,6 +44,7 @@ from installer.post_install import (
     remove_orphaned_containers,
     restore_stack,
     stack_containers_exist,
+    status_stack,
     uninstall_stack,
     update_stack,
 )
@@ -128,6 +129,57 @@ def pull():
         f"access needed at that point:\n  docker compose -f {compose_path} --env-file "
         f"{STACK_DIR / '.env'} up -d"
     )
+
+
+@app.command()
+def status():
+    """
+    Show real per-container state for the generated stack - running/exited,
+    health, and published ports. Exits 1 if anything isn't running cleanly,
+    for cron/script use.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+
+    if not compose_path.exists():
+        console.print("[red]No stack found - run `vulcan` first to generate one.[/red]")
+        raise typer.Exit(code=1)
+
+    result = status_stack(str(compose_path), str(STACK_DIR / ".env"))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    if not result["containers"]:
+        console.print("[yellow]No containers found - has the stack been started?[/yellow]")
+        raise typer.Exit(code=1)
+
+    console.print("[bold]Status[/bold]")
+    healthy = True
+
+    for container in result["containers"]:
+
+        state = container["state"]
+        health = container["health"]
+        ports = ", ".join(container["ports"]) or "-"
+
+        # No healthcheck defined (health == "") is a normal, common case -
+        # only "unhealthy"/"starting" are worth calling out, the same
+        # "unknown key isn't a failure" reasoning atlas's own threshold
+        # checks already use for a metric with nothing configured.
+        container_ok = state == "running" and health in ("", "healthy")
+
+        if not container_ok:
+            healthy = False
+
+        marker = "[green]✓[/green]" if container_ok else "[red]![/red]"
+        status_text = f"{state} ({health})" if health else state
+
+        console.print(f"  {marker} {container['service']:<16} {status_text:<20} {ports}")
+
+    if not healthy:
+        raise typer.Exit(code=1)
 
 
 @app.command()

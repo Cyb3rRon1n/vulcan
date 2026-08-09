@@ -2,7 +2,8 @@
 Post-install operations on an already-generated stack: pulling images
 without starting anything (pull_stack), pulling fresh images and
 recreating containers (update_stack, which just calls pull_stack for
-its own pull step), archiving config for safekeeping (backup_stack -
+its own pull step), reporting real per-container state (status_stack),
+archiving config for safekeeping (backup_stack -
 which snapshots any live SQLite database it finds via sqlite3's own
 online-backup API rather than archiving a possibly-mid-write file
 directly), reversing that archive back onto disk (restore_stack),
@@ -19,6 +20,7 @@ no new machinery, just more things to do with a stack that already
 exists.
 """
 
+import json
 import shutil
 import sqlite3
 import subprocess
@@ -59,6 +61,68 @@ def update_stack(compose_path: str, env_path: str) -> dict:
         return {"success": False, "error": "Failed to recreate containers - check `docker compose logs`."}
 
     return {"success": True, "error": None}
+
+
+def status_stack(compose_path: str, env_path: str) -> dict:
+    """
+    Real per-container state for an already-generated stack, via
+    `docker compose ps -a --format json` - JSON Lines (one object per
+    container), confirmed against Docker's own real CLI reference
+    docs, not assumed: {"ID", "Name", "Command", "Project", "Service",
+    "State", "Health", "ExitCode", "Publishers"}, "Publishers" either
+    null or a list of {"URL", "TargetPort", "PublishedPort",
+    "Protocol"}. This needs a capturing call, so it goes through a
+    dedicated subprocess.run() rather than run_docker_command() (which
+    deliberately never captures - see the module docstring) - the same
+    reasoning export_images() already needed a capturing call for.
+    -a is deliberate: a container that's exited or was never created is
+    exactly the kind of problem this command exists to surface, not
+    something to hide by only showing what's already running.
+    """
+
+    result = subprocess.run(
+        ["docker", "compose", "-f", compose_path, "--env-file", env_path, "ps", "-a", "--format", "json"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return {"success": False, "error": "Failed to query stack status - check `docker compose logs`.", "containers": []}
+
+    containers = []
+
+    for line in result.stdout.splitlines():
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        publishers = data.get("Publishers") or []
+
+        ports = sorted({
+            f"{publisher['PublishedPort']}->{publisher['TargetPort']}/{publisher['Protocol']}"
+            for publisher in publishers
+            if publisher.get("PublishedPort")
+        })
+
+        containers.append({
+            "service": data.get("Service", ""),
+            "name": data.get("Name", ""),
+            "state": data.get("State", ""),
+            "health": data.get("Health", ""),
+            "exit_code": data.get("ExitCode", 0),
+            "ports": ports
+        })
+
+    containers.sort(key=lambda container: container["service"])
+
+    return {"success": True, "error": None, "containers": containers}
 
 
 def export_images(

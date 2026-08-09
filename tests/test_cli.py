@@ -1866,6 +1866,130 @@ def test_pull_never_prompts_for_confirmation(tmp_path):
     assert result.exit_code == 0, result.output
 
 
+def test_status_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_status_command_failure_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.status_stack",
+        return_value={"success": False, "error": "Failed to query stack status - check `docker compose logs`.", "containers": []}
+    ):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 1
+    assert "Failed to query stack status" in result.output
+
+
+def test_status_no_containers_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.status_stack", return_value={"success": True, "error": None, "containers": []}
+    ):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 1
+    assert "has the stack been started" in result.output
+
+
+def test_status_all_healthy_exits_0(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    containers = [
+        {
+            "service": "jellyfin", "name": "stack-jellyfin-1", "state": "running",
+            "health": "", "exit_code": 0, "ports": ["8096->8096/tcp"]
+        },
+        {
+            "service": "radarr", "name": "stack-radarr-1", "state": "running",
+            "health": "healthy", "exit_code": 0, "ports": ["7878->7878/tcp"]
+        },
+    ]
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.status_stack",
+        return_value={"success": True, "error": None, "containers": containers}
+    ):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 0, result.output
+    assert "jellyfin" in result.output
+    assert "radarr" in result.output
+    assert "8096->8096/tcp" in result.output
+
+
+def test_status_exited_container_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    containers = [
+        {
+            "service": "jellyfin", "name": "stack-jellyfin-1", "state": "running",
+            "health": "", "exit_code": 0, "ports": []
+        },
+        {
+            "service": "watchtower", "name": "stack-watchtower-1", "state": "exited",
+            "health": "", "exit_code": 1, "ports": []
+        },
+    ]
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.status_stack",
+        return_value={"success": True, "error": None, "containers": containers}
+    ):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 1
+    assert "watchtower" in result.output
+
+
+def test_status_unhealthy_container_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+
+    containers = [
+        {
+            "service": "radarr", "name": "stack-radarr-1", "state": "running",
+            "health": "unhealthy", "exit_code": 0, "ports": []
+        },
+    ]
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.status_stack",
+        return_value={"success": True, "error": None, "containers": containers}
+    ):
+
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 1
+
+
 def test_backup_success_prints_path_and_warnings():
 
     result_dict = {

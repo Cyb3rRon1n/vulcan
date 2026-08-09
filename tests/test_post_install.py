@@ -13,6 +13,7 @@ from installer.post_install import (
     remove_orphaned_containers,
     restore_stack,
     stack_containers_exist,
+    status_stack,
     uninstall_stack,
     update_stack,
 )
@@ -47,6 +48,85 @@ def test_pull_stack_success():
         result = pull_stack("stack/docker-compose.yml", "stack/.env")
 
     assert result == {"success": True, "error": None}
+
+
+def test_status_stack_parses_real_json_lines_shape():
+    """
+    The exact shape confirmed against Docker's own real CLI reference
+    docs, not assumed: JSON Lines (one object per line), Publishers
+    either null or a list of {URL, TargetPort, PublishedPort, Protocol}.
+    """
+
+    stdout = (
+        '{"ID":"abc","Name":"stack-jellyfin-1","Command":"x","Project":"stack",'
+        '"Service":"jellyfin","State":"running","Health":"","ExitCode":0,'
+        '"Publishers":[{"URL":"0.0.0.0","TargetPort":8096,"PublishedPort":8096,"Protocol":"tcp"}]}\n'
+        '{"ID":"def","Name":"stack-radarr-1","Command":"x","Project":"stack",'
+        '"Service":"radarr","State":"exited","Health":"","ExitCode":1,"Publishers":null}\n'
+    )
+
+    proc = MagicMock(returncode=0, stdout=stdout)
+
+    with patch("installer.post_install.subprocess.run", return_value=proc) as mock_run:
+        result = status_stack("stack/docker-compose.yml", "stack/.env")
+
+    args = mock_run.call_args[0][0]
+    assert args == [
+        "docker", "compose", "-f", "stack/docker-compose.yml", "--env-file", "stack/.env",
+        "ps", "-a", "--format", "json"
+    ]
+
+    assert result["success"] is True
+    assert result["containers"] == [
+        {
+            "service": "jellyfin", "name": "stack-jellyfin-1", "state": "running",
+            "health": "", "exit_code": 0, "ports": ["8096->8096/tcp"]
+        },
+        {
+            "service": "radarr", "name": "stack-radarr-1", "state": "exited",
+            "health": "", "exit_code": 1, "ports": []
+        },
+    ]
+
+
+def test_status_stack_command_failure_reports_clean_error():
+
+    proc = MagicMock(returncode=1, stdout="")
+
+    with patch("installer.post_install.subprocess.run", return_value=proc):
+        result = status_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert result == {
+        "success": False,
+        "error": "Failed to query stack status - check `docker compose logs`.",
+        "containers": []
+    }
+
+
+def test_status_stack_skips_malformed_lines():
+
+    stdout = 'not valid json\n{"Service":"radarr","State":"running","Health":"healthy"}\n'
+    proc = MagicMock(returncode=0, stdout=stdout)
+
+    with patch("installer.post_install.subprocess.run", return_value=proc):
+        result = status_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert len(result["containers"]) == 1
+    assert result["containers"][0]["service"] == "radarr"
+
+
+def test_status_stack_sorts_by_service_name():
+
+    stdout = (
+        '{"Service":"sonarr","State":"running","Health":""}\n'
+        '{"Service":"jellyfin","State":"running","Health":""}\n'
+    )
+    proc = MagicMock(returncode=0, stdout=stdout)
+
+    with patch("installer.post_install.subprocess.run", return_value=proc):
+        result = status_stack("stack/docker-compose.yml", "stack/.env")
+
+    assert [c["service"] for c in result["containers"]] == ["jellyfin", "sonarr"]
 
 
 def test_export_images_no_stack_found(tmp_path):
