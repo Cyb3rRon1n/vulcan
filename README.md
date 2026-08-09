@@ -24,12 +24,12 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 - **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
-- **Custom mode** — free-pick any of Vulcan's 21 known services regardless of tier, pre-checked from what your hardware qualifies for.
+- **Custom mode** — free-pick any of Vulcan's 22 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default, or real Let's Encrypt certificates if your domain's DNS is on Cloudflare), no manual reverse-proxy config.
 - **Real login, not just routing** — optional Authelia integration puts a real username/password in front of every routed service, no external identity provider or database required.
 - **Private remote access** — optional Tailscale integration puts every host-published port in your stack on your own tailnet, reachable from anywhere with no port-forwarding and no public exposure at all.
 - **Automated queue cleanup** — optional Decluttarr integration removes stalled or failed downloads from Radarr/Sonarr's queue and triggers a fresh search, so one dead torrent doesn't quietly stall your automation.
-- **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real, grouped, described tiles for your actual stack instead of a blank page.
+- **Pre-seeded dashboard, your choice of two** — optional Homepage and/or Dashy dashboards, available at every tier and independently enable-able, both boot with real, grouped tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
@@ -61,7 +61,7 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately. Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
+`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow: detects your system, gets Docker ready if it isn't already, recommends a tier, asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr/Homepage/Dashy, PUID/PGID/timezone), and generates a ready-to-run stack — with the option to start it immediately. Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
 
 Non-interactive / scripted use is also supported:
 
@@ -79,13 +79,13 @@ Both the guided TUI and the plain CLI show what each tier actually contains befo
 
 | Tier | Target Hardware | Core Services | Extras |
 |---|---|---|---|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup) |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage and/or Dashy (dashboards) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Same optional extras as Light |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | GPU transcoding if detected; Lidarr, Readarr, Traefik, Authelia, and Tailscale via custom mode |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
-**Custom mode** lets you pick exactly which services to include, from all 21 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+**Custom mode** lets you pick exactly which services to include, from all 22 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media

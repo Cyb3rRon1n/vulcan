@@ -15,6 +15,7 @@ from installer.generate import (
     render_authelia_configuration,
     render_authelia_users_database,
     render_compose,
+    render_dashy_config,
     render_decluttarr_config,
     render_env,
     render_homepage_services,
@@ -180,6 +181,7 @@ def test_resolve_ports_returns_defaults_when_no_overrides():
     assert ports["jellyfin"] == 8096
     assert ports["qbittorrent"] == 8080
     assert ports["sabnzbd"] == 8081
+    assert ports["dashy"] == 4000
 
 
 def test_resolve_ports_override_wins_over_default():
@@ -377,6 +379,39 @@ def test_render_compose_homepage_allowed_hosts_omits_domain_without_traefik_rout
     )
 
     assert "homepage.media.example.com" not in output
+
+
+def test_render_compose_includes_dashy_when_enabled():
+
+    output = render_compose(make_config("light", enabled_optional={"dashy"}))
+
+    assert "container_name: dashy" in output
+    assert "lissy93/dashy:latest" in output
+    assert '"4000:8080"' in output
+
+
+def test_render_compose_excludes_dashy_when_not_enabled():
+
+    output = render_compose(make_config("heavy"))
+
+    assert "container_name: dashy" not in output
+
+
+def test_render_compose_dashy_and_homepage_both_enabled_independently():
+
+    output = render_compose(make_config("light", enabled_optional={"dashy", "homepage"}))
+
+    assert "container_name: dashy" in output
+    assert "container_name: homepage" in output
+
+
+def test_render_compose_dashy_traefik_labels_when_routed():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"dashy", "traefik"}, domain="media.example.com")
+    )
+
+    assert "traefik.http.routers.dashy.rule=Host(`dashy.media.example.com`)" in output
 
 
 def _jellyfin_block(output: str) -> str:
@@ -1004,6 +1039,84 @@ def test_render_homepage_services_output_is_valid_yaml():
     assert len(parsed) == 4
 
 
+def test_render_homepage_services_tiles_dashy_when_both_enabled():
+    """
+    "dashy" is only in _HOMEPAGE_GROUPS so *Homepage's* own tiles can
+    include it when both dashboards are enabled - a real, deliberate
+    exception to the usual self-exclusion rule (Homepage never tiles
+    itself, but it does tile a second, independent dashboard app).
+    """
+
+    output = render_homepage_services(
+        make_config("light", custom_services={"jellyfin", "homepage", "dashy"}),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+
+    assert groups["Infrastructure"]["Dashy dashboard"]["href"] == "http://localhost:4000"
+
+
+def test_render_dashy_config_creates_sections_for_enabled_services():
+
+    output = render_dashy_config(
+        make_config("heavy", custom_services={"jellyfin", "radarr", "qbittorrent", "dashy"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+
+    assert parsed["pageInfo"]["title"]
+    assert parsed["appConfig"] == {"theme": "colorful"}
+
+    sections = {section["name"]: section["items"] for section in parsed["sections"]}
+
+    media = {item["title"]: item for item in sections["Media"]}
+    assert media["Jellyfin"]["url"] == "http://localhost:8096"
+    assert media["Jellyfin"]["description"] == "Stream your movies, TV, and music"
+    assert media["Jellyfin"]["icon"] == "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png"
+
+    downloads = {item["title"]: item for item in sections["Downloads"]}
+    assert downloads["qBittorrent"]["url"] == "http://localhost:8080"
+
+    assert "Infrastructure" not in sections or "Dashy dashboard" not in {
+        item["title"] for section in parsed["sections"] if section["name"] == "Infrastructure"
+        for item in section["items"]
+    }
+
+
+def test_render_dashy_config_excludes_itself():
+    """
+    "dashy" appears in _HOMEPAGE_GROUPS purely so Homepage can tile it -
+    Dashy's own generated config must never include a tile pointing at
+    itself.
+    """
+
+    output = render_dashy_config(
+        make_config("light", custom_services={"jellyfin", "dashy"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+
+    titles = {item["title"] for section in parsed["sections"] for item in section["items"]}
+    assert "Dashy dashboard" not in titles
+    assert "Jellyfin" in titles
+
+
+def test_render_dashy_config_reflects_port_override():
+
+    output = render_dashy_config(
+        make_config("light", custom_services={"jellyfin", "dashy"}, port_overrides={"jellyfin": 9096}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    items = [item for section in parsed["sections"] for item in section["items"]]
+
+    assert items[0]["url"] == "http://localhost:9096"
+
+
 def test_write_stack_writes_files_and_creates_directories(tmp_path):
 
     media_path = tmp_path / "media-root"
@@ -1583,6 +1696,88 @@ def test_write_stack_never_overwrites_existing_homepage_services_yaml(tmp_path):
     assert not any("pre-seeded" in warning for warning in result["warnings"])
 
 
+def test_write_stack_creates_dashy_conf_yml_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"dashy"}
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+
+    assert conf_yml_path.is_file()
+    assert "192.168.1.50" in conf_yml_path.read_text()
+    assert any("Dashy was pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_dashy_conf_yml_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+
+    assert not conf_yml_path.exists()
+    assert not any("Dashy" in warning for warning in result["warnings"])
+
+
+def test_write_stack_never_overwrites_existing_dashy_conf_yml(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"dashy"}
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+    conf_yml_path.write_text("# hand-edited by the user\n")
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert conf_yml_path.read_text() == "# hand-edited by the user\n"
+    assert not any("Dashy was pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_both_dashboards_pre_seed_independently(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"dashy", "homepage"}
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        write_stack(config, output_dir=tmp_path / "stack")
+
+    assert (tmp_path / "stack" / "config" / "dashy" / "conf.yml").is_file()
+    assert (tmp_path / "stack" / "config" / "homepage" / "services.yaml").is_file()
+
+
 def test_write_stack_uptime_kuma_reference_lists_enabled_services(tmp_path):
 
     config = GenerationConfig(
@@ -1670,6 +1865,31 @@ def test_render_stack_summary_omits_homepage_when_disabled():
     assert "Homepage" not in output
     assert "  Jellyfin: http://192.168.1.50:8096" in output
     assert "  Radarr: http://192.168.1.50:7878" in output
+
+
+def test_render_stack_summary_lists_dashy_and_homepage_without_duplication():
+
+    output = render_stack_summary(
+        make_config("light", custom_services={"dashy", "homepage", "jellyfin"}),
+        host_ip="192.168.1.50"
+    )
+
+    lines = output.splitlines()
+
+    assert lines[0] == "  Homepage (dashboard): http://192.168.1.50:3000"
+    assert lines[1] == "  Dashy (dashboard): http://192.168.1.50:4000"
+    assert lines.count("  Dashy (dashboard): http://192.168.1.50:4000") == 1
+    assert "  Jellyfin: http://192.168.1.50:8096" in lines
+
+
+def test_render_stack_summary_omits_dashy_when_disabled():
+
+    output = render_stack_summary(
+        make_config("light", custom_services={"jellyfin"}),
+        host_ip="192.168.1.50"
+    )
+
+    assert "Dashy" not in output
 
 
 def test_render_stack_summary_uses_traefik_domain():

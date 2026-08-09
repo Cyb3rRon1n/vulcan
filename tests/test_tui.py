@@ -720,6 +720,8 @@ async def test_tier_config_screen_continue_with_sabnzbd_checked():
         await pilot.click("#gluetun-check")
         await pilot.pause()
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -767,6 +769,8 @@ async def test_tier_config_screen_continue_with_recyclarr_checked():
         await pilot.click("#gluetun-check")
         await pilot.pause()
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -792,6 +796,8 @@ async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
         await pilot.click("#homepage-check")
         await pilot.pause()
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -812,6 +818,57 @@ async def test_tier_config_screen_homepage_checkbox_defaults_enabled_fresh_insta
         checkbox = app.screen.query_one("#homepage-check", Checkbox)
         assert checkbox.value is True
         assert checkbox.display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_dashy_checkbox_defaults_disabled_fresh_install():
+    """
+    Unlike Homepage, Dashy is opt-in - it's an alternative dashboard for
+    users who prefer its UI, not a broadly-valuable default.
+    """
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        checkbox = app.screen.query_one("#dashy-check", Checkbox)
+        assert checkbox.value is False
+        assert checkbox.display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_dashy_checked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        await pilot.click("#dashy-check")
+        await pilot.pause()
+
+        # Gluetun/Homepage default on now - uncheck them to isolate
+        # dashy alone.
+        await pilot.click("#gluetun-check")
+        await pilot.pause()
+
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "light"
+        assert app.enabled_optional == {"dashy"}
+        assert isinstance(app.screen, ReviewScreen)
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -876,6 +933,8 @@ async def test_tier_config_screen_continue_with_homepage_unchecked():
         await pilot.click("#gluetun-check")
         await pilot.pause()
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -896,6 +955,8 @@ async def test_tier_config_screen_continue_navigates_to_review_screen():
         await pilot.click("#heavy")
         await pilot.pause()
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -918,6 +979,8 @@ async def test_tier_config_screen_invalid_puid_shows_error_and_does_not_exit():
 
         app.screen.query_one("#puid-input", Input).value = ""
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -935,6 +998,8 @@ async def test_tier_config_screen_continue_leaves_custom_services_none():
 
     try:
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -1071,6 +1136,8 @@ async def test_tier_config_screen_customize_navigates_to_service_selection_scree
 
     try:
 
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#customize")
         await pilot.pause()
 
@@ -2642,6 +2709,8 @@ async def test_tier_config_screen_back_returns_to_media_path_screen():
 
     try:
 
+        app.screen.query_one("#back", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#back")
         await pilot.pause()
 
@@ -2659,6 +2728,8 @@ async def test_tier_config_screen_back_preserves_previously_entered_values():
 
         app.screen.query_one("#puid-input", Input).value = "1234"
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#continue")
         await pilot.pause()
         assert isinstance(app.screen, ReviewScreen)
@@ -2679,6 +2750,8 @@ async def test_service_selection_screen_back_returns_to_tier_config_screen():
 
     try:
 
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#customize")
         await pilot.pause()
         assert isinstance(app.screen, ServiceSelectionScreen)
@@ -2713,6 +2786,8 @@ async def test_review_screen_back_returns_to_service_selection_screen():
 
     try:
 
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click("#customize")
         await pilot.pause()
         assert isinstance(app.screen, ServiceSelectionScreen)

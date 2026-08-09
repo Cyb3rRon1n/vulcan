@@ -28,6 +28,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "authelia": "light",
     "tailscale": "light",
     "homepage": "light",
+    "dashy": "light",
     "uptime-kuma": "light",
     "watchtower": "light",
 }
