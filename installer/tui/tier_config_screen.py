@@ -13,8 +13,17 @@ from installer.tui.service_selection_screen import ServiceSelectionScreen
 class TierConfigScreen(Screen):
 
     DEFAULT_CSS = """
+    /* Fixed, not auto: a real bug, found only by clicking through at a
+       viewport where content exactly fits with no scrolling needed
+       (see CLAUDE.md) - Back/Continue/Customize have no tooltip, so
+       focusing one on MouseDown blanks this Static, which (at "auto"
+       height) shrank it mid-click and physically moved the button out
+       from under the pointer before MouseUp, silently eating the
+       click. 5 rows is the real measured worst case (Heavy tier's
+       composition text at the 80-column floor). */
     #tier-error {
         margin: 1 0;
+        height: 5;
     }
 
     .checkbox-row {
