@@ -63,6 +63,9 @@ class TierConfigScreen(Screen):
             if previous else True
         )
         dashy_default = "dashy" in previous["enabled_optional"] if previous else False
+        audiobookshelf_default = (
+            "audiobookshelf" in previous["enabled_optional"] if previous else False
+        )
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
@@ -133,6 +136,10 @@ class TierConfigScreen(Screen):
                         "An alternative dashboard to Homepage, pre-seeded with tiles for every "
                         "enabled service - enable either, neither, or both."
                     )
+                ),
+                Checkbox(
+                    "Enable Audiobookshelf", value=audiobookshelf_default, id="audiobookshelf-check",
+                    tooltip="A media server for audiobooks and podcasts - pairs naturally with Lidarr/Readarr, but doesn't need either enabled."
                 ),
                 classes="checkbox-row"
             ),
@@ -286,6 +293,9 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#dashy-check", Checkbox).value:
             enabled_optional.add("dashy")
+
+        if self.query_one("#audiobookshelf-check", Checkbox).value:
+            enabled_optional.add("audiobookshelf")
 
         gpu_vendor_to_use = None
 

@@ -31,6 +31,9 @@ RESOURCE_PROFILES: dict[str, str] = {
     "dashy": "light",
     "uptime-kuma": "light",
     "watchtower": "light",
+    # Lighter than Jellyfin ("heavy") - a simpler Node.js app with no
+    # transcoding load expected for typical audiobook/podcast playback.
+    "audiobookshelf": "standard",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

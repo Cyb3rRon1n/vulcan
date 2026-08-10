@@ -7,7 +7,7 @@ def test_all_known_services_have_a_resource_profile():
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "decluttarr", "maintainerr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "dashy", "uptime-kuma",
-        "watchtower"
+        "watchtower", "audiobookshelf"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected

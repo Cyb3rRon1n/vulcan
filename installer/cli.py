@@ -383,6 +383,7 @@ def main(
     recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
     homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
     dashy: bool | None = typer.Option(None, "--dashy/--no-dashy"),
+    audiobookshelf: bool | None = typer.Option(None, "--audiobookshelf/--no-audiobookshelf"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -444,6 +445,7 @@ def main(
         recyclarr=recyclarr,
         homepage=homepage,
         dashy=dashy,
+        audiobookshelf=audiobookshelf,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -470,6 +472,7 @@ def run_install(
     recyclarr: bool | None,
     homepage: bool | None,
     dashy: bool | None,
+    audiobookshelf: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -537,9 +540,9 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, dashy, gpu, puid, pgid, timezone,
-        non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
-        cloudflare_email, auth_username, auth_password, notification_url
+        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, dashy, audiobookshelf, gpu,
+        puid, pgid, timezone, non_interactive, previous, custom_services_from_flag, domain,
+        cloudflare_dns, cloudflare_email, auth_username, auth_password, notification_url
     )
 
     _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
@@ -623,6 +626,7 @@ def _gather_generation_config(
     recyclarr: bool | None,
     homepage: bool | None,
     dashy: bool | None,
+    audiobookshelf: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -970,6 +974,25 @@ def _gather_generation_config(
         if enable_dashy:
             enabled_optional.add("dashy")
 
+    if custom_services_selected is None:
+
+        audiobookshelf_default = (
+            "audiobookshelf" in previous["enabled_optional"] if previous else False
+        )
+
+        if audiobookshelf is None:
+
+            enable_audiobookshelf = audiobookshelf_default if non_interactive else typer.confirm(
+                "Enable Audiobookshelf (audiobooks and podcasts)?",
+                default=audiobookshelf_default
+            )
+
+        else:
+            enable_audiobookshelf = audiobookshelf
+
+        if enable_audiobookshelf:
+            enabled_optional.add("audiobookshelf")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -1219,6 +1242,9 @@ def _generate_and_maybe_start(
     console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
     console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
     console.print(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
+    console.print(
+        f"  Audiobookshelf: {'enabled' if 'audiobookshelf' in config.enabled_optional else 'disabled'}"
+    )
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
