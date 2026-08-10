@@ -1734,6 +1734,72 @@ def test_media_path_redundant_storage_shows_no_warning(tmp_path):
     assert "No drive-level redundancy" not in result.output
 
 
+def test_media_path_shows_drive_readiness_checklist(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.check_drive_readiness",
+        return_value={
+            "path": media_path, "writable": True, "write_error": None,
+            "free_gb": 900.0, "low_space": False, "same_device_as_root": False
+        }
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Checking your media drive..." in result.output
+    assert "not writable" not in result.output
+    assert "✓ 900.0GB free" in result.output
+
+
+def test_media_path_shows_low_space_and_not_writable_warnings(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 2.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.check_drive_readiness",
+        return_value={
+            "path": media_path, "writable": False, "write_error": "Permission denied",
+            "free_gb": 2.0, "low_space": True, "same_device_as_root": True
+        }
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Permission denied" in result.output
+    assert "Only 2.0GB free" in result.output
+    assert "starve the system of space" in result.output
+
+
 def test_media_path_creation_failure_reported_cleanly():
 
     with patch(

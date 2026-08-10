@@ -24,6 +24,7 @@ class VulcanApp(App):
 
         self.media_path: str | None = None
         self.media_redundancy: dict | None = None
+        self.drive_readiness: dict | None = None
         self.tier_name: str | None = None
         self.enabled_optional: set[str] = set()
         self.gpu_vendor: str | None = None

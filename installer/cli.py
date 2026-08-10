@@ -8,6 +8,8 @@ from installer import __version__
 from installer.auth import hash_authelia_password
 from installer.detect import (
     SystemInfo,
+    check_drive_readiness,
+    describe_drive_readiness,
     describe_media_redundancy,
     detect_disk,
     detect_docker,
@@ -671,6 +673,19 @@ def _gather_generation_config(
     disk_info = detect_disk(media_path)
     info.disk_free_gb = disk_info["disk_free_gb"]
     info.disk_path_checked = disk_info["disk_path_checked"]
+
+    console.print("[bold]Checking your media drive...[/bold]")
+
+    readiness = check_drive_readiness(media_path)
+
+    for line in describe_drive_readiness(readiness):
+
+        if line.startswith("✗"):
+            console.print(f"[red]{line}[/red]")
+        elif line.startswith("!"):
+            console.print(f"[yellow]{line}[/yellow]")
+        else:
+            console.print(f"[green]{line}[/green]")
 
     redundancy = detect_media_redundancy(media_path)
     description = describe_media_redundancy(redundancy)

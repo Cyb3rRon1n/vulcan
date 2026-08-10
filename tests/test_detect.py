@@ -2,6 +2,8 @@ from unittest.mock import MagicMock, mock_open, patch
 
 from installer.detect import (
     SystemInfo,
+    check_drive_readiness,
+    describe_drive_readiness,
     describe_media_redundancy,
     detect_cpu,
     detect_disk,
@@ -480,6 +482,143 @@ def test_describe_media_redundancy_not_redundant_wording():
     assert describe_media_redundancy(result) == (
         "/dev/sda1 (ext4, single device - no redundancy)"
     )
+
+
+def test_check_drive_readiness_real_writable_path_with_plenty_of_space(tmp_path):
+
+    # Real, unmocked: an actual write-then-delete probe against a real
+    # tmp_path, not a permission-bit read - and no cleanup needed
+    # beyond pytest's own tmp_path teardown, since the probe file is
+    # already removed by check_drive_readiness itself.
+    result = check_drive_readiness(str(tmp_path))
+
+    assert result["path"] == str(tmp_path)
+    assert result["writable"] is True
+    assert result["write_error"] is None
+    assert not list(tmp_path.iterdir())  # probe file left nothing behind
+    assert result["free_gb"] > 0.0
+    assert result["low_space"] is False
+
+
+def test_check_drive_readiness_real_unwritable_path_reports_error(tmp_path):
+
+    # A real OSError (ENOTDIR), not mocked and not dependent on
+    # permission bits (which a root-running test can't rely on to
+    # block a write) - writing "inside" a plain file always fails.
+    not_a_directory = tmp_path / "not-a-directory"
+    not_a_directory.write_text("x")
+
+    result = check_drive_readiness(str(not_a_directory))
+
+    assert result["writable"] is False
+    assert result["write_error"] is not None
+
+
+def test_check_drive_readiness_flags_low_space(tmp_path):
+
+    fake_usage = MagicMock()
+    fake_usage.free = 2 * 1024 ** 3  # 2GB, below the real 10GB floor
+
+    with patch("installer.detect.shutil.disk_usage", return_value=fake_usage):
+        result = check_drive_readiness(str(tmp_path))
+
+    assert result["free_gb"] == 2.0
+    assert result["low_space"] is True
+
+
+def test_check_drive_readiness_detects_same_device_as_root(tmp_path):
+
+    with patch("installer.detect.os.stat") as mock_stat:
+
+        mock_stat.return_value = MagicMock(st_dev=123)
+        result = check_drive_readiness(str(tmp_path))
+
+    assert result["same_device_as_root"] is True
+
+
+def test_check_drive_readiness_detects_separate_device_from_root(tmp_path):
+
+    def fake_stat(path):
+
+        device = MagicMock()
+        device.st_dev = 1 if path == str(tmp_path) else 2
+        return device
+
+    with patch("installer.detect.os.stat", side_effect=fake_stat):
+        result = check_drive_readiness(str(tmp_path))
+
+    assert result["same_device_as_root"] is False
+
+
+def test_check_drive_readiness_same_device_check_tolerates_stat_failure(tmp_path):
+
+    with patch("installer.detect.os.stat", side_effect=OSError("gone")):
+        result = check_drive_readiness(str(tmp_path))
+
+    assert result["same_device_as_root"] is None
+
+
+def test_describe_drive_readiness_all_clear():
+
+    result = {
+        "path": "/mnt/media", "writable": True, "write_error": None,
+        "free_gb": 500.0, "low_space": False, "same_device_as_root": False
+    }
+
+    lines = describe_drive_readiness(result)
+
+    assert lines == [
+        "✓ /mnt/media is writable",
+        "✓ 500.0GB free",
+    ]
+
+
+def test_describe_drive_readiness_not_writable():
+
+    result = {
+        "path": "/mnt/media", "writable": False, "write_error": "Permission denied",
+        "free_gb": 500.0, "low_space": False, "same_device_as_root": False
+    }
+
+    lines = describe_drive_readiness(result)
+
+    assert lines[0] == "✗ /mnt/media is not writable: Permission denied"
+
+
+def test_describe_drive_readiness_low_space_warning():
+
+    result = {
+        "path": "/mnt/media", "writable": True, "write_error": None,
+        "free_gb": 3.5, "low_space": True, "same_device_as_root": False
+    }
+
+    lines = describe_drive_readiness(result)
+
+    assert any(line.startswith("!") and "3.5GB free" in line for line in lines)
+
+
+def test_describe_drive_readiness_same_device_warning():
+
+    result = {
+        "path": "/mnt/media", "writable": True, "write_error": None,
+        "free_gb": 500.0, "low_space": False, "same_device_as_root": True
+    }
+
+    lines = describe_drive_readiness(result)
+
+    assert any("same filesystem as your OS drive" in line for line in lines)
+
+
+def test_describe_drive_readiness_no_same_device_warning_when_separate():
+
+    result = {
+        "path": "/mnt/media", "writable": True, "write_error": None,
+        "free_gb": 500.0, "low_space": False, "same_device_as_root": False
+    }
+
+    lines = describe_drive_readiness(result)
+
+    assert not any("same filesystem" in line for line in lines)
 
 
 def test_detect_gpu_detects_nvidia():
