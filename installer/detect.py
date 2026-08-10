@@ -8,14 +8,23 @@ already there, never creates or modifies a RAID/partition layout.
 Every function catches its own failure modes and returns None/False/a
 partial result rather than raising, since a missing tool (no
 nvidia-smi, no docker) just means "not present," not an error.
+
+check_drive_readiness() is the one function here that performs a real
+(tiny, self-cleaning) write - a genuine writability probe, not just a
+permission-bit read - since a mount can look writable (correct owner,
+correct mode bits) and still reject every write (read-only remount
+after a disk error, a full filesystem). Still read-only in effect: the
+probe file is created and removed in the same call, nothing persists.
 """
 
 import grp
+import os
 import platform
 import shutil
 import socket
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import psutil
 
@@ -375,6 +384,108 @@ def describe_media_redundancy(result: dict) -> str | None:
         return f"{result['device']} ({filesystem}, {kind}{count})"
 
     return f"{result['device']} ({filesystem}, single device - no redundancy)"
+
+
+# Not a guess at how large the user's own media library will grow to -
+# this project has no way to know that and it isn't Vulcan's call to
+# make. It's a real, defensible floor for Vulcan's *own* footprint
+# (container images across a full tier, plus config/database growth
+# over time) - low_space flags "not even enough room to run the stack
+# itself," not "not enough room for your movies."
+_MIN_FREE_GB_FOR_STACK = 10.0
+
+
+def check_drive_readiness(media_path: str) -> dict:
+    """
+    Real pre-install checks on the chosen media path, run once right
+    after it's created - distinct from detect_media_redundancy() (is
+    the drive protected against failure) and preflight.py's port
+    checks (run later, right before the first `docker compose up`).
+    Three real, independent signals, each catching a different class
+    of "install proceeds, then fails or disappoints later":
+
+    - writable: an actual write-then-delete probe, not a permission-
+      bit read - the same gap detect_gpu() closed for tool presence
+      vs. a working driver applies here too: correct ownership/mode
+      bits don't guarantee a write succeeds (read-only remount after
+      a disk error, a genuinely full filesystem).
+    - low_space: free space against the real _MIN_FREE_GB_FOR_STACK
+      floor above, not a guess at media-library size.
+    - same_device_as_root: a plain os.stat().st_dev comparison against
+      "/" (no new subprocess dependency, unlike detect_media_
+      redundancy()'s findmnt use, which is solving a different
+      problem) - flags the well-known homelab pitfall of a growing
+      media library sharing the OS's own filesystem, advisory only,
+      never a hard block.
+    """
+
+    result = {
+        "path": media_path,
+        "writable": False,
+        "write_error": None,
+        "free_gb": detect_disk(media_path)["disk_free_gb"],
+        "low_space": True,
+        "same_device_as_root": None,
+    }
+
+    result["low_space"] = result["free_gb"] < _MIN_FREE_GB_FOR_STACK
+
+    probe = Path(media_path) / f".vulcan-write-test-{os.getpid()}"
+
+    try:
+
+        probe.write_text("vulcan")
+        probe.unlink()
+        result["writable"] = True
+
+    except OSError as error:
+        result["write_error"] = str(error)
+
+    try:
+        result["same_device_as_root"] = os.stat(media_path).st_dev == os.stat("/").st_dev
+    except OSError:
+        pass
+
+    return result
+
+
+def describe_drive_readiness(result: dict) -> list[str]:
+    """
+    Plain, unmarked-up status lines (✓/!/✗ prefixes only, no Rich
+    markup) so both the CLI (which colors them via the prefix) and the
+    TUI (which prints them as-is, matching how warnings are already
+    rendered in ReviewScreen) can share one formatter - the same
+    single-source-of-truth reasoning WEB_FACING_SERVICES already
+    established, applied here to avoid a second, driftable copy of
+    this wording.
+    """
+
+    lines = []
+
+    if result["writable"]:
+        lines.append(f"✓ {result['path']} is writable")
+    else:
+        lines.append(f"✗ {result['path']} is not writable: {result['write_error']}")
+
+    if result["low_space"]:
+
+        lines.append(
+            f"! Only {result['free_gb']:.1f}GB free - Vulcan's own containers and "
+            f"configs want at least {_MIN_FREE_GB_FOR_STACK:.0f}GB, separate from "
+            "whatever space your actual media library needs"
+        )
+
+    else:
+        lines.append(f"✓ {result['free_gb']:.1f}GB free")
+
+    if result["same_device_as_root"] is True:
+
+        lines.append(
+            "! Media path is on the same filesystem as your OS drive - a growing "
+            "library can starve the system of space. A separate mount is safer."
+        )
+
+    return lines
 
 
 def detect_gpu() -> str | None:

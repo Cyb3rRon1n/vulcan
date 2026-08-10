@@ -564,6 +564,37 @@ async def test_media_path_screen_continue_sets_media_redundancy(tmp_path):
         await ctx.__aexit__(None, None, None)
 
 
+async def test_media_path_screen_continue_sets_drive_readiness(tmp_path):
+
+    app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
+
+    try:
+
+        media_path = str(tmp_path / "media")
+        app.screen.query_one("#media-path-input", Input).value = media_path
+
+        readiness = {
+            "path": media_path, "writable": True, "write_error": None,
+            "free_gb": 500.0, "low_space": False, "same_device_as_root": False
+        }
+
+        with patch(
+            "installer.tui.media_path_screen.detect_disk",
+            return_value={"disk_free_gb": 500.0, "disk_path_checked": media_path}
+        ), patch(
+            "installer.tui.media_path_screen.check_drive_readiness",
+            return_value=readiness
+        ):
+
+            await pilot.click("#continue")
+            await pilot.pause()
+
+        assert app.drive_readiness == readiness
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_media_path_screen_mkdir_failure_shows_error_and_stays():
 
     app, pilot, ctx = await _launch_at_media_path_screen(make_system_info(), None)
@@ -2027,6 +2058,7 @@ async def _launch_at_review_screen(
     custom_services: set | None = None,
     domain: str | None = None,
     media_redundancy: dict | None = None,
+    drive_readiness: dict | None = None,
 ):
 
     app, pilot, ctx = await _launch_at_tier_config_screen(info, previous=None, media_path=media_path)
@@ -2040,6 +2072,7 @@ async def _launch_at_review_screen(
     app.custom_services = custom_services
     app.domain = domain
     app.media_redundancy = media_redundancy
+    app.drive_readiness = drive_readiness
 
     app.push_screen(ReviewScreen())
     await pilot.pause()
@@ -2113,6 +2146,43 @@ async def test_review_screen_shows_media_storage_without_warning_when_redundant(
         summary = app.screen.query_one("#summary", Static).content
         assert "Media storage: /dev/md0 (ext4, raid1, 2 devices)" in summary
         assert "No drive-level redundancy" not in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_shows_drive_readiness_lines():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        drive_readiness={
+            "path": "/mnt/media", "writable": False, "write_error": "Permission denied",
+            "free_gb": 3.0, "low_space": True, "same_device_as_root": True
+        }
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "not writable: Permission denied" in summary
+        assert "Only 3.0GB free" in summary
+        assert "same filesystem as your OS drive" in summary
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_review_screen_omits_drive_readiness_lines_when_unknown():
+
+    app, pilot, ctx = await _launch_at_review_screen(
+        make_system_info(), tier_name="medium", media_path="/mnt/media",
+        drive_readiness=None
+    )
+
+    try:
+
+        summary = app.screen.query_one("#summary", Static).content
+        assert "writable" not in summary
 
     finally:
         await ctx.__aexit__(None, None, None)

@@ -6,7 +6,11 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Input, LoadingIndicator, Static
 
-from installer.detect import describe_media_redundancy, detect_host_ip
+from installer.detect import (
+    describe_drive_readiness,
+    describe_media_redundancy,
+    detect_host_ip,
+)
 from installer.docker_setup import run_docker_command
 from installer.generate import (
     GenerationConfig,
@@ -93,6 +97,9 @@ class ReviewScreen(Screen):
 
         if self.app.auth_username:
             summary += f"\nAuthelia admin username: {self.app.auth_username}"
+
+        if self.app.drive_readiness is not None:
+            summary += "\n" + "\n".join(describe_drive_readiness(self.app.drive_readiness))
 
         if self.app.media_redundancy is not None:
 
