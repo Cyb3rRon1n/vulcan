@@ -26,8 +26,7 @@ import sqlite3
 import subprocess
 import tarfile
 import tempfile
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from installer.docker_setup import run_docker_command
@@ -160,7 +159,7 @@ def export_images(
     if output_path is None:
 
         export_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         output_path = export_dir / f"vulcan-images-{timestamp}.tar"
 
     else:
@@ -252,7 +251,7 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
 
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"vulcan-backup-{timestamp}.tar.gz"
 
     config_dir = stack_dir / "config"

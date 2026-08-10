@@ -6,7 +6,6 @@ from typer.testing import CliRunner
 from installer.cli import app
 from installer.detect import SystemInfo
 
-
 runner = CliRunner()
 
 

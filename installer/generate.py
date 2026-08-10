@@ -10,8 +10,7 @@ split Atlas keeps between config/writer.py and the atlas init command.
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -21,7 +20,6 @@ from installer.auth import generate_authelia_secrets
 from installer.detect import detect_host_ip, detect_render_group_gid
 from installer.services import resource_limits_for
 from installer.tiers import ALL_SERVICES, TIERS, TierDefinition
-
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 STACK_DIR = Path("stack")
@@ -230,7 +228,7 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "cloudflare_dns": config.cloudflare_dns,
         "cloudflare_email": config.cloudflare_email,
         "port_overrides": config.port_overrides,
-        "generated_at": datetime.now(dt_timezone.utc).isoformat()
+        "generated_at": datetime.now(UTC).isoformat()
     }
 
     (output_dir / STATE_FILENAME).write_text(json.dumps(state, indent=2))

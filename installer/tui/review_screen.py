@@ -8,7 +8,12 @@ from textual.widgets import Button, Input, LoadingIndicator, Static
 
 from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
-from installer.generate import GenerationConfig, render_stack_summary, resolve_ports, write_stack
+from installer.generate import (
+    GenerationConfig,
+    render_stack_summary,
+    resolve_ports,
+    write_stack,
+)
 from installer.post_install import pull_stack, remove_orphaned_containers
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS

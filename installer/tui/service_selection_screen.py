@@ -2,7 +2,14 @@ from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, Input, LoadingIndicator, SelectionList, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    LoadingIndicator,
+    SelectionList,
+    Static,
+)
 from textual.widgets.selection_list import Selection
 
 from installer.auth import hash_authelia_password

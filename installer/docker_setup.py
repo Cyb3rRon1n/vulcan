@@ -14,7 +14,6 @@ import subprocess
 
 from installer.shell import run_ok, run_privileged
 
-
 DOCKER_SCRIPT_DISTROS = {"ubuntu", "debian", "raspbian", "fedora"}
 
 

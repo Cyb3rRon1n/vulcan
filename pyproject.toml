@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-asyncio"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff"]
 
 [project.scripts]
 vulcan = "installer.cli:app"
@@ -55,3 +55,23 @@ packages = ["installer"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Deliberately narrow, not ruff's "ALL" or a preset like "strict" -
+# selected to catch real bugs/hygiene issues without fighting this
+# project's documented style choices (heavy vertical spacing, sparse
+# docstrings, no forced type annotations, natural `assert` in tests).
+#   E4/E7/E9 - pycodestyle error subset (imports, statements, syntax)
+#   F        - pyflakes (unused imports/vars, undefined names, etc.)
+#   B        - flake8-bugbear (real bug-prone patterns, e.g. B904)
+#   I        - isort (import sorting/grouping)
+#   UP       - pyupgrade (modernize syntax for the Python floor this
+#              project actually supports, >=3.11)
+# Deliberately excluded: D (docstrings), ANN (type annotations),
+# S101 (assert), FBT (boolean-arg style), COM812 (trailing commas),
+# C4 (comprehension style - C408 would churn dict(...) calls used
+# throughout the test suite's shared helpers for no functional gain).
+select = ["E4", "E7", "E9", "F", "B", "I", "UP"]

@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from installer.generate import (
+    _HOMEPAGE_GROUPS,
     TEMPLATES_DIR,
     WEB_FACING_SERVICES,
     GenerationConfig,
-    _HOMEPAGE_GROUPS,
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,

@@ -15,7 +15,6 @@ from installer.detect import (
     detect_system,
 )
 
-
 FAKE_MDSTAT_RAID1 = (
     "Personalities : [raid1] \n"
     "md0 : active raid1 sdb1[1] sda1[0]\n"
