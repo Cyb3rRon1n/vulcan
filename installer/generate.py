@@ -45,7 +45,7 @@ STATE_FILENAME = ".vulcan-state.json"
 WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
-    "uptime-kuma", "traefik", "homepage", "dashy",
+    "uptime-kuma", "traefik", "homepage", "dashy", "audiobookshelf",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -56,7 +56,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
 # turned on - it just never appears in its own group, the same
 # self-exclusion "homepage" already gets everywhere this table is used.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "jellyseerr"],
+    "Media": ["jellyfin", "jellyseerr", "audiobookshelf"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd"],
     "Monitoring": ["uptime-kuma"],
@@ -83,6 +83,9 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     # docker-compose.yml, confirmed by fetching it directly) publishes
     # host port 4000 against its container's internal 8080.
     "dashy": 4000,
+    # Audiobookshelf's own documented default (confirmed via its real
+    # docker-compose.yml and official docs) - host 13378, container 80.
+    "audiobookshelf": 13378,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -138,6 +141,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
     "dashy": "Alternative dashboard to Homepage",
+    "audiobookshelf": "Stream your audiobooks and podcasts",
 }
 
 
@@ -797,6 +801,16 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "tv").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "music").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "books").mkdir(parents=True, exist_ok=True)
+    # Audiobooks are a genuinely different content type from Readarr's
+    # text ebooks ("books" above) even though both loosely fall under
+    # "Readarr" conceptually - Audiobookshelf serves its own separate
+    # library, populated manually or some other way, not automated by
+    # any *arr app in this stack. Podcasts are Audiobookshelf's own
+    # second content type (it subscribes to RSS feeds itself). Both
+    # created unconditionally, same as movies/tv/music/books above,
+    # regardless of whether audiobookshelf itself is enabled.
+    (media_path / "media" / "audiobooks").mkdir(parents=True, exist_ok=True)
+    (media_path / "media" / "podcasts").mkdir(parents=True, exist_ok=True)
 
     warnings = []
 

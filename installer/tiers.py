@@ -57,6 +57,14 @@ _LIGHT_SERVICES = [
     # tier-agnostic service here, so a user can enable either, neither,
     # or both depending on which UI they prefer.
     ServiceDefinition("dashy", "Dashy dashboard", optional=True),
+    # A real media server in its own right (like Jellyfin), not an
+    # automation tool - Audiobookshelf serves an existing audiobook
+    # library and auto-downloads podcast RSS feeds itself, it doesn't
+    # need Radarr/Sonarr-style upstream automation the way *arr apps
+    # do. Tier-agnostic optional, same shape as every other add-on
+    # here - pairs naturally with Lidarr/Readarr but doesn't depend on
+    # either being enabled.
+    ServiceDefinition("audiobookshelf", "Audiobookshelf", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

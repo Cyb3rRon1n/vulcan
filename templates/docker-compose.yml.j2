@@ -465,6 +465,45 @@ services:
           memory: "{{ limits.readarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'audiobookshelf' in enabled %}
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    # Audiobookshelf's own real docs state it plainly: "does not use
+    # PUID or GUID environment variables" - ownership is set via this
+    # compose-level user: field instead, the same mechanism
+    # Recyclarr/Maintainerr already use in this template.
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/audiobookshelf/config:/config
+      - ./config/audiobookshelf/metadata:/metadata
+      - ${MEDIA_PATH}/media/audiobooks:/audiobooks
+      - ${MEDIA_PATH}/media/podcasts:/podcasts
+    ports:
+      - "{{ ports['audiobookshelf'] }}:80"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.audiobookshelf.rule=Host(`audiobookshelf.{{ domain }}`)"
+      - "traefik.http.routers.audiobookshelf.entrypoints=websecure"
+      - "traefik.http.routers.audiobookshelf.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.audiobookshelf.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.audiobookshelf.loadbalancer.server.port=80"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.audiobookshelf.middlewares=authelia@docker"
+{% endif %}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.audiobookshelf.cpus }}"
+          memory: "{{ limits.audiobookshelf.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'traefik' in enabled %}
   traefik:
     image: traefik:latest

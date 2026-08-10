@@ -883,6 +883,53 @@ async def test_tier_config_screen_continue_with_dashy_checked():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_tier_config_screen_audiobookshelf_checkbox_defaults_disabled_fresh_install():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        checkbox = app.screen.query_one("#audiobookshelf-check", Checkbox)
+        assert checkbox.value is False
+        assert checkbox.display is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_tier_config_screen_continue_with_audiobookshelf_checked():
+
+    app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#light")
+        await pilot.pause()
+
+        await pilot.click("#audiobookshelf-check")
+        await pilot.pause()
+
+        # Gluetun/Homepage default on now - uncheck them to isolate
+        # audiobookshelf alone.
+        await pilot.click("#gluetun-check")
+        await pilot.pause()
+
+        await pilot.click("#homepage-check")
+        await pilot.pause()
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert app.tier_name == "light"
+        assert app.enabled_optional == {"audiobookshelf"}
+        assert isinstance(app.screen, ReviewScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_tier_config_screen_homepage_checkbox_visible_in_every_tier():
 
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info(gpu_vendor="amd"))

@@ -168,11 +168,12 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
     ) as mock_write_stack:
 
         # media path, tier, customize, gluetun confirm, sabnzbd confirm,
-        # recyclarr confirm, homepage confirm, dashy confirm, PUID, PGID,
-        # timezone all hit enter to accept their (previous-state-derived)
-        # defaults; the generate confirm has no default so needs an
-        # explicit "y", then decline the final start confirm with "n".
-        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\n\n\n\n\n\ny\nn\n")
+        # recyclarr confirm, homepage confirm, dashy confirm,
+        # audiobookshelf confirm, PUID, PGID, timezone all hit enter to
+        # accept their (previous-state-derived) defaults; the generate
+        # confirm has no default so needs an explicit "y", then decline
+        # the final start confirm with "n".
+        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\n\n\n\n\n\n\ny\nn\n")
 
     assert result.exit_code == 0, result.output
     assert "Found an existing" in result.output
@@ -211,7 +212,7 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\nn\n"
+            input="\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -242,7 +243,7 @@ def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\nn\n"
+            input="\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -353,7 +354,7 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\ny\n\ny\n"
+            input="\n\n\n\n\n\n\ny\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -383,7 +384,7 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
-            input="\n\n\n\n\n\n\ny\n"
+            input="\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -620,7 +621,7 @@ def test_interactive_start_remaps_conflicting_port_and_retries(tmp_path):
                 "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\ny\ny\n9096\n"
+            input="\n\n\n\n\n\n\ny\ny\n9096\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -676,7 +677,7 @@ def test_interactive_start_own_orphan_conflict_cleans_up_and_retries(tmp_path):
                 "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\ny\ny\ny\n"
+            input="\n\n\n\n\n\n\ny\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -736,7 +737,7 @@ def test_interactive_start_own_orphan_multiple_ports_confirms_once(tmp_path):
                 "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\ny\ny\ny\n"
+            input="\n\n\n\n\n\n\ny\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -776,7 +777,7 @@ def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
                 "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\ny\ny\n"
+            input="\n\n\n\n\n\n\ny\ny\n"
         )
 
     assert result.exit_code == 1
@@ -833,7 +834,7 @@ def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
                 "--timezone", "UTC",
                 "--no-start"
             ],
-            input="y\n\n\n\n\n\n\ny\n"
+            input="y\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -932,7 +933,7 @@ def test_interactive_full_run_with_prompts(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\nn\n\n\nn\n\ny\nn\n"
+            input="\n\nn\n\n\nn\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -966,7 +967,7 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--media-path", media_path, "--no-start"],
-            input="\nn\n\nn\nn\nn\n\n\n\n\ny\n"
+            input="\nn\n\nn\nn\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1004,7 +1005,7 @@ def test_docker_installed_but_not_running_starts_service(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\n\n\n\n\n\n\ny\n"
+            input="y\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1040,7 +1041,7 @@ def test_docker_running_but_missing_compose_v2(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="y\n\n\n\n\n\n\ny\n"
+            input="y\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1070,7 +1071,7 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\ny\nn\n"
+            input="\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1098,7 +1099,7 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="nonsense\nlight\n\n\n\n\n\n\ny\nn\n"
+            input="nonsense\nlight\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1311,6 +1312,63 @@ def test_non_interactive_fresh_install_defaults_dashy_disabled(tmp_path):
     assert "dashy" not in config.enabled_optional
 
 
+def test_non_interactive_light_with_explicit_audiobookshelf_flag(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes", "--audiobookshelf",
+                "--no-homepage", "--no-dashy", "--no-vpn"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"audiobookshelf"}
+
+
+def test_non_interactive_fresh_install_defaults_audiobookshelf_disabled(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.load_previous_state", return_value=None
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "light", "--media-path", media_path,
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert "audiobookshelf" not in config.enabled_optional
+
+
 def test_non_interactive_heavy_with_explicit_notification_url_flag(tmp_path):
 
     media_path = str(tmp_path / "media")
@@ -1422,7 +1480,7 @@ def test_notification_url_prompt_skipped_when_already_configured(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\ny\n"
+            input="\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1522,7 +1580,7 @@ def test_homepage_question_shown_and_declined_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\n\nn\n\ny\n"
+            input="\nn\n\n\nn\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1604,7 +1662,7 @@ def test_media_path_prompted_when_not_passed(tmp_path):
                 "--plain", "--tier", "light",
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input=f"{prompted_path}\n\n\n\n\n\n\ny\nn\n"
+            input=f"{prompted_path}\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1716,7 +1774,7 @@ def test_declining_generate_confirm_aborts(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\nn\n"
+            input="\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -3068,7 +3126,7 @@ def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\ny\n"
+            input="\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -3095,7 +3153,7 @@ def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\ny\n\nn\n\ny\n"
+            input="\nn\ny\n\nn\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -3124,7 +3182,7 @@ def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\ny\nn\n\ny\n"
+            input="\nn\n\ny\nn\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output

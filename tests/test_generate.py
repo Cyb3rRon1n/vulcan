@@ -182,6 +182,7 @@ def test_resolve_ports_returns_defaults_when_no_overrides():
     assert ports["qbittorrent"] == 8080
     assert ports["sabnzbd"] == 8081
     assert ports["dashy"] == 4000
+    assert ports["audiobookshelf"] == 13378
 
 
 def test_resolve_ports_override_wins_over_default():
@@ -412,6 +413,42 @@ def test_render_compose_dashy_traefik_labels_when_routed():
     )
 
     assert "traefik.http.routers.dashy.rule=Host(`dashy.media.example.com`)" in output
+
+
+def test_render_compose_includes_audiobookshelf_when_enabled():
+
+    output = render_compose(make_config("light", enabled_optional={"audiobookshelf"}))
+
+    assert "container_name: audiobookshelf" in output
+    assert "ghcr.io/advplyr/audiobookshelf:latest" in output
+    assert '"13378:80"' in output
+    assert 'user: "${PUID}:${PGID}"' in output
+
+
+def test_render_compose_excludes_audiobookshelf_when_not_enabled():
+
+    output = render_compose(make_config("heavy"))
+
+    assert "container_name: audiobookshelf" not in output
+
+
+def test_render_compose_audiobookshelf_mounts_separate_media_directories():
+
+    output = render_compose(make_config("light", enabled_optional={"audiobookshelf"}))
+
+    assert "${MEDIA_PATH}/media/audiobooks:/audiobooks" in output
+    assert "${MEDIA_PATH}/media/podcasts:/podcasts" in output
+    assert "./config/audiobookshelf/config:/config" in output
+    assert "./config/audiobookshelf/metadata:/metadata" in output
+
+
+def test_render_compose_audiobookshelf_traefik_labels_when_routed():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"audiobookshelf", "traefik"}, domain="media.example.com")
+    )
+
+    assert "traefik.http.routers.audiobookshelf.rule=Host(`audiobookshelf.media.example.com`)" in output
 
 
 def _jellyfin_block(output: str) -> str:
@@ -905,6 +942,21 @@ def test_render_homepage_services_creates_maintainerr_tile():
     assert tile["icon"] == "maintainerr.png"
 
 
+def test_render_homepage_services_creates_audiobookshelf_tile():
+
+    output = render_homepage_services(
+        make_config("light", {"audiobookshelf"}),
+        host_ip=None
+    )
+
+    groups = _homepage_groups(output)
+    tile = groups["Media"]["Audiobookshelf"]
+
+    assert tile["href"] == "http://localhost:13378"
+    assert tile["icon"] == "audiobookshelf.png"
+    assert tile["description"] == "Stream your audiobooks and podcasts"
+
+
 def test_render_homepage_services_uses_host_ip_when_provided():
 
     output = render_homepage_services(
@@ -1158,6 +1210,8 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "media" / "tv").is_dir()
     assert (media_path / "media" / "music").is_dir()
     assert (media_path / "media" / "books").is_dir()
+    assert (media_path / "media" / "audiobooks").is_dir()
+    assert (media_path / "media" / "podcasts").is_dir()
 
 
 def test_write_stack_warns_when_tailscale_enabled(tmp_path):
