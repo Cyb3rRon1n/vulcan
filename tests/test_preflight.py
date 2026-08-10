@@ -8,7 +8,6 @@ from installer.preflight import (
     port_owner_is_own_orphan,
 )
 
-
 COMPOSE_TWO_SERVICES = """
 services:
   jellyfin:

@@ -51,7 +51,6 @@ from installer.post_install import (
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
-
 app = typer.Typer(
     name="vulcan",
     help="An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
@@ -667,7 +666,7 @@ def _gather_generation_config(
         Path(media_path).mkdir(parents=True, exist_ok=True)
     except OSError as error:
         console.print(f"[red]Can't create media path '{media_path}': {error}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from error
 
     disk_info = detect_disk(media_path)
     info.disk_free_gb = disk_info["disk_free_gb"]
@@ -1275,7 +1274,7 @@ def _generate_and_maybe_start(
         result = write_stack(config)
     except OSError as error:
         console.print(f"[red]Failed to write the stack: {error}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from error
 
     console.print(f"[green]Stack written to {result['compose_path']}[/green]")
 
