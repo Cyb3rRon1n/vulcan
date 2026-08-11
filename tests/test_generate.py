@@ -5,6 +5,7 @@ import yaml
 
 from installer.generate import (
     TEMPLATES_DIR,
+    WALKTHROUGH_URL,
     WEB_FACING_SERVICES,
     GenerationConfig,
     _HOMEPAGE_GROUPS,
@@ -18,6 +19,7 @@ from installer.generate import (
     render_decluttarr_config,
     render_env,
     render_homepage_services,
+    render_setup_order,
     render_stack_summary,
     resolve_ports,
     save_state,
@@ -36,7 +38,8 @@ def make_config(
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password_hash: str | None = None,
-    port_overrides: dict[str, int] | None = None
+    port_overrides: dict[str, int] | None = None,
+    homepage_private: bool = False
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -53,7 +56,8 @@ def make_config(
         cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password_hash=auth_password_hash,
-        port_overrides=port_overrides or {}
+        port_overrides=port_overrides or {},
+        homepage_private=homepage_private
     )
 
 
@@ -579,6 +583,85 @@ def test_render_compose_omits_tailscale_when_disabled():
     assert "container_name: tailscale" not in output
 
 
+def test_render_compose_metube_and_downtify_mount_into_media_library():
+
+    output = render_compose(make_config("light", enabled_optional={"metube", "downtify"}))
+
+    metube_block = _service_block(output, "metube", "downtify")
+    downtify_block = _service_block(output, "downtify", "recyclarr")
+
+    assert "${MEDIA_PATH}/media/youtube:/downloads" in metube_block
+    assert "PUID=${PUID}" in metube_block
+
+    assert "${MEDIA_PATH}/media/music/downtify:/downloads" in downtify_block
+    assert "./config/downtify:/data" in downtify_block
+
+
+def test_render_compose_omits_metube_and_downtify_when_disabled():
+
+    output = render_compose(make_config("light"))
+
+    assert "container_name: metube" not in output
+    assert "container_name: downtify" not in output
+
+
+def test_render_compose_netdata_uses_host_networking_and_deep_host_access():
+
+    output = render_compose(make_config("light", enabled_optional={"netdata"}))
+
+    netdata_block = _service_block(output, "netdata", "homepage")
+
+    assert "network_mode: host" in netdata_block
+    assert "pid: host" in netdata_block
+    assert "SYS_PTRACE" in netdata_block
+    assert "SYS_ADMIN" in netdata_block
+    assert "apparmor:unconfined" in netdata_block
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in netdata_block
+    assert "/proc:/host/proc:ro" in netdata_block
+
+
+def test_render_compose_netdata_never_gets_traefik_labels():
+    """
+    Unlike every other web-facing service, netdata must never get a
+    Traefik router block - network_mode: host means it has no Docker-
+    network identity for Traefik's provider to discover (the compose
+    template has no {% if 'traefik' in enabled %} block for it at all).
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"netdata", "traefik"},
+            domain="media.example.com"
+        )
+    )
+
+    assert "traefik.http.routers.netdata" not in output
+
+
+def test_render_compose_homepage_private_omits_traefik_labels():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"homepage", "traefik"},
+            domain="media.example.com", homepage_private=True
+        )
+    )
+
+    assert "traefik.http.routers.homepage" not in output
+
+
+def test_render_compose_homepage_public_by_default_keeps_traefik_labels():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"homepage", "traefik"},
+            domain="media.example.com"
+        )
+    )
+
+    assert "traefik.http.routers.homepage.rule=Host(`homepage.media.example.com`)" in output
+
+
 def test_render_compose_cloudflare_dns_adds_certresolver_flags_and_token():
 
     output = render_compose(
@@ -934,7 +1017,10 @@ def test_render_homepage_services_omits_traefik_tile_without_domain():
     """
     Traefik's dashboard has no independent host-published port (it's
     routing-only, no --api.insecure=true) - with no domain, there's
-    nothing real to link to, so it shouldn't get a dead tile.
+    nothing real to link to, so it shouldn't get a dead tile. The
+    "Guides" group (a link back to the walkthrough doc) is always
+    present regardless - documentation, not a service with an
+    enabled/disabled state.
     """
 
     output = render_homepage_services(
@@ -943,7 +1029,8 @@ def test_render_homepage_services_omits_traefik_tile_without_domain():
     )
 
     parsed = yaml.safe_load(output)
-    assert parsed == []
+    assert len(parsed) == 1
+    assert list(parsed[0].keys()) == ["Guides"]
 
 
 def test_render_homepage_services_qbittorrent_uses_host_port_not_broken_route_when_gluetun_and_traefik_both_active():
@@ -982,7 +1069,10 @@ def test_render_homepage_services_omits_empty_groups():
     parsed = yaml.safe_load(output)
     group_names = [list(group.keys())[0] for group in parsed]
 
-    assert group_names == ["Media"]
+    # "Guides" is always present too (a link back to the walkthrough
+    # doc, not a service with an enabled/disabled state) - this test is
+    # specifically about *service* groups being omitted when empty.
+    assert group_names == ["Media", "Guides"]
 
 
 def test_render_homepage_services_output_is_valid_yaml():
@@ -1001,7 +1091,7 @@ def test_render_homepage_services_output_is_valid_yaml():
     parsed = yaml.safe_load(output)
 
     assert isinstance(parsed, list)
-    assert len(parsed) == 4
+    assert len(parsed) == 5
 
 
 def test_write_stack_writes_files_and_creates_directories(tmp_path):
@@ -1070,6 +1160,73 @@ def test_write_stack_no_tailscale_warning_when_disabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("TS_AUTHKEY" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_when_netdata_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"netdata"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("SYS_PTRACE" in warning or "SYS_ADMIN" in warning for warning in result["warnings"])
+    assert any("19999" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_netdata_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("SYS_PTRACE" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_when_metube_and_downtify_enabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"metube", "downtify"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("media/youtube" in warning for warning in result["warnings"])
+    assert any("media/music/downtify" in warning for warning in result["warnings"])
+
+
+def test_write_stack_creates_youtube_and_downtify_media_directories(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert (tmp_path / "media-root" / "media" / "youtube").is_dir()
+    assert (tmp_path / "media-root" / "media" / "music" / "downtify").is_dir()
 
 
 def test_write_stack_warns_when_cloudflare_dns_enabled(tmp_path):
@@ -1688,6 +1845,28 @@ def test_render_stack_summary_uses_traefik_domain():
     assert "http://" not in output
 
 
+def test_render_stack_summary_netdata_always_direct_host_link_even_with_traefik_domain():
+    """
+    Unlike every other web-facing service, netdata's link must stay a
+    direct http://<host>:19999 URL even when Traefik+domain routing is
+    active for everything else - network_mode: host means it's never
+    actually routed (see the compose-template test for the same real
+    reason), so a routed https://netdata.<domain> link would be dead.
+    """
+
+    output = render_stack_summary(
+        make_config(
+            "heavy",
+            custom_services={"netdata", "homepage", "traefik"},
+            domain="media.example.com"
+        ),
+        host_ip="192.168.1.50"
+    )
+
+    assert "Netdata (system resource monitoring): http://192.168.1.50:19999" in output
+    assert "netdata.media.example.com" not in output
+
+
 def test_render_stack_summary_excludes_non_web_facing_services():
 
     output = render_stack_summary(
@@ -1703,6 +1882,71 @@ def test_render_stack_summary_excludes_non_web_facing_services():
     assert "Gluetun" not in output
     assert "FlareSolverr" not in output
     assert "  Jellyfin: http://192.168.1.50:8096" in output
+
+
+def test_render_setup_order_empty_when_nothing_enabled():
+
+    output = render_setup_order(
+        make_config("heavy", custom_services={"watchtower"}),
+        host_ip=None
+    )
+
+    assert output == ""
+
+
+def test_render_setup_order_puts_vaultwarden_first_and_links_walkthrough():
+
+    output = render_setup_order(
+        make_config(
+            "heavy",
+            custom_services={"vaultwarden", "jellyfin", "authelia", "prowlarr"}
+        ),
+        host_ip="192.168.1.50"
+    )
+
+    assert output.startswith("Suggested setup order")
+    assert "1. Vaultwarden (http://192.168.1.50:8222)" in output
+    assert output.index("1. Vaultwarden") < output.index("Prowlarr")
+    assert WALKTHROUGH_URL in output
+
+
+def test_render_setup_order_jellyfin_step_mentions_authelia_exclusion_only_when_authelia_enabled():
+
+    with_authelia = render_setup_order(
+        make_config("heavy", custom_services={"jellyfin", "authelia"}),
+        host_ip=None
+    )
+    without_authelia = render_setup_order(
+        make_config("heavy", custom_services={"jellyfin"}),
+        host_ip=None
+    )
+
+    assert "not behind Authelia" in with_authelia
+    assert "not behind Authelia" not in without_authelia
+
+
+def test_render_setup_order_numbers_are_gapless_when_steps_are_skipped():
+
+    output = render_setup_order(
+        make_config("heavy", custom_services={"jellyfin", "homepage"}),
+        host_ip=None
+    )
+
+    assert "1. Jellyfin" in output
+    assert "2. Homepage" in output
+
+
+def test_render_homepage_services_always_includes_walkthrough_guide_tile():
+
+    output = render_homepage_services(
+        make_config("heavy", custom_services={"jellyfin"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    guides = next(group["Guides"] for group in parsed if "Guides" in group)
+
+    assert guides[0]["Setup Walkthrough"]["href"] == WALKTHROUGH_URL
 
 
 def test_default_timezone_reads_etc_timezone():
@@ -2267,13 +2511,19 @@ def test_render_homepage_services_creates_authelia_tile_when_routed():
 
 def test_homepage_groups_match_web_facing_services():
     """_HOMEPAGE_GROUPS's flattened membership must stay exactly
-    WEB_FACING_SERVICES minus Homepage itself (no self-tile) - a real
-    drift risk (see WEB_FACING_SERVICES's own comment in generate.py)
-    now caught here instead of silently going stale."""
+    WEB_FACING_SERVICES minus Homepage itself (no self-tile), plus one
+    real, documented exception: netdata gets a tile (network_mode: host
+    means it has a real reachable web UI) but is deliberately never in
+    WEB_FACING_SERVICES, since that set specifically means "gets Homepage
+    AND Traefik routing" and netdata can never get the latter (no Docker-
+    network identity for Traefik's provider to discover under host
+    networking) - see _service_href()'s own netdata special-case. Every
+    other drift risk (see WEB_FACING_SERVICES's own comment in
+    generate.py) is still caught here."""
 
     flattened = {key for keys in _HOMEPAGE_GROUPS.values() for key in keys}
 
-    assert flattened == WEB_FACING_SERVICES - {"homepage"}
+    assert flattened - {"netdata"} == WEB_FACING_SERVICES - {"homepage"}
 
 
 def test_traefik_template_routes_match_web_facing_services():
@@ -2286,5 +2536,6 @@ def test_traefik_template_routes_match_web_facing_services():
     template_text = (TEMPLATES_DIR / "docker-compose.yml.j2").read_text()
     routed = set(re.findall(r"traefik\.http\.routers\.([\w-]+)\.rule=Host", template_text))
     routed.discard("dashboard")  # Traefik's own router, not a per-service key
+    routed.discard("vaultwarden-ws")  # Vaultwarden's secondary websocket router, not a separate service
 
     assert routed == WEB_FACING_SERVICES - {"traefik"}

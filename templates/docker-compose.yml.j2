@@ -22,9 +22,12 @@ services:
       - "traefik.http.routers.jellyfin.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.jellyfin.middlewares=authelia@docker"
-{% endif %}
+{# Deliberately never gets the authelia@docker middleware, even with
+   Authelia enabled - forward-auth's browser-redirect login can't be
+   completed by native Jellyfin apps (phone/TV clients), a real,
+   community-documented conflict (jellyfin/jellyfin#16956). Jellyfin's
+   own login (plus its own two-factor plugin, recommended in
+   write_stack()'s warning) is the real protection layer here instead. #}
 {% endif %}
 {% if gpu_vendor in ('amd', 'intel') %}
     devices:
@@ -221,6 +224,113 @@ services:
         limits:
           cpus: "{{ limits.sabnzbd.cpus }}"
           memory: "{{ limits.sabnzbd.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'metube' in enabled %}
+  metube:
+    image: ghcr.io/alexta69/metube
+    container_name: metube
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ${MEDIA_PATH}/media/youtube:/downloads
+    ports:
+      - "{{ ports['metube'] }}:8081"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.metube.rule=Host(`metube.{{ domain }}`)"
+      - "traefik.http.routers.metube.entrypoints=websecure"
+      - "traefik.http.routers.metube.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.metube.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.metube.loadbalancer.server.port=8081"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.metube.middlewares=authelia@docker"
+{% endif %}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.metube.cpus }}"
+          memory: "{{ limits.metube.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'downtify' in enabled %}
+  downtify:
+    image: ghcr.io/henriquesebastiao/downtify:latest
+    container_name: downtify
+    volumes:
+      - ./config/downtify:/data
+      - ${MEDIA_PATH}/media/music/downtify:/downloads
+    ports:
+      - "{{ ports['downtify'] }}:8000"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.downtify.rule=Host(`downtify.{{ domain }}`)"
+      - "traefik.http.routers.downtify.entrypoints=websecure"
+      - "traefik.http.routers.downtify.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.downtify.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.downtify.loadbalancer.server.port=8000"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.downtify.middlewares=authelia@docker"
+{% endif %}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.downtify.cpus }}"
+          memory: "{{ limits.downtify.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'vaultwarden' in enabled %}
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    environment:
+      - TZ=${TZ}
+      - WEBSOCKET_ENABLED=true
+      - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED}
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
+    volumes:
+      - ./config/vaultwarden:/data
+    ports:
+      - "{{ ports['vaultwarden'] }}:80"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.{{ domain }}`)"
+      - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.vaultwarden.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+      - "traefik.http.routers.vaultwarden-ws.rule=Host(`vaultwarden.{{ domain }}`) && Path(`/notifications/hub`)"
+      - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden-ws.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.vaultwarden-ws.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.routers.vaultwarden-ws.service=vaultwarden-ws"
+      - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"
+{# Deliberately never gets the authelia@docker middleware, same reason
+   as Jellyfin above - Vaultwarden's own official apps (browser
+   extension, mobile, desktop) log in directly against its API and
+   can't complete a browser SSO redirect either. Its own master
+   password (plus its own optional two-factor authentication) is the
+   real protection layer, same pattern as Jellyfin. #}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.vaultwarden.cpus }}"
+          memory: "{{ limits.vaultwarden.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'recyclarr' in enabled %}
@@ -575,6 +685,38 @@ services:
           memory: "{{ limits.tailscale.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'netdata' in enabled %}
+  netdata:
+    image: netdata/netdata:stable
+    container_name: netdata
+    pid: host
+    network_mode: host
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ./config/netdata/config:/etc/netdata
+      - ./config/netdata/lib:/var/lib/netdata
+      - ./config/netdata/cache:/var/cache/netdata
+      - /:/host/root:ro,rslave
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/log:/host/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/dbus:/run/dbus:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.netdata.cpus }}"
+          memory: "{{ limits.netdata.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'homepage' in enabled %}
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
@@ -585,7 +727,7 @@ services:
       - ./config/homepage:/app/config
     ports:
       - "{{ ports['homepage'] }}:3000"
-{% if 'traefik' in enabled and domain %}
+{% if 'traefik' in enabled and domain and not homepage_private %}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.homepage.rule=Host(`homepage.{{ domain }}`)"

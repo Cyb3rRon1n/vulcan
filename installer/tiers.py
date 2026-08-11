@@ -52,6 +52,28 @@ _LIGHT_SERVICES = [
     # duplicate of it.
     ServiceDefinition("maintainerr", "Maintainerr (library cleanup)", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
+    # Tier-agnostic like Decluttarr/Maintainerr - a direct user request
+    # for the same "automated downloader" role their old CasaOS-hosted
+    # Windows VM served, done container-native instead. Output lands in
+    # the media library so Jellyfin can just scan it directly.
+    ServiceDefinition("metube", "MeTube (YouTube downloader)", optional=True),
+    ServiceDefinition("downtify", "Downtify (Spotify downloader)", optional=True),
+    # Tier-agnostic like the others above, but deliberately not
+    # default-anything the way Gluetun is - real, meaningfully deeper
+    # host access than any other service here (SYS_PTRACE/SYS_ADMIN,
+    # read-only access to most of the host filesystem, the Docker
+    # socket, network_mode: host) for real-time CPU/RAM/disk/network/
+    # temperature monitoring. A genuine security tradeoff named in the
+    # CLI/TUI prompt and write_stack()'s own warning, not defaulted
+    # quietly either way.
+    ServiceDefinition("netdata", "Netdata (system resource monitoring)", optional=True),
+    # Tier-agnostic like the others above. A direct user request for a
+    # self-hosted password manager to hold the growing pile of
+    # per-service credentials this stack generates. Not routed through
+    # Authelia even when enabled - see the compose template's own
+    # comment on the vaultwarden block for why (same native-app-login
+    # conflict as Jellyfin).
+    ServiceDefinition("vaultwarden", "Vaultwarden (password manager)", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

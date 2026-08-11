@@ -1,6 +1,6 @@
 from textual import events, work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, LoadingIndicator, SelectionList, Static
 from textual.widgets.selection_list import Selection
@@ -12,12 +12,15 @@ from installer.tui.review_screen import ReviewScreen
 
 
 class ServiceSelectionScreen(Screen):
+    """
+    Root is a VerticalScroll, not a plain Vertical - same fix
+    ReviewScreen/TierConfigScreen already established for the identical
+    problem (content genuinely exceeding the 80x24 test viewport as
+    more conditional fields accumulate). align: center middle dropped
+    for the same reason - it fights a scrollable root.
+    """
 
     DEFAULT_CSS = """
-    ServiceSelectionScreen {
-        align: center middle;
-    }
-
     #service-list {
         height: 6;
     }
@@ -50,8 +53,9 @@ class ServiceSelectionScreen(Screen):
         default_domain = previous.get("domain") if previous else None
         default_cloudflare_dns = bool(previous.get("cloudflare_dns")) if previous else False
         default_cloudflare_email = previous.get("cloudflare_email") if previous else None
+        default_homepage_private = bool(previous.get("homepage_private", True)) if previous else True
 
-        yield Vertical(
+        yield VerticalScroll(
             Static("Select services to include", id="title"),
             SelectionList(*selections, id="service-list"),
             Checkbox(
@@ -80,6 +84,15 @@ class ServiceSelectionScreen(Screen):
                 placeholder="Contact email for Let's Encrypt",
                 id="cloudflare-email-input",
                 tooltip="Let's Encrypt uses this for certificate expiry notices."
+            ),
+            Checkbox(
+                "Keep Homepage off the public domain",
+                value=default_homepage_private, id="homepage-private-check",
+                tooltip=(
+                    "Recommended - anything else you route still gets its own subdomain "
+                    "either way; this only affects whether a stranger who reaches your "
+                    "domain can also find Homepage."
+                )
             ),
             Input(
                 value="admin",
@@ -155,6 +168,13 @@ class ServiceSelectionScreen(Screen):
             traefik_selected and cloudflare_check.value
         )
 
+        # Only meaningful once Homepage is actually going to be routed
+        # at all - same "traefik selected" gate as the domain input
+        # itself, plus Homepage genuinely being in the picked set.
+        self.query_one("#homepage-private-check", Checkbox).display = (
+            traefik_selected and "homepage" in selected
+        )
+
     def _authelia_needs_setup(self) -> bool:
 
         selected = set(self.query_one("#service-list", SelectionList).selected)
@@ -223,6 +243,12 @@ class ServiceSelectionScreen(Screen):
         self.app.cloudflare_email = (
             (cloudflare_email_input.value.strip() or None)
             if self.app.cloudflare_dns else None
+        )
+
+        homepage_private_check = self.query_one("#homepage-private-check", Checkbox)
+
+        self.app.homepage_private = bool(
+            homepage_private_check.display and homepage_private_check.value
         )
 
         self.app.push_screen(ReviewScreen())

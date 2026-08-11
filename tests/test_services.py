@@ -7,7 +7,7 @@ def test_all_known_services_have_a_resource_profile():
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "decluttarr", "maintainerr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
-        "watchtower"
+        "watchtower", "metube", "downtify", "netdata", "vaultwarden"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
@@ -21,6 +21,26 @@ def test_sabnzbd_has_same_profile_as_qbittorrent():
 def test_recyclarr_has_light_profile():
 
     assert RESOURCE_PROFILES["recyclarr"] == "light"
+
+
+def test_metube_and_downtify_have_standard_profile():
+
+    assert RESOURCE_PROFILES["metube"] == "standard"
+    assert RESOURCE_PROFILES["downtify"] == "standard"
+
+
+def test_netdata_has_light_profile():
+    """
+    Genuinely light on CPU/RAM itself - the real cost of enabling it is
+    host access (SYS_PTRACE/SYS_ADMIN, docker.sock), not compute.
+    """
+
+    assert RESOURCE_PROFILES["netdata"] == "light"
+
+
+def test_vaultwarden_has_light_profile():
+
+    assert RESOURCE_PROFILES["vaultwarden"] == "light"
 
 
 def test_heavy_only_services_get_expected_profiles():

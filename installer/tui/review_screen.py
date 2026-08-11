@@ -8,7 +8,14 @@ from textual.widgets import Button, Input, LoadingIndicator, Static
 
 from installer.detect import describe_media_redundancy, detect_host_ip
 from installer.docker_setup import run_docker_command
-from installer.generate import GenerationConfig, render_stack_summary, resolve_ports, write_stack
+from installer.generate import (
+    WALKTHROUGH_URL,
+    GenerationConfig,
+    render_setup_order,
+    render_stack_summary,
+    resolve_ports,
+    write_stack,
+)
 from installer.post_install import pull_stack, remove_orphaned_containers
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS
@@ -57,7 +64,8 @@ class ReviewScreen(Screen):
             cloudflare_email=self.app.cloudflare_email,
             auth_username=self.app.auth_username,
             auth_password_hash=self.app.auth_password_hash,
-            port_overrides=self.app.port_overrides
+            port_overrides=self.app.port_overrides,
+            homepage_private=self.app.homepage_private
         )
 
     def compose(self) -> ComposeResult:
@@ -75,6 +83,25 @@ class ReviewScreen(Screen):
             f"Homepage: {'enabled' if 'homepage' in self.app.enabled_optional else 'disabled'}\n"
             f"GPU passthrough: {self.app.gpu_vendor or 'disabled'}"
         )
+
+        # Only shown when actually enabled, not unconditionally like the
+        # four services above - this screen already sits at a real,
+        # measured vertical budget limit (ReviewScreen's own #continue/
+        # #back/#customize live at the edge of the 80x24 test viewport,
+        # see the layout-bug history elsewhere in this project), and
+        # three more permanent "disabled" lines pushed real content
+        # (the port-remap fields) below the fold. Matches the existing
+        # "Homepage: private" line's own precedent below.
+        for key, label in (
+            ("metube", "MeTube"), ("downtify", "Downtify"), ("netdata", "Netdata"),
+            ("vaultwarden", "Vaultwarden"),
+        ):
+
+            if key in self.app.enabled_optional:
+                summary += f"\n{label}: enabled"
+
+        if self.app.homepage_private:
+            summary += "\nHomepage: private (not publicly routed)"
 
         if self.app.custom_services is not None:
             summary += f"\nServices: {', '.join(sorted(self.app.custom_services))}"
@@ -190,7 +217,9 @@ class ReviewScreen(Screen):
         self.app.exit(
             message=(
                 "Run this when you're ready:\n"
-                f"  docker compose -f {self._compose_path} --env-file {self._env_path} up -d"
+                f"  docker compose -f {self._compose_path} --env-file {self._env_path} up -d\n\n"
+                f"Once it's up, a suggested setup order for every service you enabled is here: "
+                f"{WALKTHROUGH_URL}"
             )
         )
 
@@ -404,9 +433,22 @@ class ReviewScreen(Screen):
 
         if returncode == 0:
 
-            summary = render_stack_summary(self._config, detect_host_ip())
+            host_ip = detect_host_ip()
+            summary = render_stack_summary(self._config, host_ip)
+            setup_order = render_setup_order(self._config, host_ip)
+
             message = "Stack is up:\n" + summary if summary else "Stack is up."
 
+            if setup_order:
+                message += f"\n\n{setup_order}"
+
+            # Printed to the real terminal after the TUI itself tears
+            # down (Textual's own App.exit(message=...) mechanism,
+            # already used for the plain "Stack is up" case above) -
+            # genuinely plain, freely selectable/copyable terminal
+            # text, not rendered inside the live TUI where a terminal's
+            # own mouse-drag text selection would fight Textual's own
+            # mouse handling instead.
             self.app.exit(message=message)
 
         else:

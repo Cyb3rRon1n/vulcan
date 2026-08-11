@@ -30,6 +30,10 @@ RESOURCE_PROFILES: dict[str, str] = {
     "homepage": "light",
     "uptime-kuma": "light",
     "watchtower": "light",
+    "metube": "standard",
+    "downtify": "standard",
+    "netdata": "light",
+    "vaultwarden": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

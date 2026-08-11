@@ -9,6 +9,7 @@ split Atlas keeps between config/writer.py and the atlas init command.
 
 import json
 import os
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as dt_timezone
@@ -26,6 +27,14 @@ from installer.tiers import ALL_SERVICES, TIERS, TierDefinition
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 STACK_DIR = Path("stack")
 STATE_FILENAME = ".vulcan-state.json"
+
+# Raw GitHub URL, not a mkdocs/GitHub Pages site - no such site exists yet
+# for this project, and standing one up (a docs build, CI workflow, Pages
+# config) is a separate real decision, not implied by adding a doc file.
+# A raw blob URL renders as real Markdown in-browser (GitHub does that
+# automatically) and needs no extra infrastructure, so every link below
+# points here until/unless a real docs site is built.
+WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/WALKTHROUGH.md"
 
 # Every service with its own routable web UI - the single source of
 # truth both Homepage's tile groups (below) and the Traefik template's
@@ -45,7 +54,7 @@ STATE_FILENAME = ".vulcan-state.json"
 WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
-    "uptime-kuma", "traefik", "homepage",
+    "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -54,9 +63,19 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "jellyseerr"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
-    "Downloads": ["qbittorrent", "sabnzbd"],
+    "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Monitoring": ["uptime-kuma"],
-    "Security": ["authelia"],
+    # netdata is deliberately not in WEB_FACING_SERVICES/routed the
+    # normal way - network_mode: host (see the compose template) means
+    # it has no Docker-network identity for Traefik's provider to
+    # discover, the same real limitation qBittorrent+Gluetun already
+    # has, and its port isn't remappable via port_overrides either
+    # (the image binds 19999 directly on the host, not through a
+    # `ports:` mapping Vulcan controls). Still gets a real tile -
+    # _service_href() special-cases its link to a direct host-port URL
+    # unconditionally, regardless of Traefik/domain state.
+    "System": ["netdata"],
+    "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik"],
 }
 
@@ -75,6 +94,9 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "homepage": 3000,
     "authelia": 9091,
     "maintainerr": 6246,
+    "metube": 8081,
+    "downtify": 8000,
+    "vaultwarden": 8222,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -103,6 +125,10 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
+    "metube": "Download YouTube videos straight into your library",
+    "downtify": "Download Spotify tracks/playlists straight into your library",
+    "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
+    "vaultwarden": "Password manager for every service login this stack creates",
 }
 
 
@@ -123,6 +149,7 @@ class GenerationConfig:
     cloudflare_dns: bool = False
     cloudflare_email: str | None = None
     port_overrides: dict[str, int] = field(default_factory=dict)
+    homepage_private: bool = False
 
 
 def resolve_ports(config: GenerationConfig) -> dict[str, int]:
@@ -190,6 +217,7 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "cloudflare_dns": config.cloudflare_dns,
         "cloudflare_email": config.cloudflare_email,
         "port_overrides": config.port_overrides,
+        "homepage_private": config.homepage_private,
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -258,7 +286,7 @@ def _homepage_allowed_hosts(config: GenerationConfig, enabled: set[str], host_ip
     if host_ip:
         hosts.append(f"{host_ip}:3000")
 
-    if "traefik" in enabled and config.domain:
+    if "traefik" in enabled and config.domain and not config.homepage_private:
         hosts.append(f"homepage.{config.domain}")
 
     return ",".join(hosts)
@@ -278,6 +306,7 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         ),
         domain=config.domain,
         homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip),
+        homepage_private=config.homepage_private,
         cloudflare_dns=config.cloudflare_dns,
         cloudflare_email=config.cloudflare_email,
         ports=resolve_ports(config)
@@ -291,7 +320,9 @@ def render_env(
     wireguard_private_key: str = "changeme",
     tailscale_authkey: str = "changeme",
     cloudflare_dns_api_token: str = "changeme",
-    cloudflare_acme_email: str = "changeme@example.com"
+    cloudflare_acme_email: str = "changeme@example.com",
+    vaultwarden_admin_token: str | None = None,
+    vaultwarden_signups_allowed: str = "true"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -319,11 +350,29 @@ def render_env(
         tailscale_authkey=tailscale_authkey,
         cloudflare_dns_enabled=config.cloudflare_dns,
         cloudflare_dns_api_token=cloudflare_dns_api_token,
-        cloudflare_acme_email=cloudflare_acme_email
+        cloudflare_acme_email=cloudflare_acme_email,
+        vaultwarden_enabled="vaultwarden" in enabled,
+        # Unlike Gluetun/Tailscale/Cloudflare's credentials, Vulcan can
+        # generate a real admin token itself instead of a "changeme"
+        # placeholder - same reasoning as Authelia's own JWT_SECRET/
+        # SESSION_SECRET (installer/auth.py's generate_authelia_secrets).
+        vaultwarden_admin_token=vaultwarden_admin_token or secrets.token_hex(32),
+        vaultwarden_signups_allowed=vaultwarden_signups_allowed
     )
 
 
 def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str | None:
+
+    if key == "netdata":
+
+        # network_mode: host (see the compose template) - never routed
+        # through Traefik (no Docker-network identity for its provider
+        # to discover) and never remappable via port_overrides (the
+        # image binds 19999 directly on the host, not a `ports:`
+        # mapping Vulcan renders) - always a direct host-port link,
+        # unconditionally, unlike every other service's routed/
+        # host-port branching below.
+        return f"http://{host_ip or 'localhost'}:19999"
 
     enabled = enabled_service_keys(config)
 
@@ -340,7 +389,18 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
     # actually has through Gluetun's own static port mapping.
     qbittorrent_via_gluetun = key == "qbittorrent" and "gluetun" in enabled
 
-    routed = "traefik" in enabled and config.domain and not qbittorrent_via_gluetun
+    # A direct user request: Homepage (and only Homepage) stays off the
+    # public routed set even with Traefik+domain active for every other
+    # service - the point is that a stranger who reaches the bare
+    # domain lands on Jellyfin, not a dashboard listing every other
+    # service running. Still reachable via its own host-published port
+    # (Tailscale/LAN), just never gets a public homepage.<domain> route.
+    homepage_kept_private = key == "homepage" and config.homepage_private
+
+    routed = (
+        "traefik" in enabled and config.domain
+        and not qbittorrent_via_gluetun and not homepage_kept_private
+    )
 
     if routed:
         return f"https://{key}.{config.domain}"
@@ -390,6 +450,21 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
 
         if items:
             groups.append({group_name: items})
+
+    # Always present, regardless of what's enabled - documentation, not
+    # a service with an enabled/disabled state. Points at the real
+    # walkthrough doc in the repo (a raw GitHub URL - GitHub renders
+    # Markdown blobs in-browser automatically, no mkdocs/Pages site
+    # needed for this to work today).
+    groups.append({
+        "Guides": [{
+            "Setup Walkthrough": {
+                "href": WALKTHROUGH_URL,
+                "icon": "github.png",
+                "description": "Suggested order to configure every service after install"
+            }
+        }]
+    })
 
     return yaml.safe_dump(groups, sort_keys=False)
 
@@ -497,6 +572,147 @@ def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
     return "\n".join(lines)
 
 
+def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
+    """
+    A dependency-ordered "what to configure first" walkthrough, built
+    from only the services this stack actually has enabled - real
+    sequencing advice, not render_stack_summary()'s flat link list
+    reordered. Config order matters here: Prowlarr's indexers before
+    the *arr apps that query it, a working download client before
+    anything expects one, Jellyfin's libraries before Jellyseerr can
+    request into them, dashboards last since they've nothing to show
+    until everything above them is already running. Steps are numbered
+    dynamically (not hardcoded "1./2./3.") so skipping a disabled
+    service's step never leaves a gap in the sequence.
+    """
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+    steps = []
+
+    if "vaultwarden" in enabled:
+
+        steps.append(
+            f"Vaultwarden ({_service_href('vaultwarden', config, host_ip)}): create your "
+            "account first - save every login below here as you create it, so nothing gets "
+            "lost."
+        )
+
+    if "authelia" in enabled:
+
+        steps.append(
+            "Authelia: your admin login was already created during install - save it in "
+            "Vaultwarden now if you enabled it above."
+        )
+
+    if "prowlarr" in enabled:
+
+        steps.append(
+            f"Prowlarr ({_service_href('prowlarr', config, host_ip)}): add your indexers "
+            "first - Radarr/Sonarr/Lidarr/Readarr all query through it, so nothing else can "
+            "search until this is done."
+        )
+
+    arr_apps = [key for key in ("radarr", "sonarr", "lidarr", "readarr") if key in enabled]
+
+    if arr_apps:
+
+        arr_list = ", ".join(
+            f"{display_names[key]} ({_service_href(key, config, host_ip)})" for key in arr_apps
+        )
+        steps.append(
+            f"{arr_list}: connect each to Prowlarr (Settings > Indexers) and set root "
+            "folders, then save each app's own API key (Settings > General) into Vaultwarden."
+        )
+
+    download_clients = [key for key in ("qbittorrent", "sabnzbd") if key in enabled]
+
+    if download_clients:
+
+        dl_list = ", ".join(display_names[key] for key in download_clients)
+        steps.append(
+            f"{dl_list}: set a real login (not the image's default) and connect it to each "
+            "*arr app above (Settings > Download Clients)."
+        )
+
+    if "gluetun" in enabled:
+
+        steps.append(
+            "Gluetun: confirm the VPN actually connected (docker compose logs gluetun) "
+            "before trusting qBittorrent's traffic - it stays offline if Gluetun can't "
+            "connect."
+        )
+
+    if "bazarr" in enabled:
+
+        steps.append(
+            f"Bazarr ({_service_href('bazarr', config, host_ip)}): connect it to "
+            "Radarr/Sonarr for subtitles once they have content to work with."
+        )
+
+    if "jellyfin" in enabled:
+
+        authelia_note = (
+            " - it's deliberately not behind Authelia even though other services are (see "
+            "the warning above), so this is its real protection"
+            if "authelia" in enabled else ""
+        )
+        steps.append(
+            f"Jellyfin ({_service_href('jellyfin', config, host_ip)}): create libraries "
+            "pointed at your media folders, then enable its own built-in two-factor "
+            f"authentication (Dashboard > My Profile){authelia_note}."
+        )
+
+    if "jellyseerr" in enabled:
+
+        steps.append(
+            f"Jellyseerr ({_service_href('jellyseerr', config, host_ip)}): connect it to "
+            "Jellyfin and Radarr/Sonarr so requests can actually be fulfilled."
+        )
+
+    automation = [key for key in ("recyclarr", "decluttarr", "maintainerr") if key in enabled]
+
+    if automation:
+
+        auto_list = ", ".join(display_names[key] for key in automation)
+        steps.append(
+            f"{auto_list}: automation on top of the *arr apps - configure these last, once "
+            "Radarr/Sonarr are already working correctly."
+        )
+
+    downloaders = [key for key in ("metube", "downtify") if key in enabled]
+
+    if downloaders:
+
+        dl_list = ", ".join(
+            f"{display_names[key]} ({_service_href(key, config, host_ip)})" for key in downloaders
+        )
+        steps.append(
+            f"{dl_list}: point a Jellyfin library at their download folders (see the "
+            "warnings above for exact paths)."
+        )
+
+    dashboards = [key for key in ("homepage", "uptime-kuma", "netdata", "traefik") if key in enabled]
+
+    if dashboards:
+
+        steps.append(
+            "Homepage/Uptime Kuma/Netdata/Traefik dashboard: check these last - they only "
+            "have something to show once the services above are actually running."
+        )
+
+    if not steps:
+        return ""
+
+    numbered = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+
+    return (
+        "Suggested setup order (do these roughly in sequence - later steps depend on "
+        f"earlier ones being done first):\n{numbered}"
+        f"\n\nFull walkthrough with more detail: {WALKTHROUGH_URL}"
+    )
+
+
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     output_dir = Path(output_dir)
@@ -522,6 +738,17 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         cloudflare_dns_api_token=_preserved_vpn_value(output_dir, "CF_DNS_API_TOKEN", "changeme"),
         cloudflare_acme_email=_preserved_vpn_value(
             output_dir, "CLOUDFLARE_ACME_EMAIL", config.cloudflare_email or "changeme@example.com"
+        ),
+        # None (not a placeholder default) so render_env() only
+        # generates a fresh random token when .env genuinely has none
+        # yet - a real existing token, or a user's own turned-off
+        # signups, must survive a regenerate the same way Gluetun's
+        # real VPN credentials already do above.
+        vaultwarden_admin_token=(
+            _preserved_vpn_value(output_dir, "VAULTWARDEN_ADMIN_TOKEN", "") or None
+        ),
+        vaultwarden_signups_allowed=_preserved_vpn_value(
+            output_dir, "VAULTWARDEN_SIGNUPS_ALLOWED", "true"
         )
     )
 
@@ -557,6 +784,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "tv").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "music").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "books").mkdir(parents=True, exist_ok=True)
+    (media_path / "media" / "youtube").mkdir(parents=True, exist_ok=True)
+    (media_path / "media" / "music" / "downtify").mkdir(parents=True, exist_ok=True)
 
     warnings = []
 
@@ -710,6 +939,82 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             f"Maintainerr needs one-time setup: visit {maintainerr_href}, connect it to "
             "Jellyfin (or Plex/Emby) and Radarr/Sonarr through its own setup wizard, then "
             "create your library-cleanup rules there - nothing is pre-configured."
+        )
+
+    if "metube" in enabled_service_keys(config):
+
+        metube_href = _service_href("metube", config, host_ip)
+
+        warnings.append(
+            f"MeTube downloads land in stack/media/youtube on the host - to see them in "
+            f"Jellyfin, add a library there (Dashboard > Libraries > Add Media Library, "
+            f"any content type works) pointed at /data/media/youtube. Paste a video or "
+            f"playlist URL at {metube_href} to start a download."
+        )
+
+    if "downtify" in enabled_service_keys(config):
+
+        downtify_href = _service_href("downtify", config, host_ip)
+
+        warnings.append(
+            f"Downtify downloads land in stack/media/music/downtify on the host, inside "
+            f"your existing Music library path so Jellyfin picks them up automatically "
+            f"(no new library needed) - if Lidarr is also enabled, it may flag this "
+            f"subfolder as unmapped files on its own library scans; that's cosmetic, not "
+            f"destructive, since Lidarr never auto-imports or deletes anything without "
+            f"confirmation. Downtify's own image has no documented PUID/PGID support, so "
+            f"downloaded files may land owned by root rather than PUID/PGID like every "
+            f"other service here - Jellyfin's read-only mount is unaffected, but you may "
+            f"need sudo to move/delete them directly on the host. Paste a track, album, or "
+            f"playlist URL at {downtify_href} - no Spotify account or API key needed."
+        )
+
+    if "netdata" in enabled_service_keys(config):
+
+        netdata_href = _service_href("netdata", config, host_ip)
+
+        warnings.append(
+            f"Netdata has real, meaningfully deeper host access than anything else in this "
+            f"stack - SYS_PTRACE/SYS_ADMIN capabilities, read-only access to most of the "
+            f"host filesystem, the Docker socket, and network_mode: host (so it's reachable "
+            f"directly at {netdata_href}, not through Traefik or PUID/PGID like every other "
+            f"service). This is what real-time system/temperature monitoring genuinely needs, "
+            f"not excessive by accident - but it's a real tradeoff worth knowing about, not "
+            f"hidden. No dashboard/login is pre-configured; it's ready to view as soon as the "
+            f"container starts."
+        )
+
+    if "vaultwarden" in enabled_service_keys(config):
+
+        vaultwarden_href = _service_href("vaultwarden", config, host_ip)
+
+        warnings.append(
+            f"Vaultwarden needs one-time setup: create your account at {vaultwarden_href} "
+            f"first (this is also the best first stop after any install - save every other "
+            f"service's login here as you create it), then set VAULTWARDEN_SIGNUPS_ALLOWED=false "
+            f"in stack/.env and restart the container to stop accepting new signups. A real, "
+            f"random VAULTWARDEN_ADMIN_TOKEN was already generated into stack/.env for its "
+            f"admin panel at {vaultwarden_href}/admin. Like Jellyfin, Vaultwarden is "
+            f"deliberately not routed through Authelia - its own official apps (browser "
+            f"extension, mobile, desktop) log in directly and can't complete a browser SSO "
+            f"redirect; its own master password (plus its own optional two-factor "
+            f"authentication) is the real protection layer here."
+        )
+
+    if (
+        "jellyfin" in enabled_service_keys(config)
+        and "authelia" in enabled_service_keys(config)
+        and "traefik" in enabled_service_keys(config)
+        and config.domain
+    ):
+
+        warnings.append(
+            "Jellyfin is deliberately not routed through Authelia, even though other "
+            "services are - forward-auth's browser-redirect login breaks native Jellyfin "
+            "apps on phones and TVs, which can't complete that redirect. Relying on "
+            "Jellyfin's own login is the standard workaround; consider enabling Jellyfin's "
+            "own built-in two-factor authentication (Dashboard > My Profile) for real "
+            "protection on this one exposed service."
         )
 
     if "readarr" in enabled_service_keys(config):
