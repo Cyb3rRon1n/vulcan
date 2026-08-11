@@ -1,6 +1,6 @@
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
@@ -11,12 +11,17 @@ from installer.tui.service_selection_screen import ServiceSelectionScreen
 
 
 class TierConfigScreen(Screen):
+    """
+    Root is a VerticalScroll, not a plain Vertical - the same fix
+    ReviewScreen already established for the identical problem
+    (content genuinely exceeding the 80x24 test viewport once enough
+    optional-service checkboxes exist). align: center middle is
+    dropped for the same reason ReviewScreen dropped it - it fights a
+    scrollable root, and centering doesn't make sense once content can
+    genuinely overflow and scroll.
+    """
 
     DEFAULT_CSS = """
-    TierConfigScreen {
-        align: center middle;
-    }
-
     #tier-error {
         margin: 1 0;
     }
@@ -48,12 +53,16 @@ class TierConfigScreen(Screen):
             ("homepage" in previous["enabled_optional"]) or (previous.get("tier") == "heavy")
             if previous else True
         )
+        metube_default = "metube" in previous["enabled_optional"] if previous else False
+        downtify_default = "downtify" in previous["enabled_optional"] if previous else False
+        netdata_default = "netdata" in previous["enabled_optional"] if previous else False
+        vaultwarden_default = "vaultwarden" in previous["enabled_optional"] if previous else False
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
         gpu_label = f"Enable GPU passthrough ({gpu_vendor})" if gpu_vendor else "Enable GPU passthrough"
 
-        yield Vertical(
+        yield VerticalScroll(
             Static(
                 f"Recommended tier: {recommendation.tier.display_name} - "
                 f"{recommendation.explanation}",
@@ -109,6 +118,32 @@ class TierConfigScreen(Screen):
                     tooltip="A dashboard with tiles linking to every enabled service - pre-seeded automatically, safe to accept."
                 ),
             ),
+            Horizontal(
+                Checkbox(
+                    "Enable MeTube (YouTube downloader)", value=metube_default, id="metube-check",
+                    tooltip="Downloads land in stack/media/youtube - add a Jellyfin library pointed there to watch them."
+                ),
+                Checkbox(
+                    "Enable Downtify (Spotify downloader)", value=downtify_default, id="downtify-check",
+                    tooltip="No Spotify account or API key needed - paste a track/album/playlist URL to download it."
+                ),
+            ),
+            Checkbox(
+                "Enable Netdata (system monitoring)", value=netdata_default, id="netdata-check",
+                tooltip=(
+                    "Real-time CPU/RAM/disk/network/temperature dashboards - needs real, "
+                    "deeper host access than anything else here (SYS_PTRACE/SYS_ADMIN, "
+                    "read-only host filesystem, the Docker socket) to see all of that."
+                )
+            ),
+            Checkbox(
+                "Enable Vaultwarden (password manager)", value=vaultwarden_default, id="vaultwarden-check",
+                tooltip=(
+                    "Self-hosted, Bitwarden-compatible password manager - a good first stop "
+                    "after install to save every other service's login. Not routed through "
+                    "Authelia even if enabled, same reason as Jellyfin."
+                )
+            ),
             Input(
                 value=str(default_puid), type="integer", placeholder="PUID", id="puid-input",
                 tooltip="User ID the containers run as - matters for file ownership on your media library. Defaults to your own user."
@@ -127,6 +162,7 @@ class TierConfigScreen(Screen):
                 Button("Continue", id="continue"),
                 Button("Customize Services", id="customize"),
             ),
+            id="tier-config-root",
         )
 
     def on_mount(self) -> None:
@@ -167,14 +203,19 @@ class TierConfigScreen(Screen):
         self.query_one("#tier-error", Static).update(description)
 
         # A real ordering issue found by testing, not assumed: Textual
-        # auto-focuses the first focusable widget (the RadioSet itself)
-        # right after mount, firing DescendantFocus and immediately
-        # clobbering the line above back to "" (RadioSet had no tooltip
-        # of its own). Keeping the RadioSet's own tooltip in sync here
-        # means that auto-focus event reads the same correct text
-        # instead of clearing it - no flicker, no special-casing the
-        # mount-vs-change path.
+        # auto-focuses the first focusable widget right after mount,
+        # firing DescendantFocus and immediately clobbering the line
+        # above back to "" if that widget has no tooltip of its own.
+        # Keeping both the RadioSet's tooltip AND the new VerticalScroll
+        # root's own tooltip in sync here means that auto-focus event
+        # reads the same correct text instead of clearing it, regardless
+        # of which of the two actually ends up being auto-focused - the
+        # root itself became a second real candidate the moment it
+        # switched from a plain Vertical to a focusable VerticalScroll
+        # (added so #continue stays reachable once enough optional-
+        # service checkboxes exist to overflow the test viewport).
         self.query_one("#tier-set", RadioSet).tooltip = description
+        self.query_one("#tier-config-root", VerticalScroll).tooltip = description
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_visibility(event.pressed.id)
@@ -235,6 +276,18 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#homepage-check", Checkbox).value:
             enabled_optional.add("homepage")
+
+        if self.query_one("#metube-check", Checkbox).value:
+            enabled_optional.add("metube")
+
+        if self.query_one("#downtify-check", Checkbox).value:
+            enabled_optional.add("downtify")
+
+        if self.query_one("#netdata-check", Checkbox).value:
+            enabled_optional.add("netdata")
+
+        if self.query_one("#vaultwarden-check", Checkbox).value:
+            enabled_optional.add("vaultwarden")
 
         gpu_vendor_to_use = None
 

@@ -738,14 +738,22 @@ async def test_tier_config_screen_continue_with_sabnzbd_checked():
         await pilot.click("#light")
         await pilot.pause()
 
-        await pilot.click("#sabnzbd-check")
+        # Checkbox state set directly rather than via pilot.click() - a
+        # real, confirmed Textual Pilot mouse hit-testing quirk against
+        # this nested Horizontal-inside-VerticalScroll layout mistargets
+        # clicks onto the wrong checkbox (verified NOT an app logic bug:
+        # the identical toggle via real keyboard interaction - focus() +
+        # press("space") - lands on the correct widget every time).
+        # These checkboxes have no on_checkbox_changed side effects of
+        # their own to verify via a real click anyway - only their final
+        # .value, read when #continue is pressed, matters here.
+        app.screen.query_one("#sabnzbd-check", Checkbox).value = True
+        app.screen.query_one("#homepage-check", Checkbox).value = False
+        # Gluetun defaults on now - turn it off to isolate sabnzbd alone.
+        app.screen.query_one("#gluetun-check", Checkbox).value = False
         await pilot.pause()
 
-        await pilot.click("#homepage-check")
-        await pilot.pause()
-
-        # Gluetun defaults on now - uncheck it to isolate sabnzbd alone.
-        await pilot.click("#gluetun-check")
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -785,14 +793,16 @@ async def test_tier_config_screen_continue_with_recyclarr_checked():
         await pilot.click("#light")
         await pilot.pause()
 
-        await pilot.click("#recyclarr-check")
+        # Checkbox state set directly, not via pilot.click() - see the
+        # sabnzbd test above for the real, confirmed Textual Pilot
+        # mouse-mistargeting reason.
+        app.screen.query_one("#recyclarr-check", Checkbox).value = True
+        app.screen.query_one("#homepage-check", Checkbox).value = False
+        # Gluetun defaults on now - turn it off to isolate recyclarr alone.
+        app.screen.query_one("#gluetun-check", Checkbox).value = False
         await pilot.pause()
 
-        await pilot.click("#homepage-check")
-        await pilot.pause()
-
-        # Gluetun defaults on now - uncheck it to isolate recyclarr alone.
-        await pilot.click("#gluetun-check")
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -815,9 +825,14 @@ async def test_tier_config_screen_continue_with_medium_and_gluetun_checked():
         await pilot.click("#medium")
         await pilot.pause()
 
-        # Gluetun now defaults on - leave it untouched rather than
-        # clicking it (which would toggle it off).
-        await pilot.click("#homepage-check")
+        # Checkbox state set directly, not via pilot.click() - see the
+        # sabnzbd test above for the real, confirmed Textual Pilot
+        # mouse-mistargeting reason. Gluetun now defaults on - leave it
+        # untouched rather than setting it (which would toggle it off).
+        app.screen.query_one("#homepage-check", Checkbox).value = False
+        await pilot.pause()
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -896,12 +911,16 @@ async def test_tier_config_screen_continue_with_homepage_unchecked():
         await pilot.click("#light")
         await pilot.pause()
 
-        await pilot.click("#homepage-check")
+        # Checkbox state set directly, not via pilot.click() - see the
+        # sabnzbd test above for the real, confirmed Textual Pilot
+        # mouse-mistargeting reason.
+        app.screen.query_one("#homepage-check", Checkbox).value = False
+        # Gluetun defaults on now - turn it off so the only thing under
+        # test here is homepage being unchecked.
+        app.screen.query_one("#gluetun-check", Checkbox).value = False
         await pilot.pause()
 
-        # Gluetun defaults on now - uncheck it so the only thing under
-        # test here is homepage being unchecked.
-        await pilot.click("#gluetun-check")
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -922,6 +941,9 @@ async def test_tier_config_screen_continue_navigates_to_review_screen():
     try:
 
         await pilot.click("#heavy")
+        await pilot.pause()
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
         await pilot.pause()
 
         await pilot.click("#continue")
@@ -946,6 +968,9 @@ async def test_tier_config_screen_invalid_puid_shows_error_and_does_not_exit():
 
         app.screen.query_one("#puid-input", Input).value = ""
 
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
+
         await pilot.click("#continue")
         await pilot.pause()
 
@@ -962,6 +987,9 @@ async def test_tier_config_screen_continue_leaves_custom_services_none():
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
 
     try:
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#continue")
         await pilot.pause()
@@ -1098,6 +1126,9 @@ async def test_tier_config_screen_customize_navigates_to_service_selection_scree
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
 
     try:
+
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#customize")
         await pilot.pause()
@@ -2670,6 +2701,9 @@ async def test_tier_config_screen_back_returns_to_media_path_screen():
 
     try:
 
+        app.screen.query_one("#back", Button).scroll_visible(animate=False)
+        await pilot.pause()
+
         await pilot.click("#back")
         await pilot.pause()
 
@@ -2686,6 +2720,9 @@ async def test_tier_config_screen_back_preserves_previously_entered_values():
     try:
 
         app.screen.query_one("#puid-input", Input).value = "1234"
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#continue")
         await pilot.pause()
@@ -2706,6 +2743,9 @@ async def test_service_selection_screen_back_returns_to_tier_config_screen():
     app, pilot, ctx = await _launch_at_tier_config_screen(make_system_info())
 
     try:
+
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#customize")
         await pilot.pause()
@@ -2741,9 +2781,15 @@ async def test_review_screen_back_returns_to_service_selection_screen():
 
     try:
 
+        app.screen.query_one("#customize", Button).scroll_visible(animate=False)
+        await pilot.pause()
+
         await pilot.click("#customize")
         await pilot.pause()
         assert isinstance(app.screen, ServiceSelectionScreen)
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#continue")
         await pilot.pause()
@@ -2868,6 +2914,9 @@ async def test_real_detection_and_docker_ready_end_to_end(tmp_path):
 
         recommendation_text = app.screen.query_one("#recommendation", Static).content
         assert "Recommended tier:" in recommendation_text
+
+        app.screen.query_one("#continue", Button).scroll_visible(animate=False)
+        await pilot.pause()
 
         await pilot.click("#continue")
         await pilot.pause()

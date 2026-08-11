@@ -26,10 +26,12 @@ from installer.docker_setup import (
 )
 from installer.generate import (
     STACK_DIR,
+    WALKTHROUGH_URL,
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
     load_previous_state,
+    render_setup_order,
     render_stack_summary,
     resolve_ports,
     write_stack,
@@ -330,6 +332,23 @@ def main(
     sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
     recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
     homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
+    homepage_private: bool | None = typer.Option(
+        None, "--homepage-private/--homepage-public",
+        help="Keep Homepage off the public Traefik-routed domain - only used if homepage and "
+        "traefik+domain are all enabled"
+    ),
+    metube: bool | None = typer.Option(None, "--metube/--no-metube"),
+    downtify: bool | None = typer.Option(None, "--downtify/--no-downtify"),
+    netdata: bool | None = typer.Option(
+        None, "--netdata/--no-netdata",
+        help="System resource monitoring - real, deeper host access than every other "
+        "service here (SYS_PTRACE/SYS_ADMIN, read-only host filesystem, docker.sock)"
+    ),
+    vaultwarden: bool | None = typer.Option(
+        None, "--vaultwarden/--no-vaultwarden",
+        help="Self-hosted password manager (Bitwarden-compatible) - deliberately not "
+        "routed through Authelia, same as Jellyfin"
+    ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -385,6 +404,11 @@ def main(
         sabnzbd=sabnzbd,
         recyclarr=recyclarr,
         homepage=homepage,
+        homepage_private=homepage_private,
+        metube=metube,
+        downtify=downtify,
+        netdata=netdata,
+        vaultwarden=vaultwarden,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -409,6 +433,11 @@ def run_install(
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
+    homepage_private: bool | None,
+    metube: bool | None,
+    downtify: bool | None,
+    netdata: bool | None,
+    vaultwarden: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -475,7 +504,8 @@ def run_install(
         raise typer.Exit(code=1)
 
     config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, gpu, puid, pgid, timezone,
+        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
+        downtify, netdata, vaultwarden, gpu, puid, pgid, timezone,
         non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
         cloudflare_email, auth_username, auth_password
     )
@@ -612,6 +642,11 @@ def _gather_generation_config(
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
+    homepage_private: bool | None,
+    metube: bool | None,
+    downtify: bool | None,
+    netdata: bool | None,
+    vaultwarden: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -935,6 +970,115 @@ def _gather_generation_config(
         if enable_homepage:
             enabled_optional.add("homepage")
 
+    homepage_enabled = (
+        "homepage" in enabled_optional if custom_services_selected is None
+        else "homepage" in custom_services_selected
+    )
+
+    # Only meaningful once there's something to be "private" from - a
+    # real public routed domain. Defaults True (the point of asking at
+    # all is that most people who set up a public domain don't want a
+    # dashboard of every other service handed to a stranger who reaches
+    # it) but stays a real, declinable question, same as every other
+    # default-on optional flag here.
+    homepage_private_value = False
+
+    if homepage_enabled and domain_value:
+
+        homepage_private_default = (
+            bool(previous.get("homepage_private", True)) if previous else True
+        )
+
+        if homepage_private is None:
+
+            homepage_private_value = homepage_private_default if non_interactive else typer.confirm(
+                "Keep Homepage off the public domain? Recommended - Jellyfin (and anything "
+                "else you route) still gets its own subdomain either way; this only affects "
+                "whether a stranger who reaches your domain can also find Homepage.",
+                default=homepage_private_default
+            )
+
+        else:
+            homepage_private_value = homepage_private
+
+    if custom_services_selected is None:
+
+        metube_default = "metube" in previous["enabled_optional"] if previous else False
+
+        if metube is None:
+
+            enable_metube = metube_default if non_interactive else typer.confirm(
+                "Enable MeTube (YouTube downloader)?",
+                default=metube_default
+            )
+
+        else:
+            enable_metube = metube
+
+        if enable_metube:
+            enabled_optional.add("metube")
+
+    if custom_services_selected is None:
+
+        downtify_default = "downtify" in previous["enabled_optional"] if previous else False
+
+        if downtify is None:
+
+            enable_downtify = downtify_default if non_interactive else typer.confirm(
+                "Enable Downtify (Spotify downloader - no account or API key needed)?",
+                default=downtify_default
+            )
+
+        else:
+            enable_downtify = downtify
+
+        if enable_downtify:
+            enabled_optional.add("downtify")
+
+    if custom_services_selected is None:
+
+        # Deliberately no opt-out-style default like Gluetun's - real,
+        # meaningfully deeper host access than every other service
+        # here (SYS_PTRACE/SYS_ADMIN, read-only host filesystem,
+        # docker.sock), named explicitly in the prompt itself, not
+        # just the post-generate warning.
+        netdata_default = "netdata" in previous["enabled_optional"] if previous else False
+
+        if netdata is None:
+
+            enable_netdata = netdata_default if non_interactive else typer.confirm(
+                "Enable Netdata (system resource monitoring)? Real-time CPU/RAM/disk/"
+                "network/temperature dashboards - needs real, deeper host access than "
+                "anything else here (SYS_PTRACE/SYS_ADMIN, read-only host filesystem, "
+                "the Docker socket) to see all of that.",
+                default=netdata_default
+            )
+
+        else:
+            enable_netdata = netdata
+
+        if enable_netdata:
+            enabled_optional.add("netdata")
+
+    if custom_services_selected is None:
+
+        vaultwarden_default = "vaultwarden" in previous["enabled_optional"] if previous else False
+
+        if vaultwarden is None:
+
+            enable_vaultwarden = vaultwarden_default if non_interactive else typer.confirm(
+                "Enable Vaultwarden (self-hosted, Bitwarden-compatible password manager)? "
+                "Not routed through Authelia even if enabled - same reason as Jellyfin, its "
+                "own apps can't complete a browser SSO redirect.",
+                default=vaultwarden_default
+            )
+
+        else:
+            enable_vaultwarden = vaultwarden
+
+        if enable_vaultwarden:
+            enabled_optional.add("vaultwarden")
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -1009,7 +1153,8 @@ def _gather_generation_config(
         cloudflare_email=cloudflare_email_value,
         auth_username=auth_username_value,
         auth_password_hash=auth_password_hash_value,
-        port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {}
+        port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {},
+        homepage_private=homepage_private_value
     )
 
 
@@ -1154,6 +1299,12 @@ def _generate_and_maybe_start(
     console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
     console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
     console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
+    console.print(f"  MeTube: {'enabled' if 'metube' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Downtify: {'enabled' if 'downtify' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Netdata: {'enabled' if 'netdata' in config.enabled_optional else 'disabled'}")
+    console.print(f"  Vaultwarden: {'enabled' if 'vaultwarden' in config.enabled_optional else 'disabled'}")
+    if config.homepage_private:
+        console.print("  Homepage: private (not publicly routed)")
     console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
@@ -1220,6 +1371,11 @@ def _generate_and_maybe_start(
             if summary:
                 console.print(summary)
 
+            setup_order = render_setup_order(config, detect_host_ip())
+
+            if setup_order:
+                console.print(f"\n{setup_order}")
+
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
             raise typer.Exit(code=1)
@@ -1228,7 +1384,9 @@ def _generate_and_maybe_start(
 
         console.print(
             "Run this when you're ready:\n"
-            f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d"
+            f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d\n\n"
+            f"Once it's up, a suggested setup order for every service you enabled is here: "
+            f"{WALKTHROUGH_URL}"
         )
 
     return result
