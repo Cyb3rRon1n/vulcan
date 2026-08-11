@@ -57,6 +57,7 @@ class TierConfigScreen(Screen):
         downtify_default = "downtify" in previous["enabled_optional"] if previous else False
         netdata_default = "netdata" in previous["enabled_optional"] if previous else False
         vaultwarden_default = "vaultwarden" in previous["enabled_optional"] if previous else False
+        dashy_default = "dashy" in previous["enabled_optional"] if previous else False
         gpu_default = bool(previous.get("gpu_vendor")) if previous else True
 
         gpu_vendor = self.app.system_info.gpu_vendor
@@ -142,6 +143,13 @@ class TierConfigScreen(Screen):
                     "Self-hosted, Bitwarden-compatible password manager - a good first stop "
                     "after install to save every other service's login. Not routed through "
                     "Authelia even if enabled, same reason as Jellyfin."
+                )
+            ),
+            Checkbox(
+                "Enable Dashy (second dashboard)", value=dashy_default, id="dashy-check",
+                tooltip=(
+                    "A second, more visually customizable dashboard alongside Homepage - "
+                    "same auto-pre-seeded tiles for every enabled service."
                 )
             ),
             Input(
@@ -288,6 +296,9 @@ class TierConfigScreen(Screen):
 
         if self.query_one("#vaultwarden-check", Checkbox).value:
             enabled_optional.add("vaultwarden")
+
+        if self.query_one("#dashy-check", Checkbox).value:
+            enabled_optional.add("dashy")
 
         gpu_vendor_to_use = None
 

@@ -65,7 +65,8 @@ class ReviewScreen(Screen):
             auth_username=self.app.auth_username,
             auth_password_hash=self.app.auth_password_hash,
             port_overrides=self.app.port_overrides,
-            homepage_private=self.app.homepage_private
+            homepage_private=self.app.homepage_private,
+            dashy_private=self.app.dashy_private
         )
 
     def compose(self) -> ComposeResult:
@@ -94,7 +95,7 @@ class ReviewScreen(Screen):
         # "Homepage: private" line's own precedent below.
         for key, label in (
             ("metube", "MeTube"), ("downtify", "Downtify"), ("netdata", "Netdata"),
-            ("vaultwarden", "Vaultwarden"),
+            ("vaultwarden", "Vaultwarden"), ("dashy", "Dashy"),
         ):
 
             if key in self.app.enabled_optional:
@@ -102,6 +103,9 @@ class ReviewScreen(Screen):
 
         if self.app.homepage_private:
             summary += "\nHomepage: private (not publicly routed)"
+
+        if self.app.dashy_private:
+            summary += "\nDashy: private (not publicly routed)"
 
         if self.app.custom_services is not None:
             summary += f"\nServices: {', '.join(sorted(self.app.custom_services))}"

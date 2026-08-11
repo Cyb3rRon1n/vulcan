@@ -155,7 +155,7 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 25
+    assert len(all_keys) == 26
     assert len(ALL_SERVICES) == len(all_keys)
 
 

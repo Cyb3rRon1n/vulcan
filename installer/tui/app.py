@@ -37,6 +37,7 @@ class VulcanApp(App):
         self.auth_username: str | None = None
         self.auth_password_hash: str | None = None
         self.homepage_private: bool = False
+        self.dashy_private: bool = False
         self.port_overrides: dict[str, int] = {}
 
     def on_mount(self) -> None:

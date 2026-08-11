@@ -349,6 +349,15 @@ def main(
         help="Self-hosted password manager (Bitwarden-compatible) - deliberately not "
         "routed through Authelia, same as Jellyfin"
     ),
+    dashy: bool | None = typer.Option(
+        None, "--dashy/--no-dashy",
+        help="A second, more visually customizable dashboard alongside Homepage"
+    ),
+    dashy_private: bool | None = typer.Option(
+        None, "--dashy-private/--dashy-public",
+        help="Keep Dashy off the public Traefik-routed domain - only used if dashy and "
+        "traefik+domain are all enabled"
+    ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
@@ -409,6 +418,8 @@ def main(
         downtify=downtify,
         netdata=netdata,
         vaultwarden=vaultwarden,
+        dashy=dashy,
+        dashy_private=dashy_private,
         start=start,
         gpu=gpu,
         puid=puid,
@@ -438,6 +449,8 @@ def run_install(
     downtify: bool | None,
     netdata: bool | None,
     vaultwarden: bool | None,
+    dashy: bool | None,
+    dashy_private: bool | None,
     start: bool | None,
     gpu: bool | None,
     puid: int | None,
@@ -505,7 +518,7 @@ def run_install(
 
     config = _gather_generation_config(
         info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
-        downtify, netdata, vaultwarden, gpu, puid, pgid, timezone,
+        downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
         non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
         cloudflare_email, auth_username, auth_password
     )
@@ -647,6 +660,8 @@ def _gather_generation_config(
     downtify: bool | None,
     netdata: bool | None,
     vaultwarden: bool | None,
+    dashy: bool | None,
+    dashy_private: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -1079,6 +1094,52 @@ def _gather_generation_config(
         if enable_vaultwarden:
             enabled_optional.add("vaultwarden")
 
+    if custom_services_selected is None:
+
+        dashy_default = "dashy" in previous["enabled_optional"] if previous else False
+
+        if dashy is None:
+
+            enable_dashy = dashy_default if non_interactive else typer.confirm(
+                "Enable Dashy (a second, more visually customizable dashboard alongside "
+                "Homepage)?",
+                default=dashy_default
+            )
+
+        else:
+            enable_dashy = dashy
+
+        if enable_dashy:
+            enabled_optional.add("dashy")
+
+    dashy_enabled = (
+        "dashy" in enabled_optional if custom_services_selected is None
+        else "dashy" in custom_services_selected
+    )
+
+    # Same reasoning and same opt-out-by-default question as Homepage's
+    # own homepage_private above, asked independently - enabling both
+    # dashboards doesn't mean they share one privacy decision.
+    dashy_private_value = False
+
+    if dashy_enabled and domain_value:
+
+        dashy_private_default = (
+            bool(previous.get("dashy_private", True)) if previous else True
+        )
+
+        if dashy_private is None:
+
+            dashy_private_value = dashy_private_default if non_interactive else typer.confirm(
+                "Keep Dashy off the public domain? Recommended - Jellyfin (and anything "
+                "else you route) still gets its own subdomain either way; this only affects "
+                "whether a stranger who reaches your domain can also find Dashy.",
+                default=dashy_private_default
+            )
+
+        else:
+            dashy_private_value = dashy_private
+
     gpu_vendor_to_use = None
 
     jellyfin_included = "jellyfin" in (
@@ -1154,7 +1215,8 @@ def _gather_generation_config(
         auth_username=auth_username_value,
         auth_password_hash=auth_password_hash_value,
         port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {},
-        homepage_private=homepage_private_value
+        homepage_private=homepage_private_value,
+        dashy_private=dashy_private_value
     )
 
 
@@ -1306,6 +1368,9 @@ def _generate_and_maybe_start(
     if config.homepage_private:
         console.print("  Homepage: private (not publicly routed)")
     console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
+    if config.dashy_private:
+        console.print("  Dashy: private (not publicly routed)")
+    console.print(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
     console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
