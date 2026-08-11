@@ -41,7 +41,8 @@ def make_system_info(**overrides) -> SystemInfo:
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
 
     base.update(overrides)
@@ -310,9 +311,10 @@ async def test_docker_ready_screen_install_button_runs_full_install_sequence():
 
     with patch(
         "installer.tui.docker_screen.install_plan_for",
-        return_value={"method": "get.docker.com", "description": "curl ... | sh"}
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
     ), patch(
-        "installer.tui.docker_screen.install_docker"
+        "installer.tui.docker_screen.install_docker",
+        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
     ) as mock_install, patch(
         "installer.tui.docker_screen.start_docker_service"
     ) as mock_start, patch(
@@ -320,8 +322,12 @@ async def test_docker_ready_screen_install_button_runs_full_install_sequence():
     ) as mock_add_group, patch(
         "installer.tui.docker_screen.ensure_compose_v2"
     ) as mock_compose, patch(
-        "installer.tui.docker_screen.detect_docker", return_value=ready_state
-    ):
+        "installer.tui.docker_screen.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.tui.docker_screen.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ) as mock_ready:
 
         app, pilot, ctx = await _launch_at_docker_screen(info)
 
@@ -336,6 +342,7 @@ async def test_docker_ready_screen_install_button_runs_full_install_sequence():
             mock_start.assert_called_once()
             mock_add_group.assert_called_once()
             mock_compose.assert_called_once()
+            mock_ready.assert_called_once_with(use_group_workaround=True)
 
             assert app.group_just_added is True
             assert app.system_info.docker_installed is True
@@ -351,20 +358,35 @@ async def test_docker_ready_screen_install_button_runs_full_install_sequence():
 
 
 async def test_docker_ready_screen_not_running_only_starts_service():
+    """
+    The exact bug found live against a real Bazzite host in the
+    sibling Anvil project: Docker installed by a previous run (the
+    atomic-OS reboot-split case) never got its user added to the
+    docker group before this fix, since group-adding only happened
+    alongside a fresh install. This branch must now also add the group
+    and route the re-check through check_docker_ready's group-
+    workaround (a plain detect_docker() call right after usermod -aG
+    would still see this process's own stale group list).
+    """
 
     info = make_system_info(docker_running=False)
 
-    ready_state = {
-        "docker_installed": True, "docker_running": True, "docker_compose_v2": True
+    not_yet_state = {
+        "docker_installed": True, "docker_running": False, "docker_compose_v2": True
     }
+    ready_state = {"docker_running": True, "docker_compose_v2": True}
 
     with patch(
         "installer.tui.docker_screen.start_docker_service"
     ) as mock_start, patch(
         "installer.tui.docker_screen.install_docker"
     ) as mock_install, patch(
-        "installer.tui.docker_screen.detect_docker", return_value=ready_state
-    ):
+        "installer.tui.docker_screen.add_user_to_docker_group"
+    ) as mock_group, patch(
+        "installer.tui.docker_screen.detect_docker", return_value=not_yet_state
+    ), patch(
+        "installer.tui.docker_screen.check_docker_ready", return_value=ready_state
+    ) as mock_ready:
 
         app, pilot, ctx = await _launch_at_docker_screen(info)
 
@@ -380,7 +402,13 @@ async def test_docker_ready_screen_not_running_only_starts_service():
 
             mock_start.assert_called_once()
             mock_install.assert_not_called()
-            assert app.group_just_added is False
+            mock_group.assert_called_once()
+            mock_ready.assert_called_once_with(use_group_workaround=True)
+            assert app.group_just_added is True
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert status == "Docker is ready."
+            assert app.screen.query_one("#continue", Button).disabled is False
 
         finally:
             await ctx.__aexit__(None, None, None)
