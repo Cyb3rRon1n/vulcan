@@ -22,7 +22,8 @@ def make_system_info(
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
 
 

@@ -17,6 +17,7 @@ from installer.detect import (
 )
 from installer.docker_setup import (
     add_user_to_docker_group,
+    check_docker_ready,
     ensure_compose_v2,
     install_docker,
     install_plan_for,
@@ -508,7 +509,7 @@ def _ensure_docker_ready(
 
             return info, group_just_added
 
-        plan = install_plan_for(info.os_id)
+        plan = install_plan_for(info.os_id, info.os_is_atomic)
 
         if plan is None:
 
@@ -523,9 +524,34 @@ def _ensure_docker_ready(
 
         if yes or typer.confirm("Install Docker now?"):
 
-            install_docker(info.os_id)
+            result = install_docker(info.os_id, info.os_is_atomic)
+
+            if not result["success"]:
+
+                console.print(f"[red]Docker install failed: {result['error']}[/red]")
+                return info, group_just_added
+
+            if result["needs_reboot"]:
+
+                console.print(
+                    "[yellow]Docker was layered onto this system via rpm-ostree (this is "
+                    "an atomic/immutable OS - Bazzite, Silverblue, Kinoite, or similar). "
+                    "That only takes effect after a reboot.[/yellow]\n\n"
+                    "Reboot this machine now, then re-run this installer - it will detect "
+                    "Docker is installed and pick up from there (starting the service, "
+                    "adding your user to the docker group):\n"
+                    "  sudo systemctl reboot"
+                )
+                return info, group_just_added
+
             start_docker_service()
-            add_user_to_docker_group(getpass.getuser())
+
+            group_result = add_user_to_docker_group(getpass.getuser())
+
+            if not group_result["success"]:
+                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
+                return info, group_just_added
+
             ensure_compose_v2(info.os_id)
             group_just_added = True
 
@@ -534,7 +560,23 @@ def _ensure_docker_ready(
         console.print("Docker is installed but not running.")
 
         if yes or typer.confirm("Start the Docker service now?"):
+
             start_docker_service()
+
+            # Real gap found live (sibling Anvil project) against a
+            # real Bazzite host: Docker installed by a *previous* run
+            # (the atomic-OS reboot-split case) never got its user
+            # added to the docker group, since that only happened
+            # alongside a fresh install above. The daemon starting
+            # cleanly doesn't mean this user can reach it -
+            # /var/run/docker.sock is root:docker.
+            group_result = add_user_to_docker_group(getpass.getuser())
+
+            if not group_result["success"]:
+                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
+                return info, group_just_added
+
+            group_just_added = True
 
     elif not info.docker_compose_v2:
 
@@ -547,6 +589,17 @@ def _ensure_docker_ready(
     info.docker_installed = docker_state["docker_installed"]
     info.docker_running = docker_state["docker_running"]
     info.docker_compose_v2 = docker_state["docker_compose_v2"]
+
+    if group_just_added:
+
+        # A plain detect_docker() re-check right after adding this
+        # process's own user to the docker group would still see the
+        # stale group list inherited at this session's login - see
+        # check_docker_ready()'s own docstring for the real failure
+        # this fixes, confirmed live rather than assumed.
+        readiness = check_docker_ready(use_group_workaround=True)
+        info.docker_running = readiness["docker_running"]
+        info.docker_compose_v2 = readiness["docker_compose_v2"]
 
     return info, group_just_added
 

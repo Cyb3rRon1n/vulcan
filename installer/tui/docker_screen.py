@@ -9,6 +9,7 @@ from textual.widgets import Button, LoadingIndicator, Static
 from installer.detect import detect_docker
 from installer.docker_setup import (
     add_user_to_docker_group,
+    check_docker_ready,
     ensure_compose_v2,
     install_docker,
     install_plan_for,
@@ -75,7 +76,7 @@ class DockerReadyScreen(Screen):
                 action_button.display = False
                 return
 
-            plan = install_plan_for(info.os_id)
+            plan = install_plan_for(info.os_id, info.os_is_atomic)
 
             if plan is None:
 
@@ -122,26 +123,51 @@ class DockerReadyScreen(Screen):
 
         info = self.app.system_info
         group_just_added = False
+        needs_reboot = False
 
         if not info.docker_installed:
 
-            install_docker(info.os_id)
-            start_docker_service()
-            add_user_to_docker_group(getpass.getuser())
-            ensure_compose_v2(info.os_id)
-            group_just_added = True
+            result = install_docker(info.os_id, info.os_is_atomic)
+
+            if result.get("needs_reboot"):
+                needs_reboot = True
+            else:
+                start_docker_service()
+                add_user_to_docker_group(getpass.getuser())
+                ensure_compose_v2(info.os_id)
+                group_just_added = True
 
         elif not info.docker_running:
+
             start_docker_service()
+
+            # Same real gap the CLI's _ensure_docker_ready() fixes -
+            # Docker installed by a previous run (the atomic-OS
+            # reboot-split case) never got its user added to the
+            # docker group, since that only happened alongside a
+            # fresh install above.
+            add_user_to_docker_group(getpass.getuser())
+            group_just_added = True
 
         elif not info.docker_compose_v2:
             ensure_compose_v2(info.os_id)
 
         docker_state = detect_docker()
 
-        self.app.call_from_thread(self.fix_complete, docker_state, group_just_added)
+        if group_just_added:
 
-    def fix_complete(self, docker_state: dict, group_just_added: bool) -> None:
+            # A plain detect_docker() re-check here would still see
+            # this process's own stale group list - see
+            # check_docker_ready()'s docstring for the real failure
+            # this fixes (confirmed live against a real Bazzite host
+            # in the sibling Anvil project).
+            readiness = check_docker_ready(use_group_workaround=True)
+            docker_state["docker_running"] = readiness["docker_running"]
+            docker_state["docker_compose_v2"] = readiness["docker_compose_v2"]
+
+        self.app.call_from_thread(self.fix_complete, docker_state, group_just_added, needs_reboot)
+
+    def fix_complete(self, docker_state: dict, group_just_added: bool, needs_reboot: bool) -> None:
 
         self.app.system_info.docker_installed = docker_state["docker_installed"]
         self.app.system_info.docker_running = docker_state["docker_running"]
@@ -152,4 +178,16 @@ class DockerReadyScreen(Screen):
 
         self.query_one("#loading", LoadingIndicator).display = False
         self.query_one("#back", Button).disabled = False
+
+        if needs_reboot:
+
+            self.query_one("#docker-status", Static).update(
+                "Docker was layered onto this system via rpm-ostree (atomic/immutable OS "
+                "- Bazzite, Silverblue, Kinoite, or similar). This only takes effect after "
+                "a reboot - reboot this machine, then relaunch this installer; it will "
+                "detect Docker is installed and pick up from here."
+            )
+            self.query_one("#action", Button).display = False
+            return
+
         self.render_state()

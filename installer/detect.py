@@ -16,6 +16,7 @@ import shutil
 import socket
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import psutil
 
@@ -44,6 +45,7 @@ class SystemInfo:
     architecture: str
     os_id: str | None
     os_pretty_name: str | None
+    os_is_atomic: bool
 
 
 def detect_cpu() -> dict:
@@ -406,6 +408,31 @@ def detect_docker() -> dict:
     }
 
 
+def detect_os_is_atomic() -> bool:
+    """
+    True on an rpm-ostree-based image (Fedora Silverblue/Kinoite,
+    Bazzite, and other Universal Blue derivatives, CoreOS) - a real
+    functional signal, not a name guess. Ported from the sibling Anvil
+    project, which built and live-verified this against a real Bazzite
+    GPU host (msi-laptop): /run/ostree-booted is written by ostree
+    itself at boot only when the running root is an ostree deployment -
+    confirmed present there, absent on this project's own normal-Fedora
+    dev machine. Docker can't be `dnf install`ed on these systems the
+    way install_plan_for's DOCKER_SCRIPT_DISTROS assume - the base
+    image is read-only, packages are layered via `rpm-ostree install`
+    instead, and that layering only takes effect after a reboot.
+    shutil.which("rpm-ostree") is kept as a narrower fallback for the
+    (unobserved) case where the marker file is missing but the tooling
+    still is - never the primary signal, since a tool on PATH doesn't
+    confirm the running root actually is one.
+    """
+
+    if Path("/run/ostree-booted").exists():
+        return True
+
+    return shutil.which("rpm-ostree") is not None
+
+
 def detect_os() -> dict:
 
     os_id = None
@@ -436,7 +463,8 @@ def detect_os() -> dict:
     return {
         "architecture": platform.machine(),
         "os_id": os_id,
-        "os_pretty_name": os_pretty_name
+        "os_pretty_name": os_pretty_name,
+        "os_is_atomic": detect_os_is_atomic()
     }
 
 

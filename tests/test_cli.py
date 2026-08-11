@@ -26,7 +26,8 @@ def make_system_info(**overrides) -> SystemInfo:
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
 
     base.update(overrides)
@@ -800,14 +801,19 @@ def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
     ), patch(
         "installer.cli.detect_docker",
         return_value={
-            "docker_installed": True, "docker_running": True, "docker_compose_v2": True
+            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
         }
     ), patch(
-        "installer.cli.install_docker"
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.install_docker",
+        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
     ) as mock_install, patch(
         "installer.cli.start_docker_service"
     ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group"
+        "installer.cli.add_user_to_docker_group",
+        return_value={"success": True, "error": None}
     ) as mock_add_group, patch(
         "installer.cli.ensure_compose_v2"
     ) as mock_compose, patch(
@@ -985,11 +991,17 @@ def test_docker_installed_but_not_running_starts_service(tmp_path):
     ), patch(
         "installer.cli.detect_docker",
         return_value={
-            "docker_installed": True, "docker_running": True, "docker_compose_v2": True
+            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
         }
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
     ), patch(
         "installer.cli.start_docker_service"
     ) as mock_start, patch(
+        "installer.cli.add_user_to_docker_group",
+        return_value={"success": True, "error": None}
+    ), patch(
         "installer.cli.install_docker"
     ) as mock_install, patch(
         "installer.cli.detect_disk",

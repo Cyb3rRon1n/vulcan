@@ -11,6 +11,7 @@ from installer.detect import (
     detect_media_redundancy,
     detect_memory,
     detect_os,
+    detect_os_is_atomic,
     detect_render_group_gid,
     detect_system,
 )
@@ -598,6 +599,44 @@ def test_detect_os_handles_missing_file():
     assert result["architecture"]
 
 
+def test_detect_os_is_atomic_true_when_ostree_marker_present():
+    """
+    /run/ostree-booted is the real, confirmed marker - ported from the
+    sibling Anvil project, which checked it against an actual Bazzite
+    host (a real GPU machine reached over Tailscale) while building
+    this: present there, and this project's own dev machine (a normal
+    mutable Fedora) has no such file.
+    """
+
+    with patch("installer.detect.Path") as mock_path:
+
+        mock_path.return_value.exists.return_value = True
+
+        assert detect_os_is_atomic() is True
+
+
+def test_detect_os_is_atomic_false_on_a_normal_mutable_distro():
+
+    with patch("installer.detect.Path") as mock_path, patch(
+        "installer.detect.shutil.which", return_value=None
+    ):
+
+        mock_path.return_value.exists.return_value = False
+
+        assert detect_os_is_atomic() is False
+
+
+def test_detect_os_is_atomic_falls_back_to_rpm_ostree_on_path():
+
+    with patch("installer.detect.Path") as mock_path, patch(
+        "installer.detect.shutil.which", return_value="/usr/bin/rpm-ostree"
+    ):
+
+        mock_path.return_value.exists.return_value = False
+
+        assert detect_os_is_atomic() is True
+
+
 def test_detect_system_assembles_everything():
 
     with patch(
@@ -624,7 +663,7 @@ def test_detect_system_assembles_everything():
         "installer.detect.detect_os",
         return_value={
             "architecture": "x86_64", "os_id": "fedora",
-            "os_pretty_name": "Fedora Linux 44"
+            "os_pretty_name": "Fedora Linux 44", "os_is_atomic": False
         }
     ):
 
@@ -644,5 +683,6 @@ def test_detect_system_assembles_everything():
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
