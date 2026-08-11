@@ -133,13 +133,18 @@ there automatically:
 - Downtify: `stack/media/music/downtify` on the host (inside your existing
   Music library path, so no new Jellyfin library is needed for this one)
 
-## 12. Homepage / Uptime Kuma / Netdata / Traefik dashboard
+## 12. Homepage / Dashy / Uptime Kuma / Netdata / Traefik dashboard
 
 Check these last - they only have something to show once the services
 above are actually running.
 
-- **Homepage** was pre-seeded with tiles for everything you enabled,
-  including a link back to this page (under "Guides").
+- **Homepage** and **Dashy** were both pre-seeded with tiles for
+  everything you enabled, including a link back to this page (under
+  "Guides") - Dashy is a second, more visually customizable dashboard
+  option alongside Homepage, not a replacement; enable one or both. Dashy
+  runs as a fixed container uid/gid (1000:1000, no PUID/PGID support) -
+  if your own PUID/PGID differ, you may need `sudo` to edit
+  `stack/config/dashy/conf.yml` directly on the host.
 - **Uptime Kuma** needs a one-time account, then a monitor added per
   service you want to track.
 - **Netdata** and the **Traefik dashboard** need no setup at all - both

@@ -18,6 +18,7 @@ from installer.generate import (
     render_compose,
     render_decluttarr_config,
     render_env,
+    render_dashy_config,
     render_homepage_services,
     render_setup_order,
     render_stack_summary,
@@ -39,7 +40,8 @@ def make_config(
     auth_username: str | None = None,
     auth_password_hash: str | None = None,
     port_overrides: dict[str, int] | None = None,
-    homepage_private: bool = False
+    homepage_private: bool = False,
+    dashy_private: bool = False
 ) -> GenerationConfig:
 
     return GenerationConfig(
@@ -57,7 +59,8 @@ def make_config(
         auth_username=auth_username,
         auth_password_hash=auth_password_hash,
         port_overrides=port_overrides or {},
-        homepage_private=homepage_private
+        homepage_private=homepage_private,
+        dashy_private=dashy_private
     )
 
 
@@ -662,6 +665,60 @@ def test_render_compose_homepage_public_by_default_keeps_traefik_labels():
     assert "traefik.http.routers.homepage.rule=Host(`homepage.media.example.com`)" in output
 
 
+def test_render_compose_dashy_creates_service_with_no_puid_pgid():
+
+    output = render_compose(make_config("heavy", enabled_optional={"dashy"}))
+    block = _service_block(output, "dashy", "uptime-kuma")
+
+    assert "image: lissy93/dashy:latest" in block
+    assert "PUID" not in block
+    assert "PGID" not in block
+    assert "./config/dashy/conf.yml:/app/user-data/conf.yml" in block
+
+
+def test_render_compose_dashy_gets_authelia_middleware_like_homepage():
+    """
+    Unlike Jellyfin/Vaultwarden, Dashy has no native mobile/desktop app
+    of its own to conflict with Authelia's browser-redirect login -
+    it's a plain web dashboard, same as Homepage, so it gets the normal
+    authelia@docker middleware when both are enabled.
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"dashy", "authelia", "traefik"},
+            domain="media.example.com"
+        )
+    )
+    block = _service_block(output, "dashy", "uptime-kuma")
+
+    assert "authelia@docker" in block
+
+
+def test_render_compose_dashy_private_omits_traefik_labels():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"dashy", "traefik"},
+            domain="media.example.com", dashy_private=True
+        )
+    )
+
+    assert "traefik.http.routers.dashy" not in output
+
+
+def test_render_compose_dashy_public_by_default_keeps_traefik_labels():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"dashy", "traefik"},
+            domain="media.example.com"
+        )
+    )
+
+    assert "traefik.http.routers.dashy.rule=Host(`dashy.media.example.com`)" in output
+
+
 def test_render_compose_cloudflare_dns_adds_certresolver_flags_and_token():
 
     output = render_compose(
@@ -1092,6 +1149,75 @@ def test_render_homepage_services_output_is_valid_yaml():
 
     assert isinstance(parsed, list)
     assert len(parsed) == 5
+
+
+def test_render_dashy_config_creates_tiles_for_enabled_services():
+
+    output = render_dashy_config(
+        make_config("heavy", custom_services={"jellyfin", "radarr"}),
+        host_ip="192.168.1.50"
+    )
+
+    parsed = yaml.safe_load(output)
+
+    assert parsed["pageInfo"]["title"]
+    assert parsed["appConfig"]["theme"]
+
+    media_section = next(section for section in parsed["sections"] if section["name"] == "Media")
+    titles = [item["title"] for item in media_section["items"]]
+
+    assert "Jellyfin" in titles
+
+    jellyfin_item = next(item for item in media_section["items"] if item["title"] == "Jellyfin")
+
+    assert jellyfin_item["url"] == "http://192.168.1.50:8096"
+    assert jellyfin_item["icon"] == "favicon"
+
+
+def test_render_dashy_config_never_self_tiles():
+
+    output = render_dashy_config(
+        make_config("heavy", custom_services={"jellyfin", "dashy"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    all_titles = {item["title"] for section in parsed["sections"] for item in section["items"]}
+
+    assert "Dashy" not in all_titles
+
+
+def test_render_dashy_config_always_includes_walkthrough_guide_tile():
+
+    output = render_dashy_config(
+        make_config("heavy", custom_services={"jellyfin"}),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+    guides = next(section for section in parsed["sections"] if section["name"] == "Guides")
+
+    assert guides["items"][0]["url"] == WALKTHROUGH_URL
+
+
+def test_render_dashy_config_output_is_valid_yaml():
+
+    output = render_dashy_config(
+        make_config(
+            "heavy",
+            custom_services={
+                "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
+                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
+            }
+        ),
+        host_ip=None
+    )
+
+    parsed = yaml.safe_load(output)
+
+    assert isinstance(parsed, dict)
+    assert isinstance(parsed["sections"], list)
+    assert len(parsed["sections"]) == 5
 
 
 def test_write_stack_writes_files_and_creates_directories(tmp_path):
@@ -1738,6 +1864,70 @@ def test_write_stack_never_overwrites_existing_homepage_services_yaml(tmp_path):
 
     assert services_yaml_path.read_text() == "# hand-edited by the user\n- My Group: []\n"
     assert not any("pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_creates_dashy_conf_yml_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"dashy"}
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+
+    assert conf_yml_path.is_file()
+    assert "192.168.1.50" in conf_yml_path.read_text()
+    assert any("Dashy was pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_dashy_conf_yml_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+
+    assert not conf_yml_path.exists()
+    assert not any("Dashy was pre-seeded" in warning for warning in result["warnings"])
+
+
+def test_write_stack_never_overwrites_existing_dashy_conf_yml(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"dashy"}
+    )
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        write_stack(config, output_dir=tmp_path / "stack")
+
+    conf_yml_path = tmp_path / "stack" / "config" / "dashy" / "conf.yml"
+    conf_yml_path.write_text("# hand-edited by the user\npageInfo:\n  title: Mine\n")
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert conf_yml_path.read_text() == "# hand-edited by the user\npageInfo:\n  title: Mine\n"
+    assert not any("Dashy was pre-seeded" in warning for warning in result["warnings"])
 
 
 def test_write_stack_uptime_kuma_reference_lists_enabled_services(tmp_path):
@@ -2511,19 +2701,20 @@ def test_render_homepage_services_creates_authelia_tile_when_routed():
 
 def test_homepage_groups_match_web_facing_services():
     """_HOMEPAGE_GROUPS's flattened membership must stay exactly
-    WEB_FACING_SERVICES minus Homepage itself (no self-tile), plus one
-    real, documented exception: netdata gets a tile (network_mode: host
-    means it has a real reachable web UI) but is deliberately never in
-    WEB_FACING_SERVICES, since that set specifically means "gets Homepage
-    AND Traefik routing" and netdata can never get the latter (no Docker-
-    network identity for Traefik's provider to discover under host
-    networking) - see _service_href()'s own netdata special-case. Every
-    other drift risk (see WEB_FACING_SERVICES's own comment in
-    generate.py) is still caught here."""
+    WEB_FACING_SERVICES minus Homepage and Dashy themselves (neither
+    dashboard tiles itself), plus one real, documented exception:
+    netdata gets a tile (network_mode: host means it has a real
+    reachable web UI) but is deliberately never in WEB_FACING_SERVICES,
+    since that set specifically means "gets Homepage/Dashy AND Traefik
+    routing" and netdata can never get the latter (no Docker-network
+    identity for Traefik's provider to discover under host networking)
+    - see _service_href()'s own netdata special-case. Every other drift
+    risk (see WEB_FACING_SERVICES's own comment in generate.py) is
+    still caught here."""
 
     flattened = {key for keys in _HOMEPAGE_GROUPS.values() for key in keys}
 
-    assert flattened - {"netdata"} == WEB_FACING_SERVICES - {"homepage"}
+    assert flattened - {"netdata"} == WEB_FACING_SERVICES - {"homepage", "dashy"}
 
 
 def test_traefik_template_routes_match_web_facing_services():

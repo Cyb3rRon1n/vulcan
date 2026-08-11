@@ -34,6 +34,9 @@ RESOURCE_PROFILES: dict[str, str] = {
     "downtify": "standard",
     "netdata": "light",
     "vaultwarden": "light",
+    # Confirmed live: ~47MB idle via `docker stats` against a real
+    # started container - genuinely light, same bucket as Homepage.
+    "dashy": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

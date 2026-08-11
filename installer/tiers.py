@@ -52,6 +52,13 @@ _LIGHT_SERVICES = [
     # duplicate of it.
     ServiceDefinition("maintainerr", "Maintainerr (library cleanup)", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
+    # A direct owner request for a second dashboard option alongside
+    # Homepage, not a replacement - a real prior-CasaOS-setup preference
+    # for Dashy's more visually polished, themeable UI over Homepage's
+    # more utilitarian one. Gets the identical auto-pre-seeding
+    # treatment Homepage already has (see render_dashy_config() in
+    # generate.py), not a lesser second-class option.
+    ServiceDefinition("dashy", "Dashy dashboard", optional=True),
     # Tier-agnostic like Decluttarr/Maintainerr - a direct user request
     # for the same "automated downloader" role their old CasaOS-hosted
     # Windows VM served, done container-native instead. Output lands in

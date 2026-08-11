@@ -40,21 +40,24 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/WALKTHROU
 # truth both Homepage's tile groups (below) and the Traefik template's
 # per-service labels (templates/docker-compose.yml.j2) draw from,
 # closing a real drift risk this project has hit before (the "17 known
-# services" count going stale, twice - see CLAUDE.md). "traefik" and
-# "homepage" both appear here despite neither routing/tiling itself the
-# normal way: Traefik gets a tile (pointing at its own dashboard) but no
-# per-service label block of its own, Homepage gets a label block (it's
-# routable like anything else) but no tile of itself. So each consumer
-# below derives its own view by excluding just itself -
+# services" count going stale, twice - see CLAUDE.md). "traefik",
+# "homepage", and "dashy" all appear here despite none of them routing/
+# tiling itself the normal way: Traefik gets a tile (pointing at its own
+# dashboard) but no per-service label block of its own, Homepage and
+# Dashy each get a label block (routable like anything else) but no
+# tile of themselves - two independent dashboards, neither self-tiling,
+# same as Homepage never tiled itself before Dashy existed. So each
+# consumer below derives its own view by excluding just itself -
 # WEB_FACING_SERVICES - {"traefik"} is exactly the set of services with
 # a `{% if 'traefik' in enabled and domain %}` label block in the
-# template, and WEB_FACING_SERVICES - {"homepage"} is exactly the flat
-# union of _HOMEPAGE_GROUPS's values - both checked by
+# template, and WEB_FACING_SERVICES - {"homepage", "dashy"} is exactly
+# the flat union of _HOMEPAGE_GROUPS's values - both checked by
 # tests/test_generate.py so the two can't silently drift apart again.
 WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
+    "dashy",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -97,6 +100,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "metube": 8081,
     "downtify": 8000,
     "vaultwarden": 8222,
+    "dashy": 4000,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -150,6 +154,7 @@ class GenerationConfig:
     cloudflare_email: str | None = None
     port_overrides: dict[str, int] = field(default_factory=dict)
     homepage_private: bool = False
+    dashy_private: bool = False
 
 
 def resolve_ports(config: GenerationConfig) -> dict[str, int]:
@@ -218,6 +223,7 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "cloudflare_email": config.cloudflare_email,
         "port_overrides": config.port_overrides,
         "homepage_private": config.homepage_private,
+        "dashy_private": config.dashy_private,
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -307,6 +313,7 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         domain=config.domain,
         homepage_allowed_hosts=_homepage_allowed_hosts(config, enabled, host_ip),
         homepage_private=config.homepage_private,
+        dashy_private=config.dashy_private,
         cloudflare_dns=config.cloudflare_dns,
         cloudflare_email=config.cloudflare_email,
         ports=resolve_ports(config)
@@ -397,9 +404,14 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
     # (Tailscale/LAN), just never gets a public homepage.<domain> route.
     homepage_kept_private = key == "homepage" and config.homepage_private
 
+    # Same reasoning, same opt-out-by-default question, for Dashy -
+    # a second dashboard means a second "shouldn't be the thing a
+    # stranger lands on" decision, asked independently of Homepage's.
+    dashy_kept_private = key == "dashy" and config.dashy_private
+
     routed = (
         "traefik" in enabled and config.domain
-        and not qbittorrent_via_gluetun and not homepage_kept_private
+        and not qbittorrent_via_gluetun and not homepage_kept_private and not dashy_kept_private
     )
 
     if routed:
@@ -467,6 +479,70 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
     })
 
     return yaml.safe_dump(groups, sort_keys=False)
+
+
+def render_dashy_config(config: GenerationConfig, host_ip: str | None) -> str:
+    """
+    Dashy's second-dashboard-alongside-Homepage counterpart to
+    render_homepage_services() - a direct owner request for the same
+    real pre-seeded-tile treatment Homepage already gets, not a lesser
+    second-class option. Reuses the exact same _HOMEPAGE_GROUPS/
+    _HOMEPAGE_DESCRIPTIONS tables (one real source of truth for what
+    each service's tile says, not two that could drift apart) - only
+    the output shape differs, since Dashy's real config schema
+    (confirmed by reading a real container's own default
+    /app/user-data/conf.yml, not assumed from docs) is `sections: [{name,
+    icon, items: [{title, description, url, icon}]}]`, not Homepage's
+    `[{group: [{title: {href, icon, description}}]}]`. `icon: favicon`
+    is a real, documented Dashy feature (auto-fetches each site's own
+    favicon) - used here instead of Homepage's dashboard-icons pack
+    filenames, which Dashy doesn't read the same way.
+    """
+
+    enabled = enabled_service_keys(config)
+    display_names = {service.key: service.display_name for service in ALL_SERVICES}
+
+    sections = []
+
+    for group_name, keys in _HOMEPAGE_GROUPS.items():
+
+        items = []
+
+        for key in keys:
+
+            if key not in enabled:
+                continue
+
+            href = _service_href(key, config, host_ip)
+
+            if href is None:
+                continue
+
+            items.append({
+                "title": display_names[key],
+                "description": _HOMEPAGE_DESCRIPTIONS[key],
+                "url": href,
+                "icon": "favicon"
+            })
+
+        if items:
+            sections.append({"name": group_name, "items": items})
+
+    sections.append({
+        "name": "Guides",
+        "items": [{
+            "title": "Setup Walkthrough",
+            "description": "Suggested order to configure every service after install",
+            "url": WALKTHROUGH_URL,
+            "icon": "favicon"
+        }]
+    })
+
+    return yaml.safe_dump({
+        "pageInfo": {"title": "Vulcan"},
+        "appConfig": {"theme": "colorful"},
+        "sections": sections
+    }, sort_keys=False)
 
 
 def render_authelia_users_database(username: str, displayname: str, password_hash: str) -> str:
@@ -561,6 +637,9 @@ def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
 
     if "homepage" in enabled:
         lines.append(f"  Homepage (dashboard): {_service_href('homepage', config, host_ip)}")
+
+    if "dashy" in enabled:
+        lines.append(f"  Dashy (dashboard): {_service_href('dashy', config, host_ip)}")
 
     lines.extend(
         f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
@@ -692,13 +771,15 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
             "warnings above for exact paths)."
         )
 
-    dashboards = [key for key in ("homepage", "uptime-kuma", "netdata", "traefik") if key in enabled]
+    dashboards = [
+        key for key in ("homepage", "dashy", "uptime-kuma", "netdata", "traefik") if key in enabled
+    ]
 
     if dashboards:
 
         steps.append(
-            "Homepage/Uptime Kuma/Netdata/Traefik dashboard: check these last - they only "
-            "have something to show once the services above are actually running."
+            "Homepage/Dashy/Uptime Kuma/Netdata/Traefik dashboard: check these last - they "
+            "only have something to show once the services above are actually running."
         )
 
     if not steps:
@@ -801,6 +882,23 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "Homepage was pre-seeded with tiles for your enabled services at "
                 "stack/config/homepage/services.yaml - edit it directly to customize "
                 "further; Vulcan won't overwrite it on a later regenerate."
+            )
+
+    if "dashy" in enabled_service_keys(config):
+
+        dashy_config_path = output_dir / "config" / "dashy" / "conf.yml"
+
+        if not dashy_config_path.exists():
+
+            dashy_config_path.write_text(render_dashy_config(config, host_ip))
+
+            warnings.append(
+                "Dashy was pre-seeded with tiles for your enabled services at "
+                "stack/config/dashy/conf.yml - edit it directly to customize further "
+                "(themes, layout, more tiles); Vulcan won't overwrite it on a later "
+                "regenerate. Runs as a fixed uid/gid 1000:1000 inside its container "
+                "(no PUID/PGID support) - if your own PUID/PGID differ, you may need "
+                "sudo to edit this file directly on the host."
             )
 
     if "uptime-kuma" in enabled_service_keys(config):

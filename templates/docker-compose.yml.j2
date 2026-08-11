@@ -748,6 +748,35 @@ services:
           memory: "{{ limits.homepage.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'dashy' in enabled %}
+  dashy:
+    image: lissy93/dashy:latest
+    container_name: dashy
+    volumes:
+      - ./config/dashy/conf.yml:/app/user-data/conf.yml
+    ports:
+      - "{{ ports['dashy'] }}:8080"
+{% if 'traefik' in enabled and domain and not dashy_private %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashy.rule=Host(`dashy.{{ domain }}`)"
+      - "traefik.http.routers.dashy.entrypoints=websecure"
+      - "traefik.http.routers.dashy.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.dashy.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.dashy.loadbalancer.server.port=8080"
+{% if 'authelia' in enabled %}
+      - "traefik.http.routers.dashy.middlewares=authelia@docker"
+{% endif %}
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.dashy.cpus }}"
+          memory: "{{ limits.dashy.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'uptime-kuma' in enabled %}
   uptime-kuma:
     image: louislam/uptime-kuma:latest

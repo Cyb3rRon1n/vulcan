@@ -7,7 +7,7 @@ def test_all_known_services_have_a_resource_profile():
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "decluttarr", "maintainerr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
-        "watchtower", "metube", "downtify", "netdata", "vaultwarden"
+        "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
@@ -41,6 +41,11 @@ def test_netdata_has_light_profile():
 def test_vaultwarden_has_light_profile():
 
     assert RESOURCE_PROFILES["vaultwarden"] == "light"
+
+
+def test_dashy_has_light_profile():
+
+    assert RESOURCE_PROFILES["dashy"] == "light"
 
 
 def test_heavy_only_services_get_expected_profiles():

@@ -54,6 +54,7 @@ class ServiceSelectionScreen(Screen):
         default_cloudflare_dns = bool(previous.get("cloudflare_dns")) if previous else False
         default_cloudflare_email = previous.get("cloudflare_email") if previous else None
         default_homepage_private = bool(previous.get("homepage_private", True)) if previous else True
+        default_dashy_private = bool(previous.get("dashy_private", True)) if previous else True
 
         yield VerticalScroll(
             Static("Select services to include", id="title"),
@@ -92,6 +93,15 @@ class ServiceSelectionScreen(Screen):
                     "Recommended - anything else you route still gets its own subdomain "
                     "either way; this only affects whether a stranger who reaches your "
                     "domain can also find Homepage."
+                )
+            ),
+            Checkbox(
+                "Keep Dashy off the public domain",
+                value=default_dashy_private, id="dashy-private-check",
+                tooltip=(
+                    "Recommended - same reasoning as Homepage's own privacy checkbox above, "
+                    "asked independently since enabling both dashboards doesn't mean they "
+                    "share one privacy decision."
                 )
             ),
             Input(
@@ -175,6 +185,12 @@ class ServiceSelectionScreen(Screen):
             traefik_selected and "homepage" in selected
         )
 
+        # Same gate, independently, for Dashy - enabling both
+        # dashboards doesn't mean they share one privacy decision.
+        self.query_one("#dashy-private-check", Checkbox).display = (
+            traefik_selected and "dashy" in selected
+        )
+
     def _authelia_needs_setup(self) -> bool:
 
         selected = set(self.query_one("#service-list", SelectionList).selected)
@@ -249,6 +265,12 @@ class ServiceSelectionScreen(Screen):
 
         self.app.homepage_private = bool(
             homepage_private_check.display and homepage_private_check.value
+        )
+
+        dashy_private_check = self.query_one("#dashy-private-check", Checkbox)
+
+        self.app.dashy_private = bool(
+            dashy_private_check.display and dashy_private_check.value
         )
 
         self.app.push_screen(ReviewScreen())
