@@ -1,0 +1,75 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, plus expected vs. actual behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Vulcan's own console output is usually enough; include `docker compose logs` output too if the issue is with a running container rather than generation itself.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Vulcan version
+      description: Output of `vulcan version`
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Distro and architecture
+      description: e.g. Ubuntu 24.04 (x86_64), Fedora 44 (aarch64) — include whether it's an atomic/immutable variant (Bazzite, Silverblue, etc.).
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU vendor, if relevant
+      description: amd / intel / nvidia / none
+
+  - type: input
+    id: tier
+    attributes:
+      label: Tier and service selection
+      description: Light/Medium/Heavy, or the custom services involved.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Interface
+      options:
+        - Guided TUI (default)
+        - Plain CLI (--plain)
+        - Non-interactive (--non-interactive)
+    validations:
+      required: true

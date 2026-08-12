@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation and setup walkthrough
+    url: https://github.com/Cyb3rRon1n/vulcan#readme
+    about: README covers Quick Start, Tiers, and every optional integration. docs/WALKTHROUGH.md covers post-install setup order — check both before filing an issue.
+  - name: Roadmap — what's shipped vs. still open
+    url: https://github.com/Cyb3rRon1n/vulcan/blob/main/ROADMAP.md
+    about: A real gap (like ARM64 hardware verification) may already be tracked here.
