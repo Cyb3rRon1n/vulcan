@@ -35,42 +35,7 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 
 ## Screenshots
 
-`./install` opens on a persistent Main Menu, screen by screen from there:
-
-<p align="center">
-  <img src="docs/screenshots/00-main-menu.svg" width="800" alt="Main Menu screen"><br>
-  <sub><b>1. Main Menu</b> — Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall a stack, update Vulcan itself), gated on whether a stack or backup actually exists</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/01-welcome.svg" width="800" alt="System detection screen"><br>
-  <sub><b>2. System detection</b> (Guided Setup) — real CPU, RAM, disk, and GPU read off the host</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/02-docker-ready.svg" width="800" alt="Docker readiness screen"><br>
-  <sub><b>3. Docker readiness</b> — installs and starts Docker automatically if it isn't already there</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/03-media-path.svg" width="800" alt="Media library path screen"><br>
-  <sub><b>4. Media library path</b> — checks real free space against tier thresholds</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/04-tier-config.svg" width="800" alt="Tier and configuration screen"><br>
-  <sub><b>5. Tier & configuration</b> — shows what each tier actually contains before you pick one</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/05-service-selection.svg" width="800" alt="Custom service selection screen"><br>
-  <sub><b>6. Custom service selection</b> — free-pick any of the 27 known services</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/06-review.svg" width="800" alt="Review and generate screen"><br>
-  <sub><b>7. Review & generate</b> — writes the stack, with the option to start it immediately</sub>
-</p>
+`vulcan` (no flags) opens on a real `whiptail`-driven Main Menu - Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall a stack, update Vulcan itself). Screenshots pending real-terminal capture now that the front end is bash+whiptail rather than a Python TUI (see [CLAUDE.md](CLAUDE.md) for why) - `whiptail` needs a real interactive terminal to render, which can't be captured the same way the old Textual screens were.
 
 ---
 

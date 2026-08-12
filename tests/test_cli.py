@@ -1,9 +1,10 @@
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from installer.cli import app
+from installer.cli import _launch_menu, app
 from installer.detect import SystemInfo
 
 
@@ -54,6 +55,93 @@ PREVIOUS_STATE = {
 }
 
 
+def test_detect_shell_output_is_eval_able_key_value(tmp_path):
+    """
+    installer/menu.sh's whiptail front end runs `eval "$(vulcan detect)"`
+    and then references $RECOMMENDED_TIER etc. directly - every line
+    must parse as KEY='value', including values containing spaces,
+    parens, and commas (a real explanation string does).
+    """
+
+    info = make_system_info(
+        cpu_model="Intel(R) Core(TM) i7, 8-core",
+        gpu_vendor="nvidia",
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value=PREVIOUS_STATE):
+
+        result = runner.invoke(app, ["detect"])
+
+    assert result.exit_code == 0
+
+    fields = {}
+
+    for line in result.output.splitlines():
+
+        key, _, value = line.partition("=")
+        assert value.startswith("'") and value.endswith("'"), line
+        fields[key] = value[1:-1]
+
+    assert fields["CPU_MODEL"] == "Intel(R) Core(TM) i7, 8-core"
+    assert fields["GPU_VENDOR"] == "nvidia"
+    assert fields["RECOMMENDED_TIER"] in ("light", "medium", "heavy")
+    assert fields["PREVIOUS_TIER"] == "medium"
+    assert fields["PREVIOUS_MEDIA_PATH"] == "/mnt/previous-media"
+    assert fields["PREVIOUS_PUID"] == "2000"
+    assert fields["PREVIOUS_ENABLED_OPTIONAL"] == "gluetun"
+    assert fields["PREVIOUS_DOMAIN"] == ""
+    assert fields["PREVIOUS_HOMEPAGE_PRIVATE"] == "true"
+    assert fields["STACK_EXISTS"] == "false"
+
+
+def test_detect_shell_output_no_previous_state_leaves_previous_fields_blank(tmp_path):
+
+    info = make_system_info()
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value=None):
+
+        result = runner.invoke(app, ["detect"])
+
+    assert result.exit_code == 0
+
+    fields = {}
+
+    for line in result.output.splitlines():
+        key, _, value = line.partition("=")
+        fields[key] = value[1:-1]
+
+    assert fields["PREVIOUS_TIER"] == ""
+    assert fields["PREVIOUS_MEDIA_PATH"] == ""
+    assert fields["DEFAULT_PUID"] != ""
+    assert fields["DEFAULT_TIMEZONE"] != ""
+
+
+def test_launch_menu_runs_menu_sh_as_a_real_subprocess():
+    """
+    Real subprocess, not mocked - swaps installer.cli.MENU_SH_PATH for
+    a throwaway stub script and confirms _launch_menu() actually
+    executes it and propagates its real exit code, the same "verify
+    the real mechanism, not just that a function was called" standard
+    the rest of this project's subprocess-based code (docker_setup.py)
+    is held to.
+    """
+
+    import installer.cli as cli_module
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+        stub_path = Path(tmp_dir) / "stub_menu.sh"
+        stub_path.write_text("#!/usr/bin/env bash\nexit 7\n")
+        stub_path.chmod(0o755)
+
+        with patch.object(cli_module, "MENU_SH_PATH", stub_path):
+            assert _launch_menu() == 7
+
+
 def test_non_interactive_requires_yes():
 
     result = runner.invoke(
@@ -74,37 +162,46 @@ def test_non_interactive_requires_tier_and_media_path_without_previous_state():
     assert "--tier and --media-path are required" in result.output
 
 
-def test_default_interactive_mode_launches_tui():
+def test_default_interactive_mode_launches_menu():
 
-    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+    with patch("installer.cli._launch_menu", return_value=0) as mock_launch_menu, patch(
         "installer.cli.run_install"
     ) as mock_run_install:
 
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    mock_run_tui.assert_called_once()
+    mock_launch_menu.assert_called_once()
     mock_run_install.assert_not_called()
 
 
-def test_plain_flag_launches_run_install_instead_of_tui():
+def test_default_interactive_mode_propagates_menu_exit_code():
 
-    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+    with patch("installer.cli._launch_menu", return_value=1):
+
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 1
+
+
+def test_plain_flag_launches_run_install_instead_of_menu():
+
+    with patch("installer.cli._launch_menu") as mock_launch_menu, patch(
         "installer.cli.run_install"
     ) as mock_run_install:
 
         result = runner.invoke(app, ["--plain"])
 
     assert result.exit_code == 0, result.output
-    mock_run_tui.assert_not_called()
+    mock_launch_menu.assert_not_called()
     mock_run_install.assert_called_once()
 
 
-def test_non_interactive_mode_never_launches_tui_with_or_without_plain(tmp_path):
+def test_non_interactive_mode_never_launches_menu_with_or_without_plain(tmp_path):
 
     media_path = str(tmp_path / "media")
 
-    with patch("installer.tui.run_tui") as mock_run_tui, patch(
+    with patch("installer.cli._launch_menu") as mock_launch_menu, patch(
         "installer.cli.detect_system", return_value=make_system_info()
     ), patch(
         "installer.cli.detect_disk",
@@ -122,7 +219,7 @@ def test_non_interactive_mode_never_launches_tui_with_or_without_plain(tmp_path)
         )
 
     assert result.exit_code == 0, result.output
-    mock_run_tui.assert_not_called()
+    mock_launch_menu.assert_not_called()
 
 
 def test_non_interactive_rerun_uses_previous_state_when_flags_omitted(tmp_path):

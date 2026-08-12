@@ -1,4 +1,5 @@
 import getpass
+import subprocess
 from pathlib import Path
 
 import typer
@@ -76,6 +77,22 @@ app.add_typer(storage_app, name="storage")
 
 console = Console()
 
+MENU_SH_PATH = Path(__file__).parent / "menu.sh"
+
+
+def _launch_menu() -> int:
+    """
+    Launches the whiptail Main Menu (installer/menu.sh) as a real
+    subprocess, not an import - it's bash, not Python. Every choice it
+    gathers is handed back to this same `vulcan` binary as a
+    --non-interactive --yes invocation (see menu.sh itself), so this
+    function owns no interactive logic of its own, only the handoff.
+    Returns the script's real exit code so `main()` can propagate it.
+    """
+
+    result = subprocess.run(["bash", str(MENU_SH_PATH)])
+    return result.returncode
+
 
 @app.command()
 def version():
@@ -86,6 +103,87 @@ def version():
     console.print(
         f"[bold red]Vulcan[/bold red] version {__version__}"
     )
+
+
+def _shell_quote(value: str) -> str:
+    """Single-quoted, safe to eval - escapes any embedded single quotes."""
+
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+@app.command(name="detect")
+def detect_shell():
+    """
+    Print real detected system state as KEY=VALUE lines, eval-able from
+    bash (`eval "$(vulcan detect)"`). Exists so installer/menu.sh (the
+    whiptail front end) can show real specs and a real tier
+    recommendation before asking the user anything, the same way the
+    old Textual TUI's WelcomeScreen/ConfigScreen did - without
+    duplicating any detection logic here. Plain KEY=VALUE rather than
+    JSON deliberately - this project has never needed jq before, and
+    eval-ing a flat block is pure bash with zero new dependencies.
+    """
+
+    info = detect_system()
+    recommendation = recommend_tier(info)
+    previous = load_previous_state(STACK_DIR)
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+    stack_exists = compose_path.exists() or stack_containers_exist(STACK_DIR.name)
+    has_backups = latest_backup() is not None
+
+    default_puid, default_pgid = default_puid_pgid()
+    default_tz = default_timezone()
+
+    fields = {
+        "CPU_CORES_LOGICAL": info.cpu_cores_logical or 0,
+        "CPU_MODEL": info.cpu_model or "unknown",
+        "RAM_TOTAL_GB": info.ram_total_gb,
+        "DISK_FREE_GB": info.disk_free_gb,
+        "GPU_VENDOR": info.gpu_vendor or "",
+        "DOCKER_INSTALLED": "true" if info.docker_installed else "false",
+        "DOCKER_RUNNING": "true" if info.docker_running else "false",
+        "DOCKER_COMPOSE_V2": "true" if info.docker_compose_v2 else "false",
+        "OS_ID": info.os_id or "unknown",
+        "OS_PRETTY_NAME": info.os_pretty_name or "unknown",
+        "OS_IS_ATOMIC": "true" if info.os_is_atomic else "false",
+        "RECOMMENDED_TIER": recommendation.tier.name,
+        "RECOMMENDED_TIER_MEETS_MINIMUM": "true" if recommendation.meets_minimum else "false",
+        "RECOMMENDED_TIER_EXPLANATION": recommendation.explanation,
+        "STACK_EXISTS": "true" if stack_exists else "false",
+        "HAS_BACKUPS": "true" if has_backups else "false",
+        "DEFAULT_PUID": default_puid,
+        "DEFAULT_PGID": default_pgid,
+        "DEFAULT_TIMEZONE": default_tz,
+        # Everything below is blank when there's no previous state -
+        # installer/menu.sh uses blank-ness itself as the "is this a
+        # rerun?" signal, same role `self.app.previous_state is None`
+        # played for the old TierConfigScreen/ServiceSelectionScreen.
+        "PREVIOUS_TIER": previous["tier"] if previous else "",
+        "PREVIOUS_MEDIA_PATH": previous["media_path"] if previous else "",
+        "PREVIOUS_PUID": previous["puid"] if previous else "",
+        "PREVIOUS_PGID": previous["pgid"] if previous else "",
+        "PREVIOUS_TIMEZONE": previous["timezone"] if previous else "",
+        "PREVIOUS_ENABLED_OPTIONAL": ",".join(previous["enabled_optional"]) if previous else "",
+        "PREVIOUS_GPU_VENDOR": (previous.get("gpu_vendor") or "") if previous else "",
+        "PREVIOUS_DOMAIN": (previous.get("domain") or "") if previous else "",
+        "PREVIOUS_CLOUDFLARE_DNS": "true" if (previous and previous.get("cloudflare_dns")) else "false",
+        "PREVIOUS_CLOUDFLARE_EMAIL": (previous.get("cloudflare_email") or "") if previous else "",
+        "PREVIOUS_HOMEPAGE_PRIVATE": (
+            "true" if (previous is None or previous.get("homepage_private", True)) else "false"
+        ),
+        "PREVIOUS_DASHY_PRIVATE": (
+            "true" if (previous is None or previous.get("dashy_private", True)) else "false"
+        ),
+        "PREVIOUS_GENERATED_AT": (previous.get("generated_at") or "") if previous else "",
+    }
+
+    # Plain print(), not console.print() - Rich word-wraps long lines
+    # to the terminal width by default, which would corrupt a value
+    # like RECOMMENDED_TIER_EXPLANATION mid-eval. This output is meant
+    # to be piped/eval-ed, not read as formatted terminal output.
+    for key, value in fields.items():
+        print(f"{key}={_shell_quote(str(value))}")
 
 
 @storage_app.command(name="report")
@@ -513,10 +611,7 @@ def main(
 
     if not non_interactive and not plain:
 
-        from installer.tui import run_tui
-
-        run_tui()
-        return
+        raise typer.Exit(code=_launch_menu())
 
     run_install(
         tier=tier,
