@@ -81,8 +81,17 @@ confirm_and_run() {
     echo "=== $title ==="
     echo
 
-    "$@"
+    # `local status` must be declared *before* running "$@", not after
+    # - `local` is itself a real command with its own exit status, so
+    # a bare `local status` (no assignment) run right after "$@" would
+    # overwrite $? with `local`'s own exit code before `status=$?` ever
+    # sees the real one. Found live, the hard way: CI's bats suite
+    # caught this exact regression from an earlier, well-intentioned
+    # but wrong shellcheck-SC2155 fix (splitting `local status=$?`
+    # this way without also reordering it) - status silently read 0
+    # for every failed command, "Done." printed even on real failures.
     local status
+    "$@"
     status=$?
 
     echo
