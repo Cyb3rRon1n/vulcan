@@ -51,6 +51,12 @@ from installer.post_install import (
 )
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.self_update import update_vulcan_self
+from installer.storage import (
+    describe_storage_plan,
+    identify_protected_devices,
+    list_block_devices,
+    plan_storage_layout,
+)
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
 
@@ -58,6 +64,15 @@ app = typer.Typer(
     name="vulcan",
     help="An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
 )
+
+# A real sub-app, not a flat vulcan-storage-report command - storage
+# provisioning is a deliberately separate, more advanced namespace
+# from every other lifecycle command above (report/plan today, a real
+# apply as a later, more heavily-gated follow-up - see ROADMAP.md).
+storage_app = typer.Typer(
+    help="Detect real storage on this machine and plan (never execute) how to provision it."
+)
+app.add_typer(storage_app, name="storage")
 
 console = Console()
 
@@ -71,6 +86,67 @@ def version():
     console.print(
         f"[bold red]Vulcan[/bold red] version {__version__}"
     )
+
+
+@storage_app.command(name="report")
+def storage_report():
+    """
+    List real block devices on this machine and which ones are protected
+    (currently backing / or /boot) - read-only, never plans or executes anything.
+    """
+
+    devices = list_block_devices()
+
+    if not devices:
+        console.print("[yellow]No block devices found (or `lsblk` isn't available).[/yellow]")
+        raise typer.Exit(code=1)
+
+    protected = identify_protected_devices()
+
+    for disk in devices:
+
+        model = f" ({disk['model']})" if disk.get("model") else ""
+        tag = " [red](protected - backs / or /boot)[/red]" if disk["path"] in protected else ""
+
+        console.print(f"{disk['path']}  {disk['size']}{model}{tag}")
+
+        for child in disk.get("children", []) or []:
+
+            fstype = child.get("fstype") or "no filesystem"
+            mountpoint = f" -> {child['mountpoint']}" if child.get("mountpoint") else ""
+            console.print(f"    {child['path']}  {child['size']}  {fstype}{mountpoint}")
+
+
+@storage_app.command(name="plan")
+def storage_plan(
+    devices: str = typer.Option(
+        ..., "--devices",
+        help="Comma-separated device paths to plan against, e.g. /dev/sdb,/dev/sdc"
+    ),
+    mount_point: str = typer.Option("/mnt/media", "--mount-point"),
+    filesystem: str = typer.Option("ext4", "--filesystem"),
+    raid_level: str | None = typer.Option(
+        None, "--raid-level", help="mdadm RAID level (1/5/6/10) - only used with 2+ devices"
+    )
+):
+    """
+    Show the exact commands that would provision the given device(s) into a
+    single mounted volume - mdadm RAID first if 2+ devices, then format and
+    mount. Never executes anything; nothing on this machine is touched.
+    """
+
+    device_paths = [d.strip() for d in devices.split(",") if d.strip()]
+
+    if not device_paths:
+        console.print("[red]--devices requires at least one device path.[/red]")
+        raise typer.Exit(code=1)
+
+    plan = plan_storage_layout(device_paths, mount_point, filesystem, raid_level)
+
+    console.print(describe_storage_plan(plan))
+
+    if plan["error"]:
+        raise typer.Exit(code=1)
 
 
 @app.command()

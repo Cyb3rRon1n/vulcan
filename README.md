@@ -24,6 +24,7 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 - [Quick Start](#quick-start)
 - [Tiers](#tiers)
 - [Optional Integrations](#optional-integrations)
+- [Storage Planning](#storage-planning)
 - [Maintaining an Existing Stack](#maintaining-an-existing-stack)
 - [Airgap / Offline Installs](#airgap--offline-installs)
 - [Design Principles](#design-principles)
@@ -84,7 +85,8 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
-- **Storage-aware** — reports whether your media path actually has any drive-level redundancy (mdadm/btrfs/ZFS), and warns if a single drive failure would mean data loss. Read-only: Vulcan never creates or modifies storage itself.
+- **Storage-aware** — reports whether your media path actually has any drive-level redundancy (mdadm/btrfs/ZFS), and warns if a single drive failure would mean data loss.
+- **Storage planning** — `vulcan storage report`/`plan` detect real block devices on the machine and compute the exact `mdadm`/`mkfs`/`mount` commands a RAID + mount setup would need — a real device backing `/`/`/boot` can never be selected as a target. Plan-only for now: nothing is executed, see [Storage Planning](#storage-planning) below.
 
 **Networking & security**
 
@@ -205,6 +207,25 @@ Add `crowdsec` alongside `traefik` in a custom selection to block malicious IPs 
 ### Pre-seeded dashboard (Homepage / Dashy)
 
 If Homepage or Dashy is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address), grouped by category (Media, Media Management, Downloads, Monitoring, Security, Infrastructure), and a brief one-line description under each tile so a service is identifiable at a glance, not just an icon and a name — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized the dashboard's config yourself, a later regenerate never touches it.
+
+---
+
+## Storage Planning
+
+For a fresh machine with drives that aren't set up yet - detects what's really there and computes the exact commands a RAID + mount setup would need, without running any of them:
+
+```bash
+vulcan storage report                                    # list real block devices, flag which are protected
+vulcan storage plan --devices /dev/sdb,/dev/sdc           # compute a plan (mdadm RAID + format + mount)
+```
+
+`vulcan storage report` is always safe - it only reads (`lsblk`, `findmnt`), never plans or touches anything. Any device currently backing `/`, `/boot`, or `/boot/efi` is flagged `protected`.
+
+`vulcan storage plan` takes one or more device paths and computes what provisioning them as a single mounted volume would look like: one device gets formatted and mounted directly; two or more get pooled into a real `mdadm` RAID array first (RAID1 for exactly 2 devices, RAID5 for 3+, or pass `--raid-level` to choose explicitly - mdadm's own real device-count minimums are enforced, not invented). **A protected device can never be selected as a target - there is no override flag.** A device that already has a filesystem or partition table is flagged in the plan's output (it would be erased), not silently overwritten.
+
+**This command only ever prints what would happen — nothing is executed.** No `--yes`/`--non-interactive` flag exists here because there's nothing to confirm yet; real execution (an actual `mdadm --create`/`mkfs`/`mount` run) is a deliberate, separate, more heavily-gated piece of work Vulcan doesn't do yet - see [ROADMAP.md](ROADMAP.md).
+
+Media categories (TV, Movies, Music, Books) don't need separate storage to stay organized - every generated stack already creates them as real subdirectories (`media/tv`, `media/movies`, etc.) under one pooled `MEDIA_PATH`, which is deliberate: `*arr` apps import via hardlink (instant, no duplicate disk usage) rather than copying, and hardlinks can't cross filesystems - splitting categories onto genuinely separate physical drives would silently turn every import into a slow copy instead. When planning storage, aim for one well-sized pooled volume, not one drive per category.
 
 ---
 
