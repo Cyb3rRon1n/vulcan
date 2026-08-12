@@ -3054,6 +3054,10 @@ async def test_main_menu_disables_stack_actions_without_existing_stack():
 
         assert app.screen.query_one("#restore-stack", Button).disabled is True
         assert app.screen.query_one("#guided-setup", Button).disabled is False
+        # Updates Vulcan itself, not a generated stack - never gated on
+        # stack_exists; update_vulcan_self() has its own real (not-a-
+        # git-checkout) refusal path instead.
+        assert app.screen.query_one("#update-self", Button).disabled is False
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -3285,6 +3289,77 @@ async def test_maintenance_screen_backup_shows_path_and_warnings():
 
         finally:
             await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_update_self_reports_new_commit():
+
+    with patch(
+        "installer.tui.maintenance_screen.update_vulcan_self",
+        return_value={
+            "success": True, "error": None, "updated": True,
+            "old_commit": "abc1234", "new_commit": "def5678"
+        }
+    ):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_update_self())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            result = app.screen.query_one("#maint-result", Static).content
+            assert "abc1234" in result
+            assert "def5678" in result
+            assert "Restart Vulcan" in result
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_update_self_already_up_to_date():
+
+    with patch(
+        "installer.tui.maintenance_screen.update_vulcan_self",
+        return_value={"success": True, "error": None, "updated": False, "commit": "abc1234"}
+    ):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_update_self())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            result = app.screen.query_one("#maint-result", Static).content
+            assert "Already up to date" in result
+            assert "abc1234" in result
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_update_self_pushes_maintenance_screen():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+
+        app.screen.query_one("#update-self", Button).scroll_visible(animate=False)
+        await pilot.pause()
+
+        await pilot.click("#update-self")
+        await pilot.pause()
+
+        assert isinstance(app.screen, MaintenanceScreen)
+        assert app.screen.query_one("#title", Static).content == "Update Vulcan"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
 
 
 async def test_maintenance_screen_uninstall_shows_purge_checkbox():

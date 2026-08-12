@@ -38,7 +38,7 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 
 <p align="center">
   <img src="docs/screenshots/00-main-menu.svg" width="800" alt="Main Menu screen"><br>
-  <sub><b>1. Main Menu</b> — Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall), gated on whether a stack or backup actually exists</sub>
+  <sub><b>1. Main Menu</b> — Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall a stack, update Vulcan itself), gated on whether a stack or backup actually exists</sub>
 </p>
 
 <p align="center">
@@ -229,6 +229,16 @@ Every command below is also reachable from the guided TUI's own **Main Menu** (U
 `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
 
 `vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`.
+
+---
+
+## Updating Vulcan Itself
+
+```bash
+vulcan update-self
+```
+
+Different from every command above — this updates *Vulcan's own checkout*, not a generated stack. A plain fast-forward `git pull` against `origin/main`, never a force or reset: if your local checkout has diverged (uncommitted changes, local commits), it refuses cleanly and tells you why rather than discarding anything. Reinstalls dependencies afterward the same way `./install` does on first run. Also reachable from the guided TUI's Main Menu ("Update Vulcan") — always enabled there, since it doesn't depend on a stack existing.
 
 ---
 

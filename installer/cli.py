@@ -50,6 +50,7 @@ from installer.post_install import (
     update_stack,
 )
 from installer.preflight import check_ports_available, format_port_conflicts
+from installer.self_update import update_vulcan_self
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
 
@@ -104,6 +105,43 @@ def update(
         raise typer.Exit(code=1)
 
     console.print("[green]Stack updated.[/green]")
+
+
+@app.command(name="update-self")
+def update_self(
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes")
+):
+    """
+    Update Vulcan itself (this checkout) to the latest version on origin/main -
+    a plain fast-forward git pull, never a force/reset. Does not touch any
+    generated stack.
+    """
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("This will fast-forward this Vulcan checkout to the latest origin/main.")
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = update_vulcan_self()
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    if not result["updated"]:
+        console.print(f"[green]Already up to date[/green] ({result['commit']}).")
+        return
+
+    console.print(
+        f"[green]Updated {result['old_commit']} -> {result['new_commit']}.[/green] "
+        "Restart Vulcan to use the new version."
+    )
 
 
 @app.command()

@@ -1723,6 +1723,74 @@ def test_update_non_interactive_yes_skips_confirm_and_reports_failure(tmp_path):
     assert "Failed to pull images" in result.output
 
 
+def test_update_self_non_interactive_without_yes_exits_1():
+
+    result = runner.invoke(app, ["update-self", "--non-interactive"])
+
+    assert result.exit_code == 1
+    assert "--yes is required" in result.output
+
+
+def test_update_self_confirm_declined_aborts():
+
+    with patch("installer.cli.update_vulcan_self") as mock_update_self:
+
+        result = runner.invoke(app, ["update-self"], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+    mock_update_self.assert_not_called()
+
+
+def test_update_self_already_up_to_date():
+
+    with patch(
+        "installer.cli.update_vulcan_self",
+        return_value={"success": True, "error": None, "updated": False, "commit": "abc1234"}
+    ):
+
+        result = runner.invoke(app, ["update-self"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Already up to date" in result.output
+    assert "abc1234" in result.output
+
+
+def test_update_self_confirm_accepted_reports_new_commit():
+
+    with patch(
+        "installer.cli.update_vulcan_self",
+        return_value={
+            "success": True, "error": None, "updated": True,
+            "old_commit": "abc1234", "new_commit": "def5678"
+        }
+    ):
+
+        result = runner.invoke(app, ["update-self"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "abc1234" in result.output
+    assert "def5678" in result.output
+    assert "Restart Vulcan" in result.output
+
+
+def test_update_self_non_interactive_yes_reports_failure():
+
+    with patch(
+        "installer.cli.update_vulcan_self",
+        return_value={
+            "success": False,
+            "error": "Failed to update - your local checkout may have diverged from origin/main.",
+            "updated": False
+        }
+    ):
+
+        result = runner.invoke(app, ["update-self", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "diverged" in result.output
+
+
 def test_pull_no_stack_found_exits_1(tmp_path):
 
     with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
