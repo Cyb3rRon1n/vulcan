@@ -44,8 +44,8 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 **Core**
 
 - **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
-- **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
-- **Persistent Main Menu** — the TUI opens on a real hub (Guided Setup plus every lifecycle command below), not straight into detection. Pick a maintenance task, finish it, and land back on the menu to pick another, rather than the app just exiting.
+- **Guided whiptail menu or scriptable CLI** — a full guided setup by default (real bash + `whiptail`, DockSTARTer-style), a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
+- **Persistent Main Menu** — the guided menu opens on a real hub (Guided Setup plus every lifecycle command below), not straight into detection. Pick a maintenance task, finish it, and land back on the menu to pick another, rather than the app just exiting.
 - **Custom mode** — free-pick any of Vulcan's 27 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
@@ -87,7 +87,7 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then opens on a persistent **Main Menu** — Guided Setup, plus Update/Pull/Backup/Restore/Uninstall for a stack you've already generated (each gated off until there's actually a stack or backup to act on). Picking **Guided Setup** walks you through:
+`./install` bootstraps a local virtual environment on first run, then opens on a persistent **Main Menu** — Guided Setup, plus Update/Pull/Backup/Restore/Uninstall for a stack you've already generated. Every item is always listed, DockSTARTer-style; picking a maintenance command before a stack exists gives you the same real "no stack found" message the CLI itself would. Picking **Guided Setup** walks you through:
 
 1. Detects your system
 2. Gets Docker ready if it isn't already
@@ -103,13 +103,15 @@ Non-interactive / scripted use is also supported:
 ./install --tier medium --media-path /mnt/media --non-interactive --yes --start
 ```
 
-`--non-interactive` requires both `--yes` and an explicit `--tier`/`--media-path` — nothing is inferred silently in scripted mode. `--start` is likewise opt-in on every path: generating a stack never launches it without being asked (interactively) or told to (`--start`). Prefer the original plain-prompt flow over the TUI (e.g. on a limited terminal)? Add `--plain`.
+`--non-interactive` requires both `--yes` and an explicit `--tier`/`--media-path` — nothing is inferred silently in scripted mode. `--start` is likewise opt-in on every path: generating a stack never launches it without being asked (interactively) or told to (`--start`). Prefer the original plain-prompt flow over the guided whiptail menu (e.g. on a limited terminal, or `whiptail` isn't installed)? Add `--plain`.
+
+`--offline` (skip the automatic Docker install attempt when there's no connection) is currently CLI-only — the guided menu doesn't yet ask about it, a real, open gap (see [ROADMAP.md](ROADMAP.md)). Use `--plain --offline` or `--non-interactive --offline` on a machine with no internet access.
 
 ---
 
 ## Tiers
 
-Both the guided TUI and the plain CLI show what each tier actually contains before you pick one — not just its name.
+Both the guided menu and the plain CLI show what each tier actually contains before you pick one — not just its name.
 
 | Tier | Target Hardware | Core Services |
 |---|---|---|
@@ -129,7 +131,7 @@ Pick exactly which services to include, from all 27 known services regardless of
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
 ```
 
-Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) — picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. In the default TUI, click "Customize Services" on the tier screen instead of "Continue" to get the same free-pick checklist.
+Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) — picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits. In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier. In the guided whiptail menu, answer "Yes" to "Customize the full service list?" right after picking a tier to get the same free-pick checklist — this is also the only path (menu or `--plain`) that can reach Traefik/Authelia/CrowdSec/Tailscale/Decluttarr/Maintainerr/Lidarr/Readarr, since domain-based routing only activates when an explicit service list includes `traefik`.
 
 ---
 
@@ -196,7 +198,7 @@ Media categories (TV, Movies, Music, Books) don't need separate storage to stay 
 
 ## Maintaining an Existing Stack
 
-Every command below is also reachable from the guided TUI's own **Main Menu** (Update Stack / Pull Images / Backup Stack / Restore Stack / Uninstall Stack) — not CLI-only. The TUI versions confirm before running, mirror the same wording as the CLI's own prompts, and gray themselves out until there's actually a stack (or, for Restore, a backup archive) to act on.
+Every command below is also reachable from the guided menu's own **Main Menu** (Update Stack / Pull Images / Backup Stack / Restore Stack / Uninstall Stack) — not CLI-only. The menu versions confirm before running (a real `whiptail --yesno`, mirroring the same wording as the CLI's own prompts) and show real live output while running, rather than a spinner.
 
 | Command | What it does |
 |---|---|
@@ -208,7 +210,7 @@ Every command below is also reachable from the guided TUI's own **Main Menu** (U
 
 `vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use).
 
-`vulcan pull` is `vulcan update`'s pull step on its own, with nothing recreated or restarted — run it (or click "Pull Images Now" at the end of the guided TUI flow) while you have a connection to prepare a stack you'll start later somewhere offline. Needs no confirmation, since it touches nothing running.
+`vulcan pull` is `vulcan update`'s pull step on its own, with nothing recreated or restarted — run it (or select "Pull Images" from the guided menu's Main Menu) while you have a connection to prepare a stack you'll start later somewhere offline. Needs no confirmation, since it touches nothing running.
 
 `vulcan backup` needs no confirmation either — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`), and it's safe to run while your stack is up: any live SQLite database (Radarr/Sonarr/Jellyfin/etc.) is snapshotted consistently rather than archived mid-write. The archive includes `stack/.env`, which may hold real credentials, so store it securely.
 
@@ -224,7 +226,7 @@ Every command below is also reachable from the guided TUI's own **Main Menu** (U
 vulcan update-self
 ```
 
-Different from every command above — this updates *Vulcan's own checkout*, not a generated stack. A plain fast-forward `git pull` against `origin/main`, never a force or reset: if your local checkout has diverged (uncommitted changes, local commits), it refuses cleanly and tells you why rather than discarding anything. Reinstalls dependencies afterward the same way `./install` does on first run. Also reachable from the guided TUI's Main Menu ("Update Vulcan") — always enabled there, since it doesn't depend on a stack existing.
+Different from every command above — this updates *Vulcan's own checkout*, not a generated stack. A plain fast-forward `git pull` against `origin/main`, never a force or reset: if your local checkout has diverged (uncommitted changes, local commits), it refuses cleanly and tells you why rather than discarding anything. Reinstalls dependencies afterward the same way `./install` does on first run. Also reachable from the guided menu's Main Menu ("Update Vulcan").
 
 ---
 
@@ -234,7 +236,7 @@ Vulcan assumes internet access by default, but two real gaps are covered:
 
 | Command | What it does |
 |---|---|
-| `./install --offline` | Skips the automatic Docker install attempt (or check "No internet access" in the guided TUI) |
+| `./install --plain --offline` | Skips the automatic Docker install attempt (CLI-only for now — the guided menu doesn't expose this yet, see [ROADMAP.md](ROADMAP.md)) |
 | `vulcan export [--output PATH]` | Bundles already-pulled images into a tarball (`exports/`) |
 | `vulcan import [FILE]` | Loads images from that tarball on another machine |
 

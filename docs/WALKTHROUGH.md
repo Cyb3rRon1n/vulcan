@@ -7,8 +7,8 @@ first, so working top to bottom avoids a lot of "why isn't this working"
 detours (e.g. Radarr can't do anything useful until Prowlarr has indexers,
 and qBittorrent needs a real login before anything else should touch it).
 
-Skip any section for a service you didn't enable - your TUI/CLI run also
-printed a copy of this same order, trimmed to just what you actually
+Skip any section for a service you didn't enable - your guided-menu/CLI run
+also printed a copy of this same order, trimmed to just what you actually
 enabled, right after the stack came up.
 
 ## 1. Vaultwarden - do this first
