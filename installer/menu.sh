@@ -332,7 +332,7 @@ _guided_setup_quick_toggles() {
     # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
     # the standard, safe idiom for turning that into a real bash array,
     # since the quoting is whiptail's own, not unsanitized user input.
-    # shellcheck can't trace an eval'd assignment, hence the disables:
+    # Static analysis can't trace an eval'd assignment, hence the disables below:
     # shellcheck disable=SC2034,SC2154
     eval "SELECTED=($CHOSEN)"
 
@@ -430,7 +430,7 @@ _guided_setup_customize_services() {
     # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
     # the standard, safe idiom for turning that into a real bash array,
     # since the quoting is whiptail's own, not unsanitized user input.
-    # shellcheck can't trace an eval'd assignment, hence the disables:
+    # Static analysis can't trace an eval'd assignment, hence the disables below:
     # shellcheck disable=SC2034,SC2154
     eval "SELECTED=($CHOSEN)"
 
