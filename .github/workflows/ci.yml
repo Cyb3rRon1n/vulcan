@@ -29,3 +29,15 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --cov=installer --cov-report=term-missing
+
+      - name: Install whiptail, shellcheck, bats
+        run: sudo apt-get update && sudo apt-get install -y whiptail shellcheck bats
+
+      - name: Shellcheck installer/menu.sh
+        # -S warning, not the default (which also flags style/info
+        # suggestions) - same "real bugs, not style debates" scoping
+        # this project already applies to ruff (see pyproject.toml).
+        run: shellcheck -S warning installer/menu.sh
+
+      - name: Bats tests for installer/menu.sh
+        run: bats tests/test_menu.bats

@@ -1,0 +1,509 @@
+#!/usr/bin/env bash
+#
+# Vulcan's whiptail-driven installer front end - a real bash+whiptail
+# Main Menu, DockSTARTer-style, replacing the old Python/Textual TUI
+# (see CLAUDE.md/ROADMAP.md for why). Every choice gathered here is
+# handed to the `vulcan` CLI, which already has a full
+# --non-interactive --yes flag surface for every command - no
+# detection, generation, or validation logic is duplicated here, only
+# dialog plumbing and argv-building.
+#
+# Entry point: `vulcan` with no flags (installer/cli.py's main()
+# execs this script instead of importing installer.tui). Can also be
+# run directly for development: ./installer/menu.sh
+
+set -uo pipefail
+
+VULCAN_BIN="${VULCAN_BIN:-vulcan}"
+BACKTITLE="Vulcan - Media Stack Forge"
+
+# --- Theme ---------------------------------------------------------
+#
+# whiptail/newt only supports a fixed set of named colors (no
+# arbitrary hex) - this is the closest real mapping to the
+# cyan-panel / near-black-background / red-selection palette this
+# project's TUI used before (see smithy.theme's WHIPTAIL_THEME, which
+# this superseded), not a pixel-perfect port - that isn't possible in
+# whiptail.
+export NEWT_COLORS='
+root=white,black
+border=cyan,black
+window=black,cyan
+shadow=black,black
+title=black,cyan
+button=black,cyan
+actbutton=white,red
+checkbox=black,cyan
+actcheckbox=white,red
+entry=black,cyan
+label=white,black
+listbox=black,cyan
+actlistbox=white,red
+sellistbox=black,cyan
+actsellistbox=white,red
+textbox=black,cyan
+acttextbox=black,cyan
+helpline=white,black
+roottext=white,black
+emptyscale=,black
+fullscale=,red
+disabledentry=gray,cyan
+compactbutton=black,cyan
+'
+
+# --- Small helpers ---------------------------------------------------
+
+# Reads real detected state into the current shell as plain vars
+# (CPU_CORES_LOGICAL, RECOMMENDED_TIER, PREVIOUS_TIER, ...) - see
+# `vulcan detect --help` / installer/cli.py's detect_shell() for the
+# full field list. Called fresh every time the Main Menu redraws, so
+# it always reflects real current state (e.g. right after a stack was
+# just generated or torn down).
+refresh_detect() {
+    eval "$("$VULCAN_BIN" detect)"
+}
+
+# whiptail --yesno confirm, then run the given command with real,
+# live terminal output (not captured into a msgbox - a `docker pull`
+# or full stack generation can be long and verbose, and truncating or
+# buffering it would hide real progress/errors). Returns the command's
+# own exit status; returns 130 if the user declined the confirm.
+confirm_and_run() {
+    local title="$1" confirm_text="$2"
+    shift 2
+
+    if ! whiptail --backtitle "$BACKTITLE" --title "$title" \
+        --yesno "$confirm_text" 14 76; then
+        return 130
+    fi
+
+    clear
+    echo "=== $title ==="
+    echo
+
+    "$@"
+    local status
+    status=$?
+
+    echo
+    if [ "$status" -eq 0 ]; then
+        echo "Done."
+    else
+        echo "Failed (exit $status) - see output above."
+    fi
+
+    read -rp "Press Enter to return to the menu..." _dummy
+    return "$status"
+}
+
+# --- Main Menu -------------------------------------------------------
+#
+# Every item is always shown, DockSTARTer-style, rather than hidden or
+# disabled when not yet applicable (e.g. no stack exists yet) - the
+# underlying `vulcan` command already has its own real "no stack
+# found" check and error message (installer/cli.py's update()/pull()/
+# uninstall()/etc.), so re-implementing that gate here would just
+# duplicate logic that already exists and is already tested. Selecting
+# an inapplicable item still gives the user a clear, real answer -
+# arguably more informative than a silently disabled button.
+main_menu() {
+    while true; do
+
+        CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
+            --menu "Choose an action:" 20 76 8 \
+            "guided-setup"    "Guided Setup - detect hardware, generate a stack" \
+            "update-stack"    "Update Stack - pull latest images, recreate containers" \
+            "pull-images"     "Pull Images - prep for an offline start later" \
+            "backup-stack"    "Backup Stack - archive config/compose/env to backups/" \
+            "restore-stack"   "Restore Stack - from the most recent backup" \
+            "uninstall-stack" "Uninstall Stack - stop and delete stack/ entirely" \
+            "update-self"     "Update Vulcan - fast-forward this checkout" \
+            "exit"            "Exit" \
+            3>&1 1>&2 2>&3)
+        status=$?
+
+        if [ "$status" -ne 0 ] || [ "$CHOICE" = "exit" ]; then
+            clear
+            exit 0
+        fi
+
+        case "$CHOICE" in
+            guided-setup)
+                guided_setup
+                ;;
+            update-stack)
+                confirm_and_run "Update Stack" \
+                    "This will pull the latest images and recreate containers for stack/docker-compose.yml." \
+                    "$VULCAN_BIN" update --non-interactive --yes
+                ;;
+            pull-images)
+                confirm_and_run "Pull Images" \
+                    "This will pull images for stack/docker-compose.yml without starting anything." \
+                    "$VULCAN_BIN" pull
+                ;;
+            backup-stack)
+                confirm_and_run "Backup Stack" \
+                    "This will archive stack/config/ and the compose/env files to backups/." \
+                    "$VULCAN_BIN" backup
+                ;;
+            restore-stack)
+                restore_stack_flow
+                ;;
+            uninstall-stack)
+                uninstall_flow
+                ;;
+            update-self)
+                confirm_and_run "Update Vulcan" \
+                    "This will fast-forward this Vulcan checkout to the latest origin/main." \
+                    "$VULCAN_BIN" update-self --non-interactive --yes
+                ;;
+        esac
+
+    done
+}
+
+# --- Restore --------------------------------------------------------
+#
+# The one maintenance item with a real second decision baked into the
+# CLI itself (`vulcan restore --start/--no-start`) - mirrors
+# RestoreScreen's own two-step shape, just via one extra yesno instead
+# of a second screen.
+restore_stack_flow() {
+
+    local start_flag="--no-start"
+
+    if whiptail --backtitle "$BACKTITLE" --title "Restore Stack" \
+        --yesno "Start the restored stack immediately after restoring?" 10 70; then
+        start_flag="--start"
+    fi
+
+    confirm_and_run "Restore Stack" \
+        "This will restore config/, docker-compose.yml, and .env in stack/ from the most recent backup, overwriting what's there now." \
+        "$VULCAN_BIN" restore --non-interactive --yes "$start_flag"
+}
+
+# --- Uninstall -------------------------------------------------------
+
+uninstall_flow() {
+
+    local purge_flags=()
+
+    if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
+        --yesno "Also delete backups/ and exports/? (default: No - leave your backup archives in place)" 10 70 --defaultno; then
+        purge_flags=(--purge-artifacts)
+    fi
+
+    confirm_and_run "Uninstall Stack" \
+        "This will stop the running stack (if any) and permanently delete stack/ (containers, network, and all app config/data). Your media library is always left untouched." \
+        "$VULCAN_BIN" uninstall --non-interactive --yes "${purge_flags[@]}"
+}
+
+# --- Guided Setup ------------------------------------------------------
+#
+# The bash-native version of WelcomeScreen -> TierConfigScreen ->
+# ReviewScreen (quick path) and, optionally, -> ServiceSelectionScreen
+# (customize path). Ends by handing a single fully-formed
+# `vulcan --non-interactive --yes ...` invocation to confirm_and_run -
+# no generation logic lives here, only gathering the same choices the
+# old TUI screens gathered.
+guided_setup() {
+
+    refresh_detect
+
+    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
+            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." 12 76
+    fi
+
+    local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
+
+    if [ -n "$PREVIOUS_TIER" ]; then
+        default_media_path="$PREVIOUS_MEDIA_PATH"
+        default_tier="$PREVIOUS_TIER"
+        default_puid_value="$PREVIOUS_PUID"
+        default_pgid_value="$PREVIOUS_PGID"
+        default_tz_value="$PREVIOUS_TIMEZONE"
+    else
+        default_media_path="$HOME/media"
+        default_tier="$RECOMMENDED_TIER"
+        default_puid_value="$DEFAULT_PUID"
+        default_pgid_value="$DEFAULT_PGID"
+        default_tz_value="$DEFAULT_TIMEZONE"
+    fi
+
+    MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
+        --inputbox "Where should your media library live?" 10 70 "$default_media_path" \
+        3>&1 1>&2 2>&3) || return
+    [ -z "$MEDIA_PATH" ] && return
+
+    local light_on medium_on heavy_on
+    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
+    case "$default_tier" in
+        light) light_on="ON" ;;
+        medium) medium_on="ON" ;;
+        heavy) heavy_on="ON" ;;
+    esac
+
+    TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
+        --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
+        18 76 3 \
+        "light"  "Light - low-resource baseline" "$light_on" \
+        "medium" "Medium - the common case" "$medium_on" \
+        "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
+        3>&1 1>&2 2>&3) || return
+
+    local customize=false
+
+    if whiptail --backtitle "$BACKTITLE" --title "Services" \
+        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+        14 76 --defaultno; then
+        customize=true
+    fi
+
+    SERVICES_FLAG=()
+    DOMAIN_FLAGS=()
+    TOGGLE_FLAGS=()
+
+    if [ "$customize" = true ]; then
+        _guided_setup_customize_services
+    else
+        _guided_setup_quick_toggles
+    fi
+
+    PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" 10 70 "$default_puid_value" \
+        3>&1 1>&2 2>&3) || return
+
+    PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PGID - group ID the containers run as" 10 70 "$default_pgid_value" \
+        3>&1 1>&2 2>&3) || return
+
+    TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
+        --inputbox "IANA timezone name (e.g. America/New_York)" 10 70 "$default_tz_value" \
+        3>&1 1>&2 2>&3) || return
+
+    START_FLAG="--no-start"
+    if whiptail --backtitle "$BACKTITLE" --title "Start Now" \
+        --yesno "Start the stack now, right after generating it?" 10 70; then
+        START_FLAG="--start"
+    fi
+
+    confirm_and_run "Guided Setup" \
+        "About to generate a $TIER stack at $MEDIA_PATH (PUID=$PUID PGID=$PGID TZ=$TIMEZONE). Continue?" \
+        "$VULCAN_BIN" --non-interactive --yes \
+            --tier "$TIER" --media-path "$MEDIA_PATH" \
+            --puid "$PUID" --pgid "$PGID" --timezone "$TIMEZONE" \
+            "${SERVICES_FLAG[@]}" "${TOGGLE_FLAGS[@]}" "${DOMAIN_FLAGS[@]}" \
+            "$START_FLAG"
+}
+
+# Quick path: tier's own default services, plus the same individual
+# opt-in/opt-out toggles TierConfigScreen's "Continue" button offered
+# (no --services override, no domain/Traefik/Authelia - those need
+# the customize path below, matching the old TUI's own split between
+# TierConfigScreen and ServiceSelectionScreen exactly).
+_guided_setup_quick_toggles() {
+
+    local prev_optional=",${PREVIOUS_ENABLED_OPTIONAL},"
+
+    _default_on() {
+        local svc="$1" fresh_default_on="$2"
+        if [ -n "$PREVIOUS_TIER" ]; then
+            [[ "$prev_optional" == *",$svc,"* ]] && echo ON || echo OFF
+        else
+            [ "$fresh_default_on" = "on" ] && echo ON || echo OFF
+        fi
+    }
+
+    CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Optional Services" \
+        --checklist "Choose optional services to enable:" 20 78 9 \
+        "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun on)" \
+        "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
+        "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
+        "homepage"    "Homepage dashboard"                     "$(_default_on homepage on)" \
+        "metube"      "MeTube - YouTube downloader"             "$(_default_on metube off)" \
+        "downtify"    "Downtify - Spotify downloader"           "$(_default_on downtify off)" \
+        "netdata"     "Netdata - system monitoring"             "$(_default_on netdata off)" \
+        "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
+        "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
+        3>&1 1>&2 2>&3) || CHOSEN=""
+
+    # whiptail's own --checklist output is a properly double-quoted,
+    # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
+    # the standard, safe idiom for turning that into a real bash array,
+    # since the quoting is whiptail's own, not unsanitized user input.
+    # shellcheck can't trace an eval'd assignment, hence the disables:
+    # shellcheck disable=SC2034,SC2154
+    eval "SELECTED=($CHOSEN)"
+
+    _has() {
+        local needle="$1" item
+        for item in "${SELECTED[@]:-}"; do
+            [ "$item" = "$needle" ] && return 0
+        done
+        return 1
+    }
+
+    _has gluetun     && TOGGLE_FLAGS+=(--vpn)        || TOGGLE_FLAGS+=(--no-vpn)
+    _has sabnzbd     && TOGGLE_FLAGS+=(--sabnzbd)    || TOGGLE_FLAGS+=(--no-sabnzbd)
+    _has recyclarr   && TOGGLE_FLAGS+=(--recyclarr)  || TOGGLE_FLAGS+=(--no-recyclarr)
+    _has homepage    && TOGGLE_FLAGS+=(--homepage)   || TOGGLE_FLAGS+=(--no-homepage)
+    _has metube      && TOGGLE_FLAGS+=(--metube)     || TOGGLE_FLAGS+=(--no-metube)
+    _has downtify    && TOGGLE_FLAGS+=(--downtify)   || TOGGLE_FLAGS+=(--no-downtify)
+    _has netdata     && TOGGLE_FLAGS+=(--netdata)    || TOGGLE_FLAGS+=(--no-netdata)
+    _has vaultwarden && TOGGLE_FLAGS+=(--vaultwarden) || TOGGLE_FLAGS+=(--no-vaultwarden)
+    _has dashy       && TOGGLE_FLAGS+=(--dashy)      || TOGGLE_FLAGS+=(--no-dashy)
+
+    if [ "$TIER" = "heavy" ] && [ -n "$GPU_VENDOR" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
+            --yesno "Enable GPU passthrough for Jellyfin hardware transcoding? Detected: $GPU_VENDOR" 10 70; then
+            TOGGLE_FLAGS+=(--gpu)
+        else
+            TOGGLE_FLAGS+=(--no-gpu)
+        fi
+    fi
+}
+
+# Customize path: the full ALL_SERVICES list via --services=, the
+# bash-native version of ServiceSelectionScreen - the only path that
+# can reach Traefik/Authelia/CrowdSec/Tailscale/Decluttarr/
+# Maintainerr/Lidarr/Readarr, matching the CLI's own real gating
+# (_gather_generation_config() only asks about --domain at all when
+# "traefik" is in an explicit --services list, confirmed by reading
+# installer/cli.py directly).
+#
+# Default checkbox state is a real simplification, noted honestly:
+# defaults to each service's previous on/off state on a rerun, or (on
+# a fresh install) ON only for the five services required at every
+# tier (jellyfin/radarr/sonarr/prowlarr/qbittorrent) - not a full
+# per-tier-aware default the way ServiceSelectionScreen's Python-side
+# `chosen_tier.services` computation was. Nothing about *validity* is
+# weakened by this - `vulcan`'s own --services parsing still rejects
+# any unknown key - only the starting checkbox convenience is
+# simpler here.
+_guided_setup_customize_services() {
+
+    local prev_custom=",${PREVIOUS_ENABLED_OPTIONAL},"
+    local core=",jellyfin,radarr,sonarr,prowlarr,qbittorrent,"
+
+    _svc_on() {
+        local svc="$1"
+        if [ -n "$PREVIOUS_TIER" ]; then
+            [[ "$prev_custom" == *",$svc,"* ]] && echo ON || echo OFF
+        else
+            [[ "$core" == *",$svc,"* ]] && echo ON || echo OFF
+        fi
+    }
+
+    CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services" \
+        --checklist "Choose exactly which services to include:" 22 78 14 \
+        "jellyfin"    "Jellyfin (media server)"                     "$(_svc_on jellyfin)" \
+        "radarr"      "Radarr (movies)"                             "$(_svc_on radarr)" \
+        "sonarr"      "Sonarr (TV)"                                 "$(_svc_on sonarr)" \
+        "prowlarr"    "Prowlarr (indexers)"                         "$(_svc_on prowlarr)" \
+        "qbittorrent" "qBittorrent"                                 "$(_svc_on qbittorrent)" \
+        "jellyseerr"  "Jellyseerr (requests)"                       "$(_svc_on jellyseerr)" \
+        "bazarr"      "Bazarr (subtitles)"                          "$(_svc_on bazarr)" \
+        "flaresolverr" "FlareSolverr"                                "$(_svc_on flaresolverr)" \
+        "lidarr"      "Lidarr (music)"                              "$(_svc_on lidarr)" \
+        "readarr"     "Readarr (books)"                             "$(_svc_on readarr)" \
+        "gluetun"     "Gluetun (VPN)"                                "$(_svc_on gluetun)" \
+        "sabnzbd"     "SABnzbd"                                      "$(_svc_on sabnzbd)" \
+        "recyclarr"   "Recyclarr"                                    "$(_svc_on recyclarr)" \
+        "decluttarr"  "Decluttarr (download queue cleanup)"          "$(_svc_on decluttarr)" \
+        "maintainerr" "Maintainerr (library cleanup)"                "$(_svc_on maintainerr)" \
+        "homepage"    "Homepage/Homarr dashboard"                    "$(_svc_on homepage)" \
+        "dashy"       "Dashy dashboard"                              "$(_svc_on dashy)" \
+        "metube"      "MeTube (YouTube downloader)"                  "$(_svc_on metube)" \
+        "downtify"    "Downtify (Spotify downloader)"                "$(_svc_on downtify)" \
+        "netdata"     "Netdata (system monitoring)"                  "$(_svc_on netdata)" \
+        "vaultwarden" "Vaultwarden (password manager)"                "$(_svc_on vaultwarden)" \
+        "traefik"     "Reverse proxy (Traefik)"                       "$(_svc_on traefik)" \
+        "authelia"    "Authentication (Authelia)"                     "$(_svc_on authelia)" \
+        "crowdsec"    "Intrusion protection (CrowdSec)"                "$(_svc_on crowdsec)" \
+        "tailscale"   "Tailscale (private remote access)"              "$(_svc_on tailscale)" \
+        "uptime-kuma" "Uptime Kuma"                                    "$(_svc_on uptime-kuma)" \
+        "watchtower"  "Watchtower"                                     "$(_svc_on watchtower)" \
+        3>&1 1>&2 2>&3) || CHOSEN=""
+
+    # whiptail's own --checklist output is a properly double-quoted,
+    # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
+    # the standard, safe idiom for turning that into a real bash array,
+    # since the quoting is whiptail's own, not unsanitized user input.
+    # shellcheck can't trace an eval'd assignment, hence the disables:
+    # shellcheck disable=SC2034,SC2154
+    eval "SELECTED=($CHOSEN)"
+
+    local joined=""
+    local item
+    for item in "${SELECTED[@]:-}"; do
+        [ -z "$item" ] && continue
+        joined="${joined:+$joined,}$item"
+    done
+
+    SERVICES_FLAG=(--services "$joined")
+
+    local has_traefik=false
+    for item in "${SELECTED[@]:-}"; do
+        [ "$item" = "traefik" ] && has_traefik=true
+    done
+
+    if [ "$has_traefik" = true ]; then
+
+        DOMAIN=$(whiptail --backtitle "$BACKTITLE" --title "Domain Routing" \
+            --inputbox "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip - Traefik uses a self-signed cert either way)" \
+            10 76 "$PREVIOUS_DOMAIN" \
+            3>&1 1>&2 2>&3) || DOMAIN=""
+
+        if [ -n "$DOMAIN" ]; then
+
+            DOMAIN_FLAGS+=(--domain "$DOMAIN")
+
+            if whiptail --backtitle "$BACKTITLE" --title "Cloudflare DNS" \
+                --yesno "Is this domain's DNS managed by Cloudflare? (real Let's Encrypt certs via DNS-01, instead of Traefik's self-signed default)" 10 76; then
+
+                CF_EMAIL=$(whiptail --backtitle "$BACKTITLE" --title "Cloudflare DNS" \
+                    --inputbox "Contact email for Let's Encrypt" 10 70 "$PREVIOUS_CLOUDFLARE_EMAIL" \
+                    3>&1 1>&2 2>&3) || CF_EMAIL=""
+
+                DOMAIN_FLAGS+=(--cloudflare-dns --cloudflare-email "$CF_EMAIL")
+            fi
+        fi
+    fi
+
+    if [[ ",$joined," == *",authelia,"* ]]; then
+
+        AUTH_USER=$(whiptail --backtitle "$BACKTITLE" --title "Authelia" \
+            --inputbox "Authelia admin username" 10 60 "admin" \
+            3>&1 1>&2 2>&3) || AUTH_USER=""
+
+        if [ -n "$AUTH_USER" ]; then
+
+            AUTH_PASS=$(whiptail --backtitle "$BACKTITLE" --title "Authelia" \
+                --passwordbox "Authelia admin password (won't be shown again)" 10 60 \
+                3>&1 1>&2 2>&3) || AUTH_PASS=""
+
+            if [ -n "$AUTH_PASS" ]; then
+                DOMAIN_FLAGS+=(--auth-username "$AUTH_USER" --auth-password "$AUTH_PASS")
+            fi
+        fi
+    fi
+}
+
+# --- Entry point -----------------------------------------------------
+#
+# Guarded so `tests/test_menu.bats` can `source` this file to unit
+# test the argv-building functions (_guided_setup_quick_toggles,
+# _guided_setup_customize_services, confirm_and_run) without
+# triggering the whiptail-presence check or the interactive Main Menu
+# loop - the same "keep logic out of the untestable shell" split this
+# project's Python CLI/TUI code already follows.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+
+    if ! command -v whiptail >/dev/null 2>&1; then
+        echo "whiptail is required but not installed. Install it (e.g. 'sudo apt install whiptail' or 'sudo dnf install newt') and try again." >&2
+        exit 1
+    fi
+
+    main_menu
+fi
