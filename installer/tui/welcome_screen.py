@@ -1,6 +1,6 @@
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, LoadingIndicator, Static
 
@@ -29,7 +29,15 @@ class WelcomeScreen(Screen):
             Static("", id="results"),
             Static("", id="previous-note"),
             Checkbox("No internet access on this machine", value=False, id="offline-check"),
-            Button("Continue", id="continue", disabled=True),
+            Horizontal(
+                # Gains a real Back button here for the first time - this
+                # screen used to be the true root, with "nothing before
+                # it"; now MainMenuScreen is, so it needs one, following
+                # the same self.app.pop_screen() pattern every other
+                # screen's Back button already uses.
+                Button("Back", id="back"),
+                Button("Continue", id="continue", disabled=True),
+            ),
         )
 
     def on_mount(self) -> None:
@@ -78,3 +86,5 @@ class WelcomeScreen(Screen):
         if event.button.id == "continue":
             self.app.offline = self.query_one("#offline-check", Checkbox).value
             self.app.push_screen(DockerReadyScreen())
+        elif event.button.id == "back":
+            self.app.pop_screen()

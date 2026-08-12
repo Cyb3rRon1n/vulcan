@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from textual.containers import Horizontal
 from textual.widgets import (
     Button,
     Checkbox,
@@ -18,7 +19,10 @@ from textual.widgets import (
 from installer.detect import SystemInfo
 from installer.tui.app import VulcanApp
 from installer.tui.docker_screen import DockerReadyScreen
+from installer.tui.main_menu_screen import MainMenuScreen
+from installer.tui.maintenance_screen import MaintenanceScreen
 from installer.tui.media_path_screen import MediaPathScreen
+from installer.tui.restore_screen import RestoreScreen
 from installer.tui.review_screen import ReviewScreen
 from installer.tui.service_selection_screen import ServiceSelectionScreen
 from installer.tui.tier_config_screen import TierConfigScreen
@@ -64,6 +68,9 @@ async def test_welcome_screen_shows_loading_then_detected_values():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             screen = app.screen
             assert isinstance(screen, WelcomeScreen)
 
@@ -92,6 +99,9 @@ async def test_welcome_screen_shows_previous_state_note():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             await app.workers.wait_for_complete()
             await pilot.pause()
 
@@ -112,6 +122,9 @@ async def test_welcome_screen_no_previous_state_leaves_note_empty():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             await app.workers.wait_for_complete()
             await pilot.pause()
 
@@ -130,6 +143,9 @@ async def test_continue_navigates_to_docker_ready_screen():
         app = VulcanApp()
 
         async with app.run_test() as pilot:
+
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
 
             await app.workers.wait_for_complete()
             await pilot.pause()
@@ -152,6 +168,9 @@ async def test_welcome_screen_offline_checkbox_defaults_to_online():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             await app.workers.wait_for_complete()
             await pilot.pause()
 
@@ -173,6 +192,9 @@ async def test_welcome_screen_offline_checkbox_sets_app_offline():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             await app.workers.wait_for_complete()
             await pilot.pause()
 
@@ -186,13 +208,17 @@ async def test_welcome_screen_offline_checkbox_sets_app_offline():
 async def _launch_at_docker_screen(info: SystemInfo, offline: bool = False):
     """
     Shared setup landing directly on DockerReadyScreen with a given
-    SystemInfo. VulcanApp.on_mount() always pushes WelcomeScreen first,
-    whose own background detection worker would otherwise race with -
-    and silently clobber - the system_info set here, so WelcomeScreen's
-    real detect_system()/load_previous_state() are mocked and awaited
-    to completion before DockerReadyScreen is pushed and the fake info
-    is substituted in. offline is set before pushing too, since
-    render_state() reads it synchronously from on_mount().
+    SystemInfo. VulcanApp.on_mount() pushes MainMenuScreen first; this
+    explicitly pushes WelcomeScreen on top of it (mirroring a real
+    "Guided Setup" click) before pushing DockerReadyScreen, so Back
+    navigation from DockerReadyScreen still lands on WelcomeScreen, not
+    MainMenuScreen, matching what a real user's navigation path would
+    produce. WelcomeScreen's own background detection worker would
+    otherwise race with - and silently clobber - the system_info set
+    here, so its real detect_system()/load_previous_state() are mocked
+    and awaited to completion before DockerReadyScreen is pushed and
+    the fake info is substituted in. offline is set before pushing too,
+    since render_state() reads it synchronously from on_mount().
     """
 
     with patch(
@@ -204,6 +230,9 @@ async def _launch_at_docker_screen(info: SystemInfo, offline: bool = False):
         app = VulcanApp()
         ctx = app.run_test()
         pilot = await ctx.__aenter__()
+
+        app.push_screen(WelcomeScreen())
+        await pilot.pause()
 
         await app.workers.wait_for_complete()
         await pilot.pause()
@@ -2678,6 +2707,9 @@ async def test_media_path_screen_back_returns_to_docker_ready_screen():
 
         async with app.run_test() as pilot:
 
+            app.push_screen(WelcomeScreen())
+            await pilot.pause()
+
             await app.workers.wait_for_complete()
             await pilot.pause()
 
@@ -2882,6 +2914,9 @@ async def test_real_detection_and_docker_ready_end_to_end(tmp_path):
 
     async with app.run_test() as pilot:
 
+        app.push_screen(WelcomeScreen())
+        await pilot.pause()
+
         await app.workers.wait_for_complete()
         await pilot.pause()
 
@@ -2959,3 +2994,554 @@ async def test_real_detection_and_docker_ready_end_to_end(tmp_path):
 
         finally:
             shutil.rmtree(Path("stack"), ignore_errors=True)
+
+
+# --- MainMenuScreen -----------------------------------------------------
+#
+# STACK_DIR/latest_backup/stack_containers_exist are all patched at
+# installer.tui.main_menu_screen's own namespace (the importing
+# module - see the "mock at the importing module's namespace"
+# convention above) rather than touching real relative stack/backups/
+# directories or calling real `docker ps` - this project's own
+# established exception is real-infrastructure checks, and these are
+# pure gating-logic tests, not that.
+
+async def _launch_main_menu(stack_exists: bool, has_backups: bool):
+    """
+    stack_exists is faked via stack_containers_exist() rather than a
+    real compose_path.exists() check - _refresh_gating()'s own
+    condition is "compose_path.exists() OR stack_containers_exist(...)",
+    so controlling the second half is equivalent without needing a
+    real file on disk, and keeps STACK_DIR pointed at a guaranteed-
+    nonexistent path throughout.
+    """
+
+    with patch(
+        "installer.tui.main_menu_screen.STACK_DIR", Path("nonexistent-stack")
+    ), patch(
+        "installer.tui.main_menu_screen.stack_containers_exist", return_value=stack_exists
+    ), patch(
+        "installer.tui.main_menu_screen.latest_backup",
+        return_value=(Path("backups/fake.tar.gz") if has_backups else None)
+    ):
+
+        app = VulcanApp()
+        ctx = app.run_test()
+        pilot = await ctx.__aenter__()
+        await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def test_main_menu_is_the_initial_screen():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+        assert isinstance(app.screen, MainMenuScreen)
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_disables_stack_actions_without_existing_stack():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+
+        for button_id in ("update-stack", "pull-images", "backup-stack", "uninstall-stack"):
+            assert app.screen.query_one(f"#{button_id}", Button).disabled is True
+
+        assert app.screen.query_one("#restore-stack", Button).disabled is True
+        assert app.screen.query_one("#guided-setup", Button).disabled is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_enables_stack_actions_with_existing_stack():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=True, has_backups=False)
+
+    try:
+
+        for button_id in ("update-stack", "pull-images", "backup-stack", "uninstall-stack"):
+            assert app.screen.query_one(f"#{button_id}", Button).disabled is False
+
+        assert app.screen.query_one("#restore-stack", Button).disabled is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_enables_restore_when_a_backup_exists_without_a_stack():
+    """
+    Restore's real precondition is a backup archive, not an existing
+    stack - you can restore onto a machine with nothing installed yet
+    (matches cli.py restore()'s own real behavior).
+    """
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=True)
+
+    try:
+
+        assert app.screen.query_one("#restore-stack", Button).disabled is False
+        assert app.screen.query_one("#update-stack", Button).disabled is True
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_guided_setup_pushes_welcome_screen():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+
+        await pilot.click("#guided-setup")
+        await pilot.pause()
+
+        assert isinstance(app.screen, WelcomeScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_exit_quits_the_app():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+
+        # Exit is the last of 7 stacked buttons - past the fixed 80x24
+        # test viewport, same as every other real scroll-into-view case
+        # this project's own test suite already establishes elsewhere.
+        app.screen.query_one("#exit", Button).scroll_visible(animate=False)
+        await pilot.pause()
+
+        await pilot.click("#exit")
+        await pilot.pause()
+
+        assert app.is_running is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_focus_shows_tooltip_in_help_line():
+
+    app, pilot, ctx = await _launch_main_menu(stack_exists=False, has_backups=False)
+
+    try:
+
+        guided_setup = app.screen.query_one("#guided-setup", Button)
+        guided_setup.focus()
+        await pilot.pause()
+
+        help_line = app.screen.query_one("#menu-help", Static).content
+        assert "hardware" in help_line
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_main_menu_gating_refreshes_on_return_from_a_sub_screen():
+    """
+    MainMenuScreen is revealed, not remounted, on pop_screen() (real
+    Textual behavior - ScreenResume, not Mount) - so button gating
+    computed once in compose()/on_mount() would go stale the moment a
+    backup is taken while on a sub-screen. Confirmed here by flipping
+    what latest_backup() returns mid-test and checking the button only
+    updates after actually returning to the Main Menu, not before.
+    """
+
+    with patch(
+        "installer.tui.main_menu_screen.STACK_DIR", Path("nonexistent-stack")
+    ), patch(
+        "installer.tui.main_menu_screen.stack_containers_exist", return_value=False
+    ), patch(
+        "installer.tui.main_menu_screen.latest_backup", return_value=None
+    ) as mock_latest_backup:
+
+        app = VulcanApp()
+
+        async with app.run_test() as pilot:
+
+            assert app.screen.query_one("#restore-stack", Button).disabled is True
+
+            # A backup now exists, but MainMenuScreen hasn't been told -
+            # pushing a screen on top and popping back is what should
+            # trigger the real refresh, via on_screen_resume().
+            mock_latest_backup.return_value = Path("backups/fake.tar.gz")
+
+            app.push_screen(MainMenuScreen())
+            await pilot.pause()
+            app.pop_screen()
+            await pilot.pause()
+
+            assert app.screen.query_one("#restore-stack", Button).disabled is False
+
+
+# --- MaintenanceScreen ---------------------------------------------------
+
+async def _launch_maintenance_screen(screen: MaintenanceScreen):
+
+    app = VulcanApp()
+    ctx = app.run_test()
+    pilot = await ctx.__aenter__()
+
+    app.push_screen(screen)
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def test_maintenance_screen_update_confirm_runs_and_shows_success():
+
+    with patch(
+        "installer.tui.maintenance_screen.update_stack",
+        return_value={"success": True, "error": None}
+    ):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_update())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert app.screen.query_one("#maint-result", Static).content == "Stack updated."
+            assert app.screen.query_one("#back-to-menu", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_shows_error_on_failure():
+
+    with patch(
+        "installer.tui.maintenance_screen.pull_stack",
+        return_value={"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+    ):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_pull())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            result = app.screen.query_one("#maint-result", Static).content
+            assert "Failed to pull images" in result
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_cancel_pops_back():
+
+    app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_backup())
+
+    try:
+
+        assert isinstance(app.screen, MaintenanceScreen)
+
+        await pilot.click("#cancel")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, MaintenanceScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_backup_shows_path_and_warnings():
+
+    with patch(
+        "installer.tui.maintenance_screen.backup_stack",
+        return_value={
+            "success": True, "error": None,
+            "backup_path": "backups/vulcan-backup-20260101T000000Z.tar.gz",
+            "warnings": ["This backup includes stack/.env, which may contain real credentials."]
+        }
+    ):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_backup())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            result = app.screen.query_one("#maint-result", Static).content
+            assert "vulcan-backup-20260101T000000Z.tar.gz" in result
+            assert "! This backup includes stack/.env" in result
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_uninstall_shows_purge_checkbox():
+
+    app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_uninstall())
+
+    try:
+        assert app.screen.query_one("#purge-artifacts", Checkbox) is not None
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_other_actions_have_no_purge_checkbox():
+
+    app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_update())
+
+    try:
+        assert len(app.screen.query("#purge-artifacts")) == 0
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_uninstall_passes_purge_artifacts_flag():
+
+    mock_uninstall = MagicMock(return_value={"success": True, "error": None})
+
+    with patch("installer.tui.maintenance_screen.uninstall_stack", mock_uninstall):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_uninstall())
+
+        try:
+
+            await pilot.click("#purge-artifacts")
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert mock_uninstall.call_args.kwargs["purge_artifacts"] is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_uninstall_defaults_purge_artifacts_false():
+
+    mock_uninstall = MagicMock(return_value={"success": True, "error": None})
+
+    with patch("installer.tui.maintenance_screen.uninstall_stack", mock_uninstall):
+
+        app, pilot, ctx = await _launch_maintenance_screen(MaintenanceScreen.for_uninstall())
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert mock_uninstall.call_args.kwargs["purge_artifacts"] is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_maintenance_screen_back_to_menu_returns_to_main_menu():
+
+    with patch(
+        "installer.tui.maintenance_screen.update_stack",
+        return_value={"success": True, "error": None}
+    ):
+
+        app = VulcanApp()
+
+        async with app.run_test() as pilot:
+
+            app.push_screen(MaintenanceScreen.for_update())
+            await pilot.pause()
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#back-to-menu")
+            await pilot.pause()
+
+            assert isinstance(app.screen, MainMenuScreen)
+
+
+# --- RestoreScreen ---------------------------------------------------------
+
+async def _launch_restore_screen(has_backups: bool = True):
+
+    with patch(
+        "installer.tui.restore_screen.latest_backup",
+        return_value=(Path("backups/fake.tar.gz") if has_backups else None)
+    ):
+
+        app = VulcanApp()
+        ctx = app.run_test()
+        pilot = await ctx.__aenter__()
+
+        app.push_screen(RestoreScreen())
+        await pilot.pause()
+
+    return app, pilot, ctx
+
+
+async def test_restore_screen_no_backups_hides_confirm():
+
+    app, pilot, ctx = await _launch_restore_screen(has_backups=False)
+
+    try:
+
+        assert app.screen.query_one("#confirm-actions", Horizontal).display is False
+        assert "No backup archives found" in app.screen.query_one("#restore-confirm-text", Static).content
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_restore_screen_confirm_runs_restore_and_shows_start_prompt():
+
+    with patch(
+        "installer.tui.restore_screen.restore_stack",
+        return_value={"success": True, "error": None}
+    ):
+
+        app, pilot, ctx = await _launch_restore_screen()
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert app.screen.query_one("#restore-result", Static).content == "Stack restored."
+            assert app.screen.query_one("#confirm-actions", Horizontal).display is False
+            assert app.screen.query_one("#start-actions", Horizontal).display is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_restore_screen_restore_failure_shows_error_and_enables_back():
+
+    with patch(
+        "installer.tui.restore_screen.restore_stack",
+        return_value={"success": False, "error": "Backup file not found"}
+    ):
+
+        app, pilot, ctx = await _launch_restore_screen()
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert "Backup file not found" in app.screen.query_one("#restore-result", Static).content
+            assert app.screen.query_one("#back-to-menu", Button).disabled is False
+            assert app.screen.query_one("#start-actions", Horizontal).display is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_restore_screen_not_now_skips_start():
+
+    with patch(
+        "installer.tui.restore_screen.restore_stack",
+        return_value={"success": True, "error": None}
+    ):
+
+        app, pilot, ctx = await _launch_restore_screen()
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#not-now")
+            await pilot.pause()
+
+            assert app.screen.query_one("#start-actions", Horizontal).display is False
+            assert app.screen.query_one("#back-to-menu", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_restore_screen_start_now_runs_compose_up():
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+
+    with patch(
+        "installer.tui.restore_screen.restore_stack",
+        return_value={"success": True, "error": None}
+    ), patch(
+        "installer.tui.restore_screen.run_docker_command", return_value=mock_proc
+    ):
+
+        app, pilot, ctx = await _launch_restore_screen()
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#start-now")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert app.screen.query_one("#restore-result", Static).content == "Stack restored and started."
+            assert app.screen.query_one("#back-to-menu", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_restore_screen_start_now_start_failure_shows_message():
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+
+    with patch(
+        "installer.tui.restore_screen.restore_stack",
+        return_value={"success": True, "error": None}
+    ), patch(
+        "installer.tui.restore_screen.run_docker_command", return_value=mock_proc
+    ):
+
+        app, pilot, ctx = await _launch_restore_screen()
+
+        try:
+
+            await pilot.click("#confirm")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            await pilot.click("#start-now")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            result = app.screen.query_one("#restore-result", Static).content
+            assert "failed to start" in result
+
+        finally:
+            await ctx.__aexit__(None, None, None)
