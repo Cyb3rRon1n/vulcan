@@ -34,7 +34,7 @@ class MainMenuScreen(Screen):
         # VerticalScroll, not a plain Vertical with align: center middle -
         # same fix ReviewScreen/TierConfigScreen/ServiceSelectionScreen
         # already established for the identical problem (content genuinely
-        # exceeding the 80x24 test viewport - 7 buttons plus their own
+        # exceeding the 80x24 test viewport - 8 buttons plus their own
         # margins pushes Exit out of the fixed viewport, confirmed by a
         # real Pilot.click() OutOfBounds failure, not assumed). align:
         # center middle is dropped for the same reason - it fights a
@@ -71,6 +71,10 @@ class MainMenuScreen(Screen):
             Button(
                 "Uninstall Stack", id="uninstall-stack",
                 tooltip="Stop the stack and delete stack/ entirely - back to a clean slate."
+            ),
+            Button(
+                "Update Vulcan", id="update-self",
+                tooltip="Fast-forward this Vulcan checkout to the latest origin/main."
             ),
             Button("Exit", id="exit", tooltip="Quit Vulcan."),
         )
@@ -126,5 +130,7 @@ class MainMenuScreen(Screen):
             self.app.push_screen(RestoreScreen())
         elif event.button.id == "uninstall-stack":
             self.app.push_screen(MaintenanceScreen.for_uninstall())
+        elif event.button.id == "update-self":
+            self.app.push_screen(MaintenanceScreen.for_update_self())
         elif event.button.id == "exit":
             self.app.exit()

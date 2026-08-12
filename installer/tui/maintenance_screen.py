@@ -8,6 +8,7 @@ from textual.widgets import Button, Checkbox, LoadingIndicator, Static
 
 from installer.generate import STACK_DIR
 from installer.post_install import backup_stack, pull_stack, update_stack, uninstall_stack
+from installer.self_update import update_vulcan_self
 
 
 class MaintenanceScreen(Screen):
@@ -110,6 +111,29 @@ class MaintenanceScreen(Screen):
             action=None,
             success_message=lambda result: "Stack removed. Run `./install` again for a fresh setup.",
             show_purge_checkbox=True,
+        )
+
+    @classmethod
+    def for_update_self(cls) -> "MaintenanceScreen":
+        """
+        Updates Vulcan itself (this checkout), not a generated stack -
+        found missing while researching DockSTARTer's own persistent
+        Main Menu, which has an "Update DockSTARTer" item with no
+        Vulcan equivalent before this. Always enabled (no stack_exists
+        gate) - update_vulcan_self() itself cleanly refuses if this
+        isn't a real git checkout.
+        """
+
+        return cls(
+            title="Update Vulcan",
+            confirm_text="This will fast-forward this Vulcan checkout to the latest origin/main.",
+            action=update_vulcan_self,
+            success_message=lambda result: (
+                f"Updated {result['old_commit']} -> {result['new_commit']}. "
+                "Restart Vulcan to use the new version."
+                if result["updated"]
+                else f"Already up to date ({result['commit']})."
+            ),
         )
 
     def compose(self) -> ComposeResult:
