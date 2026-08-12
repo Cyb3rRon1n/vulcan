@@ -12,7 +12,7 @@
 - **Who it's for** — Homelab and self-hosted folks who want a media server + download automation stack without hand-tuning resource limits or manually wiring a dozen services together.
 - **Why** — A one-size-fits-all media stack either starves a small machine or wastes a big one. Vulcan sizes for what your machine can actually handle — deterministically, no LLM in the decision path.
 - **Where** — Any Linux host with Docker (Ubuntu, Debian, Raspbian, Fedora, and Arch all get an automatic Docker install) and Python 3.11+.
-- **When to use it** — Pre-alpha but actively developed, with every feature verified against real infrastructure as it was built, not just exercised in isolation — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.
+- **When to use it** — Actively developed, with every feature verified against real infrastructure (real Docker, real containers, real hardware where available) as it was built, not just exercised in isolation. Real ARM64 hardware is the one open verification gap — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.
 
 Vulcan inspects your system's resources and automatically builds a tailored Jellyfin + *arr homelab — sized as Light, Medium, or Heavy to match what your machine can actually handle. Point it at a Linux box, answer a handful of questions, and get back a working `docker-compose.yml` and `.env` scoped to your real hardware, not a one-size-fits-all stack that either starves a small machine or wastes a big one.
 
@@ -24,12 +24,15 @@ Tier decisions are deterministic — fixed rules based on detected CPU/RAM/disk/
 
 - **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
-- **Custom mode** — free-pick any of Vulcan's 21 known services regardless of tier, pre-checked from what your hardware qualifies for.
+- **Custom mode** — free-pick any of Vulcan's 26 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Real domain-based routing** — optional Traefik integration with automatic HTTPS (self-signed by default, or real Let's Encrypt certificates if your domain's DNS is on Cloudflare), no manual reverse-proxy config.
 - **Real login, not just routing** — optional Authelia integration puts a real username/password in front of every routed service, no external identity provider or database required.
+- **Password manager** — optional Vaultwarden (a lightweight, Bitwarden-compatible server) for every credential this stack generates, with the official Bitwarden apps working against it unmodified.
 - **Private remote access** — optional Tailscale integration puts every host-published port in your stack on your own tailnet, reachable from anywhere with no port-forwarding and no public exposure at all.
-- **Automated queue cleanup** — optional Decluttarr integration removes stalled or failed downloads from Radarr/Sonarr's queue and triggers a fresh search, so one dead torrent doesn't quietly stall your automation.
-- **Pre-seeded dashboard** — an optional Homepage dashboard, available at every tier, boots with real, grouped, described tiles for your actual stack instead of a blank page.
+- **Automated queue and library cleanup** — optional Decluttarr removes stalled or failed downloads from Radarr/Sonarr's queue and triggers a fresh search, and optional Maintainerr cleans up unwatched media on your media server's own rules — complementary, not overlapping.
+- **Automated downloaders** — optional MeTube (video) and Downtify (Spotify-sourced audio, no Premium account needed) for on-demand grabs outside the `*arr` automation pipeline.
+- **Real-time system monitoring** — optional Netdata for live CPU/RAM/disk/network/temperature and per-container awareness, matched to its own official recommended configuration.
+- **Pre-seeded dashboard, two options** — optional Homepage or Dashy, available at every tier, both boot with real, grouped, described tiles for your actual stack instead of a blank page.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
@@ -79,13 +82,13 @@ Both the guided TUI and the plain CLI show what each tier actually contains befo
 
 | Tier | Target Hardware | Core Services | Extras |
 |---|---|---|---|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup) |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent | Optional Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage or Dashy (dashboard), MeTube/Downtify (downloaders), Netdata (monitoring), Vaultwarden (password manager) |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr | Same optional extras as Light |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Homepage, Uptime Kuma, Watchtower | GPU transcoding if detected; Lidarr, Readarr, Traefik, Authelia, and Tailscale via custom mode |
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
-**Custom mode** lets you pick exactly which services to include, from all 21 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+**Custom mode** lets you pick exactly which services to include, from all 26 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media

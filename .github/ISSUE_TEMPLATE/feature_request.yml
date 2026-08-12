@@ -1,0 +1,44 @@
+name: Feature request / idea
+description: Suggest something Vulcan doesn't do yet, or an improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Why it matters for a real homelab setup, not just the feature name.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach, if you have one
+      description: Rough is fine.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: What does this change?
+      description: Helps route it to the right part of the codebase — see CLAUDE.md's engine/CLI/TUI split.
+      options:
+        - What gets generated (a new service, a compose/template change)
+        - How something is detected (hardware, OS, GPU, etc.)
+        - How something is presented (CLI/TUI flow, prompts, output)
+        - Something else
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: A quick check
+      description: See CONTRIBUTING.md's Development Philosophy before proposing.
+      options:
+        - label: I understand tier/service decisions in Vulcan are deterministic (no LLM in the decision path), and this fits that model.
+        - label: I understand Vulcan never invents or overwrites a real secret/credential — a new integration needing one should follow the existing "flag it, never guess it" pattern.
+
+  - type: markdown
+    attributes:
+      value: |
+        Discussion before implementation is especially encouraged for anything touching the tier model, the resource-limit matrix, or the volume layout.
