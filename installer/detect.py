@@ -108,11 +108,14 @@ def detect_media_redundancy(media_path: str) -> dict:
     """
     Read-only: what's actually backing media_path, and whether it has
     any drive-level redundancy (mdadm/btrfs/ZFS) - never suggests or
-    performs any storage action. RAID/partitioning is a deliberate
-    pre-Vulcan step this project doesn't manage. Every field stays
-    None when it can't be determined (missing tool, unresolvable
-    path) - same "not present isn't an error" convention as every
-    other detector here.
+    performs any storage action itself. `installer/storage.py`'s
+    `plan_storage_layout()` (a later, deliberate reversal of this
+    project's earlier "never touches storage" stance) *can* compute
+    what provisioning a fresh drive would look like, but still never
+    executes anything - real execution stays out of scope, see
+    ROADMAP.md. Every field stays None when it can't be determined
+    (missing tool, unresolvable path) - same "not present isn't an
+    error" convention as every other detector here.
 
     The ZFS branch is implemented from documented `zpool status`
     output, not verified against a real pool - no zfs/zpool tooling

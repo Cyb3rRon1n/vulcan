@@ -1791,6 +1791,87 @@ def test_update_self_non_interactive_yes_reports_failure():
     assert "diverged" in result.output
 
 
+def test_storage_report_no_devices_exits_1():
+
+    with patch("installer.cli.list_block_devices", return_value=[]):
+        result = runner.invoke(app, ["storage", "report"])
+
+    assert result.exit_code == 1
+    assert "No block devices found" in result.output
+
+
+def test_storage_report_lists_devices_and_tags_protected():
+
+    devices = [
+        {
+            "path": "/dev/sda", "size": "500G", "model": "Samsung SSD",
+            "children": [
+                {"path": "/dev/sda1", "size": "500G", "fstype": "ext4", "mountpoint": "/"}
+            ]
+        },
+        {"path": "/dev/sdb", "size": "4T", "model": None, "children": []},
+    ]
+
+    with patch("installer.cli.list_block_devices", return_value=devices), patch(
+        "installer.cli.identify_protected_devices", return_value={"/dev/sda"}
+    ):
+
+        result = runner.invoke(app, ["storage", "report"])
+
+    assert result.exit_code == 0
+    assert "/dev/sda" in result.output
+    assert "protected" in result.output
+    assert "/dev/sdb" in result.output
+    assert "/dev/sda1" in result.output
+
+
+def test_storage_plan_requires_devices_option():
+
+    result = runner.invoke(app, ["storage", "plan"])
+
+    assert result.exit_code != 0
+
+
+def test_storage_plan_success_prints_plan_and_exits_0():
+
+    fake_plan = {
+        "target_devices": ["/dev/sdb", "/dev/sdc"],
+        "commands": [["mdadm", "--create", "/dev/md0"]],
+        "warnings": [],
+        "already_has_data": {},
+        "error": None,
+    }
+
+    with patch(
+        "installer.cli.plan_storage_layout", return_value=fake_plan
+    ) as mock_plan, patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ):
+
+        result = runner.invoke(app, ["storage", "plan", "--devices", "/dev/sdb,/dev/sdc"])
+
+    assert result.exit_code == 0
+    assert "a real rendered plan" in result.output
+    mock_plan.assert_called_once_with(["/dev/sdb", "/dev/sdc"], "/mnt/media", "ext4", None)
+
+
+def test_storage_plan_error_exits_1():
+
+    fake_plan = {
+        "target_devices": ["/dev/sda"],
+        "commands": [],
+        "warnings": [],
+        "already_has_data": {},
+        "error": "Refusing to plan against protected device(s) /dev/sda.",
+    }
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan):
+        result = runner.invoke(app, ["storage", "plan", "--devices", "/dev/sda"])
+
+    assert result.exit_code == 1
+    assert "protected" in result.output
+
+
 def test_pull_no_stack_found_exits_1(tmp_path):
 
     with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
