@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <style>
+    .anvil { fill: #2f7a8c; }
+    .spark { fill: #c23b3b; }
+    @media (prefers-color-scheme: dark) {
+      .anvil { fill: #5cd6d6; }
+      .spark { fill: #e0645a; }
+    }
+  </style>
+  <rect class="anvil" x="10" y="34" width="44" height="8" rx="2"/>
+  <rect class="anvil" x="26" y="20" width="12" height="16" rx="2"/>
+  <path class="spark" d="M32 6 c4 6 7 9 7 15 a7 7 0 0 1 -14 0 c0 -3.5 2.2 -5.8 3.4 -8.1 c0.5 2.2 1.6 2.8 1.6 3.9 c0 -4 0.7 -7.4 2 -10.8 z"/>
+</svg>

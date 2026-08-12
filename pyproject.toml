@@ -45,6 +45,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff"]
+docs = ["mkdocs-material"]
+
+[project.urls]
+Homepage = "https://github.com/Cyb3rRon1n/vulcan"
+Repository = "https://github.com/Cyb3rRon1n/vulcan"
 
 [project.scripts]
 vulcan = "installer.cli:app"

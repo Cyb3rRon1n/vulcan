@@ -34,7 +34,7 @@ STATE_FILENAME = ".vulcan-state.json"
 # A raw blob URL renders as real Markdown in-browser (GitHub does that
 # automatically) and needs no extra infrastructure, so every link below
 # points here until/unless a real docs site is built.
-WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/WALKTHROUGH.md"
+WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrough.md"
 
 # CrowdSec's own acquis.yaml, telling it what log to read and how to
 # label it - real content confirmed against the crowdsec-bouncer-

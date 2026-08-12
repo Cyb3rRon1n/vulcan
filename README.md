@@ -8,11 +8,21 @@
 
 <p align="center"><strong>An intelligent media stack forge.</strong></p>
 
+<p align="center">
+  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Full Documentation Site</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a>
+</p>
+
 Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light / Medium / Heavy), and generates a ready-to-run Jellyfin + `*arr` Docker Compose media stack — scoped to what your machine can actually handle, not a one-size-fits-all stack that either starves a small machine or wastes a big one. Tier decisions are deterministic, fixed rules over detected CPU/RAM/disk/GPU — no LLM in the decision path.
 
-- **Who it's for** — Homelab and self-hosted folks who want a media server + download automation stack without hand-tuning resource limits or manually wiring a dozen services together.
-- **Where it runs** — Any Linux host with Docker (Ubuntu, Debian, Raspbian, Fedora, and Arch all get an automatic Docker install) and Python 3.11+.
-- **Where it's at** — Actively developed, with every feature verified against real infrastructure (real Docker, real containers, real hardware where available) as it was built, not just exercised in isolation. Real ARM64 hardware is the one open verification gap — see [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.
+**What** — A hardware-aware installer that detects your machine, recommends a sized Jellyfin + `*arr` media stack, and generates it as a ready-to-run Docker Compose project, plus the full lifecycle after that (update, backup, restore, uninstall).
+
+**Who it's for** — Homelab and self-hosted folks who want a media server + download automation stack without hand-tuning resource limits or manually wiring a dozen services together.
+
+**When** — Actively developed; changes ship continuously, not on a fixed release cadence. See [ROADMAP.md](ROADMAP.md) for what's genuinely finished versus still open.
+
+**Where it runs** — Any Linux host with Docker (Ubuntu, Debian, Raspbian, Fedora, and Arch all get an automatic Docker install) and Python 3.11+.
+
+**Why** — Fixed-size, copy-pasted media-stack guides either starve a small machine or waste a big one, and hand-wiring a dozen services together (VPN routing, reverse proxy, auth, dashboards) is real, repetitive, error-prone work. Vulcan replaces both with deterministic, hardware-aware generation — verified against real infrastructure (real Docker, real containers, real hardware where available) as it was built, not just exercised in isolation. Real ARM64 hardware is the one open verification gap.
 
 ---
 
@@ -26,7 +36,6 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 - [Optional Integrations](#optional-integrations)
 - [Storage Planning](#storage-planning)
 - [Maintaining an Existing Stack](#maintaining-an-existing-stack)
-- [Airgap / Offline Installs](#airgap--offline-installs)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
 - [License](#license)
@@ -35,7 +44,19 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 
 ## Screenshots
 
-`vulcan` (no flags) opens on a real `whiptail`-driven Main Menu - Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall a stack, update Vulcan itself). Screenshots pending real-terminal capture now that the front end is bash+whiptail rather than a Python TUI (see [CLAUDE.md](CLAUDE.md) for why) - `whiptail` needs a real interactive terminal to render, which can't be captured the same way the old Textual screens were.
+`vulcan` (no flags) opens on a real `whiptail`-driven Main Menu - Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall a stack, update Vulcan itself).
+
+<p align="center">
+  <img src="docs/images/screenshots/main-menu.svg" alt="Vulcan Main Menu example" width="720"><br>
+  <sub>The persistent Main Menu — real <code>whiptail</code>, matching <code>installer/menu.sh</code>'s real theme</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/screenshots/tier-picker.svg" alt="Vulcan tier picker example" width="720"><br>
+  <sub>Guided Setup's tier picker — real detected specs and a real recommendation, before you choose</sub>
+</p>
+
+> **Representative mockups, not literal captures.** Hand-built to match `installer/menu.sh`'s real theme and dialog text - a real interactive `whiptail` terminal run hasn't happened yet (see [ROADMAP.md](ROADMAP.md)). More screens and the full explanation are on the [docs site](https://cyb3rron1n.github.io/vulcan/); these will be swapped for real captures once that run happens.
 
 ---
 
@@ -137,68 +158,28 @@ Resource limits still scale using whichever tier you choose (`--tier` here, or t
 
 ## Optional Integrations
 
-### Domain-based routing (Traefik)
+Beyond the core `*arr` stack, custom mode (an explicit `--services` list) unlocks: **Traefik** (real domain-based `<service>.<domain>` routing, self-signed by default), **Cloudflare DNS** (real trusted Let's Encrypt certs instead), **Tailscale** (private remote access, zero public exposure), **Authelia** (a real login wall in front of every routed service), **CrowdSec** (blocks malicious IPs at the edge before they reach a login page), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
 
-If `traefik` is part of your custom selection, pass `--domain` to get real `<service>.<domain>` routing (e.g. `jellyfin.media.example.com`) for every included web-facing service, instead of Traefik's default do-nothing skeleton:
-
-```bash
-./install --plain --tier heavy --services jellyfin,radarr,sonarr,traefik --domain media.example.com --non-interactive --yes --media-path /mnt/media
-```
-
-HTTPS uses Traefik's own auto-generated self-signed certificate by default — real routing and encryption with zero external setup, at the cost of a browser trust warning on first visit. Vulcan doesn't create DNS records for you; point each subdomain at this host yourself. qBittorrent isn't routed when Gluetun is also enabled, since it shares Gluetun's network namespace in a way Traefik can't discover. Traefik's own routing dashboard is also enabled at `https://traefik.<domain>` — protected by Authelia automatically if it's also active, otherwise Vulcan warns that it's reachable with no login in front of it.
-
-### Real Let's Encrypt certificates via Cloudflare DNS
-
-If your domain's DNS is managed by Cloudflare, add `--cloudflare-dns` (with `--cloudflare-email`) to get real, trusted certificates instead of Traefik's self-signed default — no browser warning, no port-forwarding required (DNS-01 challenges don't need one):
-
-```bash
-./install --plain --tier heavy --services jellyfin,radarr,sonarr,traefik --domain media.example.com --cloudflare-dns --cloudflare-email you@example.com --non-interactive --yes --media-path /mnt/media
-```
-
-You'll need a scoped Cloudflare API token (`Zone:DNS:Edit` on your domain's zone) filled into `stack/.env` (`CF_DNS_API_TOKEN`) before this actually issues anything — Vulcan reminds you after generating, the same "never invent a secret, always tell you what's needed" pattern every other credential in this project follows.
-
-### Private remote access (Tailscale)
-
-Add `tailscale` to your custom selection for access to every host-published port in your stack from anywhere, with zero public exposure and no port-forwarding — a real alternative to Traefik+domain routing when you'd rather not expose anything to the public internet at all, or a complement to it for services you'd rather keep private. Needs a real auth key (`TS_AUTHKEY` in `stack/.env`, generated at [login.tailscale.com/admin/settings/keys](https://login.tailscale.com/admin/settings/keys)) before it connects. Runs with host networking, so once it's authenticated, every service's existing host-published port (Jellyfin at `:8096`, Radarr at `:7878`, etc.) is reachable from any device on your tailnet at this host's Tailscale address — no per-service setup needed.
-
-### Auth (Authelia)
-
-Add `authelia` alongside `traefik` in a custom selection to put a real login in front of every routed service — no LDAP, Postgres, or Redis required, and no external identity provider. You'll be prompted for an admin username/password (once — a regenerate never re-asks if it's already configured), and Vulcan handles hashing it and generating the random secrets Authelia needs itself. Without Traefik+`--domain` also active, Authelia has nothing to protect and its own login portal isn't reachable — Vulcan warns outright rather than pretending it did something.
-
-### Intrusion protection (CrowdSec)
-
-Add `crowdsec` alongside `traefik` in a custom selection to block malicious IPs at the edge, before they ever reach a login page — Authelia protects the door once someone's inside, CrowdSec protects the door itself. It watches Traefik's own access log and uses [CrowdSec's](https://www.crowdsec.net/) community-sourced blocklist (via the official [Traefik bouncer plugin](https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin)) to block requests from IPs with a bad reputation, on every routed service — including Jellyfin and Vaultwarden, which deliberately skip Authelia (their native apps can't complete a browser-redirect login) but aren't exempt from this, since IP-reputation blocking doesn't share that conflict. No credential to fill in: Vulcan generates a real, random shared key between Traefik and CrowdSec itself. Without Traefik+`--domain` also active, there's no routed traffic for it to protect yet.
-
-**A real, known gotcha, not hidden**: Traefik downloads the bouncer plugin from its own plugin catalog on first start — a separate step from CrowdSec's own container, which starts and works independently of it. This has been observed to fail (even for Traefik's own official demo plugin, confirmed by testing it directly) when Traefik's plugin catalog service itself is having problems — check `docker compose logs traefik` for a "Plugins are disabled" error if requests aren't being filtered; this is an external service issue, not something CrowdSec or Vulcan controls.
-
-### Pre-seeded dashboard (Homepage / Dashy)
-
-If Homepage or Dashy is included, it boots with real tiles for every other web-facing service already in your stack — correct icon, correct link (routed through Traefik if you've set up domain-based routing, otherwise your host's real LAN address), grouped by category (Media, Media Management, Downloads, Monitoring, Security, Infrastructure), and a brief one-line description under each tile so a service is identifiable at a glance, not just an icon and a name — instead of a blank dashboard you'd have to configure by hand. Only written once: if you've since customized the dashboard's config yourself, a later regenerate never touches it.
+**Full detail, real gotchas, and copy-pasteable commands for each: [Optional Integrations on the docs site →](https://cyb3rron1n.github.io/vulcan/integrations/) (or [docs/integrations.md](docs/integrations.md) directly)**
 
 ---
 
 ## Storage Planning
 
-For a fresh machine with drives that aren't set up yet - detects what's really there and computes the exact commands a RAID + mount setup would need, without running any of them:
+For a fresh machine with drives that aren't set up yet, Vulcan can detect what's really there and compute the exact `mdadm`/`mkfs`/`mount` commands a RAID + mount setup would need — **plan-only, nothing is ever executed**:
 
 ```bash
 vulcan storage report                                    # list real block devices, flag which are protected
 vulcan storage plan --devices /dev/sdb,/dev/sdc           # compute a plan (mdadm RAID + format + mount)
 ```
 
-`vulcan storage report` is always safe - it only reads (`lsblk`, `findmnt`), never plans or touches anything. Any device currently backing `/`, `/boot`, or `/boot/efi` is flagged `protected`.
-
-`vulcan storage plan` takes one or more device paths and computes what provisioning them as a single mounted volume would look like: one device gets formatted and mounted directly; two or more get pooled into a real `mdadm` RAID array first (RAID1 for exactly 2 devices, RAID5 for 3+, or pass `--raid-level` to choose explicitly - mdadm's own real device-count minimums are enforced, not invented). **A protected device can never be selected as a target - there is no override flag.** A device that already has a filesystem or partition table is flagged in the plan's output (it would be erased), not silently overwritten.
-
-**This command only ever prints what would happen — nothing is executed.** No `--yes`/`--non-interactive` flag exists here because there's nothing to confirm yet; real execution (an actual `mdadm --create`/`mkfs`/`mount` run) is a deliberate, separate, more heavily-gated piece of work Vulcan doesn't do yet - see [ROADMAP.md](ROADMAP.md).
-
-Media categories (TV, Movies, Music, Books) don't need separate storage to stay organized - every generated stack already creates them as real subdirectories (`media/tv`, `media/movies`, etc.) under one pooled `MEDIA_PATH`, which is deliberate: `*arr` apps import via hardlink (instant, no duplicate disk usage) rather than copying, and hardlinks can't cross filesystems - splitting categories onto genuinely separate physical drives would silently turn every import into a slow copy instead. When planning storage, aim for one well-sized pooled volume, not one drive per category.
+A device backing `/`/`/boot`/`/boot/efi` can never be selected as a target — there's no override flag. **Full detail: [Storage Planning on the docs site →](https://cyb3rron1n.github.io/vulcan/storage/) (or [docs/storage.md](docs/storage.md))**
 
 ---
 
 ## Maintaining an Existing Stack
 
-Every command below is also reachable from the guided menu's own **Main Menu** (Update Stack / Pull Images / Backup Stack / Restore Stack / Uninstall Stack) — not CLI-only. The menu versions confirm before running (a real `whiptail --yesno`, mirroring the same wording as the CLI's own prompts) and show real live output while running, rather than a spinner.
+Every command below is also reachable from the guided menu's own **Main Menu** — not CLI-only.
 
 | Command | What it does |
 |---|---|
@@ -207,42 +188,11 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 | `vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` to `backups/` |
 | `vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup archive |
 | `vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
+| `vulcan update-self` | Updates *this Vulcan checkout* (not a stack) — a plain fast-forward `git pull` |
 
-`vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use).
+Airgap/offline covered too: `--offline` skips the automatic Docker install attempt, and `vulcan export`/`import` move a stack's images to a machine that's never been online at all.
 
-`vulcan pull` is `vulcan update`'s pull step on its own, with nothing recreated or restarted — run it (or select "Pull Images" from the guided menu's Main Menu) while you have a connection to prepare a stack you'll start later somewhere offline. Needs no confirmation, since it touches nothing running.
-
-`vulcan backup` needs no confirmation either — it only ever adds a new timestamped archive under `backups/` (gitignored, like `stack/`), and it's safe to run while your stack is up: any live SQLite database (Radarr/Sonarr/Jellyfin/etc.) is snapshotted consistently rather than archived mid-write. The archive includes `stack/.env`, which may hold real credentials, so store it securely.
-
-`vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
-
-`vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`.
-
----
-
-## Updating Vulcan Itself
-
-```bash
-vulcan update-self
-```
-
-Different from every command above — this updates *Vulcan's own checkout*, not a generated stack. A plain fast-forward `git pull` against `origin/main`, never a force or reset: if your local checkout has diverged (uncommitted changes, local commits), it refuses cleanly and tells you why rather than discarding anything. Reinstalls dependencies afterward the same way `./install` does on first run. Also reachable from the guided menu's Main Menu ("Update Vulcan").
-
----
-
-## Airgap / Offline Installs
-
-Vulcan assumes internet access by default, but two real gaps are covered:
-
-| Command | What it does |
-|---|---|
-| `./install --plain --offline` | Skips the automatic Docker install attempt (CLI-only for now — the guided menu doesn't expose this yet, see [ROADMAP.md](ROADMAP.md)) |
-| `vulcan export [--output PATH]` | Bundles already-pulled images into a tarball (`exports/`) |
-| `vulcan import [FILE]` | Loads images from that tarball on another machine |
-
-`--offline` tells Vulcan not to attempt an automatic Docker install if Docker isn't found — installing it needs a connection Vulcan won't assume you have, so you'll get a link to the manual install docs instead. Docker being installed some other way ahead of time is unaffected either way.
-
-`vulcan export` packages a stack's already-pulled images (run `vulcan pull` first) into a single tarball under `exports/`; `vulcan import` loads that tarball's images on a different machine — one that's never been online at all, unlike `vulcan pull`, which still needs a live connection on the same machine it's run on. Neither needs confirmation, and `import` defaults to the most recent file in `exports/` if you don't pass one, the same convenience `restore` already offers for backups.
+**Full detail on each command, what's destructive vs. safe, and airgap installs: [Maintaining a Stack on the docs site →](https://cyb3rron1n.github.io/vulcan/maintenance/) (or [docs/maintenance.md](docs/maintenance.md))**
 
 ---
 
