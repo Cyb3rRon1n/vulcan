@@ -25,6 +25,10 @@ __pycache__/
 dist/
 build/
 
+# mkdocs local build output (docs.yml deploys straight to the
+# gh-pages branch, never commits this to main)
+site/
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

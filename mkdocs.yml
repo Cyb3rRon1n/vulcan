@@ -1,0 +1,47 @@
+site_name: Vulcan
+site_description: An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab.
+repo_url: https://github.com/Cyb3rRon1n/vulcan
+repo_name: Cyb3rRon1n/vulcan
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: images/logo.svg
+  favicon: images/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - content.action.edit
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started/index.md
+  - Tiers & Custom Mode: tiers.md
+  - Optional Integrations: integrations.md
+  - Storage Planning: storage.md
+  - Maintaining a Stack: maintenance.md
+  - Post-Install Walkthrough: walkthrough.md
+  - Roadmap: roadmap.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.superfences
