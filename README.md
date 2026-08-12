@@ -58,7 +58,7 @@ The guided TUI (`./install`'s default), screen by screen:
 
 <p align="center">
   <img src="docs/screenshots/05-service-selection.svg" width="800" alt="Custom service selection screen"><br>
-  <sub><b>5. Custom service selection</b> — free-pick any of the 26 known services</sub>
+  <sub><b>5. Custom service selection</b> — free-pick any of the 27 known services</sub>
 </p>
 
 <p align="center">
@@ -74,7 +74,7 @@ The guided TUI (`./install`'s default), screen by screen:
 
 - **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
-- **Custom mode** — free-pick any of Vulcan's 26 known services regardless of tier, pre-checked from what your hardware qualifies for.
+- **Custom mode** — free-pick any of Vulcan's 27 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
 - **Airgap-friendly** — `--offline` skips the automatic Docker install attempt when there's no connection, and `vulcan export`/`import` move a stack's images to a machine that never touches the network.
@@ -150,7 +150,7 @@ All tiers share the same directory layout and volume naming, so re-running the i
 
 ### Custom mode
 
-Pick exactly which services to include, from all 26 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+Pick exactly which services to include, from all 27 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
