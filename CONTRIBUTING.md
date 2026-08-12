@@ -189,7 +189,7 @@ If your change affects generated output (a new service, a changed volume mount, 
 * Keep functions focused; the engine layer (`detect.py`, `docker_setup.py`, `tiers.py`, `services.py`, `generate.py`, `post_install.py`) stays pure/near-pure and never prompts or confirms — that belongs in the CLI/TUI layer only. See `CLAUDE.md` for the full split.
 * Match the file you're editing: heavy vertical spacing (blank line after `def ...():`, one argument per line in multi-arg calls) is the established convention here, not an accident.
 * Don't add a docstring that just restates the function name — a comment or module docstring earns its place by explaining a non-obvious *why*.
-* Remove unused code before submitting; don't leave commented-out blocks or dead branches "just in case."
+* Remove unused code before submitting; don't leave commented-out blocks or dead branches "just in case." `ruff check .` (CI-enforced, pyflakes-only — no style/formatter rules, to avoid fighting the vertical-spacing convention above) catches unused imports/locals and undefined names before you push.
 
 ---
 

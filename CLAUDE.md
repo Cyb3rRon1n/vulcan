@@ -15,11 +15,14 @@ pip install -e ".[dev]"
 vulcan --plain                 # plain Typer prompts instead of the TUI (installed console script)
 python -m installer --plain    # equivalent, for running from source without reinstalling
 
+# Lint (pyflakes-only - see "No formatter is configured" below for why)
+ruff check .
+
 # Tests (pytest, config lives in [tool.pytest.ini_options] in pyproject.toml — no separate ini file)
 python -m pytest tests/
 python -m pytest tests/test_generate.py -v
 python -m pytest tests/test_tui.py::test_review_screen_shows_correct_summary
-python -m pytest tests/ --cov=installer --cov-report=term-missing   # 418 tests, ~99% coverage as of this writing
+python -m pytest tests/ --cov=installer --cov-report=term-missing   # 632 tests as of this writing
 
 # scripts/update.sh, scripts/backup.sh, and scripts/restore.sh are thin
 # wrappers, not separate logic:
@@ -29,7 +32,7 @@ python -m pytest tests/ --cov=installer --cov-report=term-missing   # 418 tests,
 python scripts/generate_screenshots.py
 ```
 
-No linter/formatter is configured — nothing enforces style automatically; see "Code style" below for the convention to match by hand. `.github/workflows/ci.yml` (mirrors `atlas`'s own CI structure — checkout, a 3.11/3.12 matrix, `pip install -e ".[dev]"`, then the full test suite) **has now genuinely run on real GitHub Actions `ubuntu-latest` runners and passed** — both matrix jobs (3.11 and 3.12), confirmed via `gh run view` after the repo's first push, not just expected to work. GitHub-hosted `ubuntu-latest` runners do ship Docker + Compose v2 pre-installed with the runner user already in the `docker` group, exactly as assumed before this was confirmable — `test_real_detection_and_docker_ready_end_to_end` (the one deliberately-unmocked, real-Docker-dependent test) needed no extra CI setup and passed for real alongside everything else.
+No formatter is configured, and deliberately so — this codebase has a real, documented style (heavy vertical spacing, see "Code style" below) that a default Black/ruff-format pass would fight; new code matches the file it's editing by hand, not an automated tool. CI does run `ruff check .` (pyflakes-only, `[tool.ruff.lint] select = ["F"]` in `pyproject.toml`) — real correctness signal (unused imports/locals, undefined names) confirmed clean against the existing codebase before adding it (3 genuine dead-code hits found and fixed, zero false positives from broader style rules, which is why the rule set stays narrow rather than ruff's fuller default). `.github/workflows/ci.yml` (mirrors `atlas`'s own CI structure — checkout, a 3.11/3.12 matrix, `pip install -e ".[dev]"`, lint, then the full test suite) **has now genuinely run on real GitHub Actions `ubuntu-latest` runners and passed** — both matrix jobs (3.11 and 3.12), confirmed via `gh run view` after the repo's first push, not just expected to work. GitHub-hosted `ubuntu-latest` runners do ship Docker + Compose v2 pre-installed with the runner user already in the `docker` group, exactly as assumed before this was confirmable — `test_real_detection_and_docker_ready_end_to_end` (the one deliberately-unmocked, real-Docker-dependent test) needed no extra CI setup and passed for real alongside everything else.
 
 ## Architecture
 

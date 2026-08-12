@@ -269,7 +269,7 @@ Vulcan assumes internet access by default, but two real gaps are covered:
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth, and [ROADMAP.md](ROADMAP.md) tracks what's shipped versus still open.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the project's philosophy, development setup, and coding standards. [CLAUDE.md](CLAUDE.md) covers the real architecture in depth, and [ROADMAP.md](ROADMAP.md) tracks what's shipped versus still open. Found a security issue? See [SECURITY.md](SECURITY.md) for how to report it responsibly.
 
 ---
 

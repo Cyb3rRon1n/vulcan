@@ -334,10 +334,6 @@ async def test_docker_ready_screen_install_button_runs_full_install_sequence():
         docker_installed=False, docker_running=False, docker_compose_v2=False
     )
 
-    ready_state = {
-        "docker_installed": True, "docker_running": True, "docker_compose_v2": True
-    }
-
     with patch(
         "installer.tui.docker_screen.install_plan_for",
         return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
