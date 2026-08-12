@@ -36,7 +36,7 @@ If the answer is "yes," it likely aligns with the project's goals.
 * Add a new service to a tier (or to custom mode's picker)
 * Improve tier scoring or resource-limit accuracy
 * Fix bugs
-* Improve the TUI
+* Improve `installer/menu.sh` (the guided whiptail menu)
 * Refactor for readability
 
 See `CLAUDE.md`'s "Known, real, not-yet-addressed gaps" section for concrete, already-identified starting points — real end-to-end aarch64/ARM verification (a static readiness audit exists, but nothing has actually been run on real ARM hardware yet) is the one real, scoped gap left as of this writing, not a hypothetical idea.
@@ -55,7 +55,7 @@ Suggestions are always welcome. Examples:
 
 * Additional services or a different default set for a tier
 * Better resource-limit tuning based on real-world usage
-* CLI or TUI ergonomics improvements
+* CLI or guided-menu ergonomics improvements (e.g. wiring `--offline` into `installer/menu.sh` - see ROADMAP.md's Next section)
 * New post-install operations alongside `vulcan update`/`vulcan backup`/`vulcan restore`
 
 ---
@@ -186,7 +186,7 @@ If your change affects generated output (a new service, a changed volume mount, 
 # Coding Standards
 
 * Favor readability over cleverness.
-* Keep functions focused; the engine layer (`detect.py`, `docker_setup.py`, `tiers.py`, `services.py`, `generate.py`, `post_install.py`) stays pure/near-pure and never prompts or confirms — that belongs in the CLI/TUI layer only. See `CLAUDE.md` for the full split.
+* Keep functions focused; the engine layer (`detect.py`, `docker_setup.py`, `tiers.py`, `services.py`, `generate.py`, `post_install.py`) stays pure/near-pure and never prompts or confirms — that belongs in the CLI/`installer/menu.sh` layer only. See `CLAUDE.md` for the full split.
 * Match the file you're editing: heavy vertical spacing (blank line after `def ...():`, one argument per line in multi-arg calls) is the established convention here, not an accident.
 * Don't add a docstring that just restates the function name — a comment or module docstring earns its place by explaining a non-obvious *why*.
 * Remove unused code before submitting; don't leave commented-out blocks or dead branches "just in case." `ruff check .` (CI-enforced, pyflakes-only — no style/formatter rules, to avoid fighting the vertical-spacing convention above) catches unused imports/locals and undefined names before you push.
