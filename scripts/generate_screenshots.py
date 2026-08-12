@@ -28,6 +28,12 @@ async def main() -> None:
 
     async with app.run_test(size=(100, 36)) as pilot:
 
+        await pilot.pause()
+        app.save_screenshot("00-main-menu.svg", path=str(OUT_DIR))
+
+        await pilot.click("#guided-setup")
+        await pilot.pause()
+
         await app.workers.wait_for_complete()
         await pilot.pause()
         app.save_screenshot("01-welcome.svg", path=str(OUT_DIR))

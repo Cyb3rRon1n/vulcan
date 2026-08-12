@@ -34,36 +34,41 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 
 ## Screenshots
 
-The guided TUI (`./install`'s default), screen by screen:
+`./install` opens on a persistent Main Menu, screen by screen from there:
+
+<p align="center">
+  <img src="docs/screenshots/00-main-menu.svg" width="800" alt="Main Menu screen"><br>
+  <sub><b>1. Main Menu</b> — Guided Setup plus every lifecycle command (update/pull/backup/restore/uninstall), gated on whether a stack or backup actually exists</sub>
+</p>
 
 <p align="center">
   <img src="docs/screenshots/01-welcome.svg" width="800" alt="System detection screen"><br>
-  <sub><b>1. System detection</b> — real CPU, RAM, disk, and GPU read off the host</sub>
+  <sub><b>2. System detection</b> (Guided Setup) — real CPU, RAM, disk, and GPU read off the host</sub>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/02-docker-ready.svg" width="800" alt="Docker readiness screen"><br>
-  <sub><b>2. Docker readiness</b> — installs and starts Docker automatically if it isn't already there</sub>
+  <sub><b>3. Docker readiness</b> — installs and starts Docker automatically if it isn't already there</sub>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/03-media-path.svg" width="800" alt="Media library path screen"><br>
-  <sub><b>3. Media library path</b> — checks real free space against tier thresholds</sub>
+  <sub><b>4. Media library path</b> — checks real free space against tier thresholds</sub>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/04-tier-config.svg" width="800" alt="Tier and configuration screen"><br>
-  <sub><b>4. Tier & configuration</b> — shows what each tier actually contains before you pick one</sub>
+  <sub><b>5. Tier & configuration</b> — shows what each tier actually contains before you pick one</sub>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/05-service-selection.svg" width="800" alt="Custom service selection screen"><br>
-  <sub><b>5. Custom service selection</b> — free-pick any of the 27 known services</sub>
+  <sub><b>6. Custom service selection</b> — free-pick any of the 27 known services</sub>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/06-review.svg" width="800" alt="Review and generate screen"><br>
-  <sub><b>6. Review & generate</b> — writes the stack, with the option to start it immediately</sub>
+  <sub><b>7. Review & generate</b> — writes the stack, with the option to start it immediately</sub>
 </p>
 
 ---
@@ -74,6 +79,7 @@ The guided TUI (`./install`'s default), screen by screen:
 
 - **Hardware-aware sizing** — Light, Medium, or Heavy, picked from real detected CPU, RAM, disk, and GPU, with hardware transcoding wired in automatically when a GPU is found.
 - **Guided TUI or scriptable CLI** — a full guided setup by default, a plain-prompt fallback (`--plain`), and a fully non-interactive path (`--non-interactive`) for automation.
+- **Persistent Main Menu** — the TUI opens on a real hub (Guided Setup plus every lifecycle command below), not straight into detection. Pick a maintenance task, finish it, and land back on the menu to pick another, rather than the app just exiting.
 - **Custom mode** — free-pick any of Vulcan's 27 known services regardless of tier, pre-checked from what your hardware qualifies for.
 - **Re-run safe** — regenerating an existing stack never resets a real credential (like a Gluetun VPN key) back to a placeholder.
 - **Full lifecycle, not just first install** — `vulcan update`/`pull`/`backup`/`restore`/`uninstall` round out an already-generated stack.
@@ -114,7 +120,7 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then walks you through a guided flow:
+`./install` bootstraps a local virtual environment on first run, then opens on a persistent **Main Menu** — Guided Setup, plus Update/Pull/Backup/Restore/Uninstall for a stack you've already generated (each gated off until there's actually a stack or backup to act on). Picking **Guided Setup** walks you through:
 
 1. Detects your system
 2. Gets Docker ready if it isn't already
@@ -203,6 +209,8 @@ If Homepage or Dashy is included, it boots with real tiles for every other web-f
 ---
 
 ## Maintaining an Existing Stack
+
+Every command below is also reachable from the guided TUI's own **Main Menu** (Update Stack / Pull Images / Backup Stack / Restore Stack / Uninstall Stack) — not CLI-only. The TUI versions confirm before running, mirror the same wording as the CLI's own prompts, and gray themselves out until there's actually a stack (or, for Restore, a backup archive) to act on.
 
 | Command | What it does |
 |---|---|

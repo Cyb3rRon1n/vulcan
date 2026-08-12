@@ -2,7 +2,7 @@ from textual.app import App
 from textual.theme import Theme
 
 from installer.detect import SystemInfo
-from installer.tui.welcome_screen import WelcomeScreen
+from installer.tui.main_menu_screen import MainMenuScreen
 
 # A DockSTARTer/whiptail-style palette, not Textual's own default dark
 # theme - a direct owner request to have the guided TUI evoke the
@@ -86,4 +86,4 @@ class VulcanApp(App):
         self.port_overrides: dict[str, int] = {}
 
     def on_mount(self) -> None:
-        self.push_screen(WelcomeScreen())
+        self.push_screen(MainMenuScreen())
