@@ -3212,7 +3212,7 @@ async def test_maintenance_screen_update_confirm_runs_and_shows_success():
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            assert app.screen.query_one("#maint-result", Static).content == "Stack updated."
+            assert app.screen.query_one("#confirm-run-result", Static).content == "Stack updated."
             assert app.screen.query_one("#back-to-menu", Button).disabled is False
 
         finally:
@@ -3235,7 +3235,7 @@ async def test_maintenance_screen_shows_error_on_failure():
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            result = app.screen.query_one("#maint-result", Static).content
+            result = app.screen.query_one("#confirm-run-result", Static).content
             assert "Failed to pull images" in result
 
         finally:
@@ -3279,7 +3279,7 @@ async def test_maintenance_screen_backup_shows_path_and_warnings():
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            result = app.screen.query_one("#maint-result", Static).content
+            result = app.screen.query_one("#confirm-run-result", Static).content
             assert "vulcan-backup-20260101T000000Z.tar.gz" in result
             assert "! This backup includes stack/.env" in result
 
@@ -3306,7 +3306,7 @@ async def test_maintenance_screen_update_self_reports_new_commit():
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            result = app.screen.query_one("#maint-result", Static).content
+            result = app.screen.query_one("#confirm-run-result", Static).content
             assert "abc1234" in result
             assert "def5678" in result
             assert "Restart Vulcan" in result
@@ -3331,7 +3331,7 @@ async def test_maintenance_screen_update_self_already_up_to_date():
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            result = app.screen.query_one("#maint-result", Static).content
+            result = app.screen.query_one("#confirm-run-result", Static).content
             assert "Already up to date" in result
             assert "abc1234" in result
 
