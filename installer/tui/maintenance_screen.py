@@ -94,9 +94,6 @@ class MaintenanceScreen(Screen):
     @classmethod
     def for_uninstall(cls) -> "MaintenanceScreen":
 
-        compose_path = STACK_DIR / "docker-compose.yml"
-        env_path = STACK_DIR / ".env"
-
         return cls(
             title="Uninstall Stack",
             confirm_text=(

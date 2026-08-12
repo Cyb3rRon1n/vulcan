@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-asyncio"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff"]
 
 [project.scripts]
 vulcan = "installer.cli:app"
@@ -55,3 +55,13 @@ packages = ["installer"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff.lint]
+# Pyflakes only (F) - real correctness signal (unused imports, unused
+# locals, undefined names, etc.), not a style/formatter check. This
+# codebase has a deliberate, documented style (heavy vertical spacing,
+# see CLAUDE.md's "Code style" section) that a default ruff/Black rule
+# set would fight; F-only was confirmed clean against the existing
+# codebase before adding this (3 real, now-fixed dead-code hits, zero
+# false positives from style rules) rather than assumed safe.
+select = ["F"]
