@@ -94,6 +94,15 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("readarr", "Readarr", optional=True),
     ServiceDefinition("traefik", "Reverse proxy (Traefik)", optional=True),
     ServiceDefinition("authelia", "Authentication (Authelia)", optional=True),
+    # Custom-mode only, same placement as Authelia/Traefik - genuinely
+    # useful only once Traefik is routing real traffic (it blocks
+    # malicious IPs at the edge, before they ever reach a login page).
+    # Unlike Authelia, it's not gated behind the native-app-login
+    # conflict - IP-reputation/behavior blocking doesn't break Jellyfin/
+    # Vaultwarden's native apps the way a browser-redirect auth
+    # challenge does, so it applies to every routed service including
+    # those two (see the compose template's own comments on each).
+    ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True),
     ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
