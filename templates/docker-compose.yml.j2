@@ -27,7 +27,13 @@ services:
    completed by native Jellyfin apps (phone/TV clients), a real,
    community-documented conflict (jellyfin/jellyfin#16956). Jellyfin's
    own login (plus its own two-factor plugin, recommended in
-   write_stack()'s warning) is the real protection layer here instead. #}
+   write_stack()'s warning) is the real protection layer here instead.
+   crowdsec@docker is unaffected by that conflict - it's IP-reputation
+   /behavior blocking at the edge, not an auth challenge, so it doesn't
+   break native app logins the way Authelia's redirect does. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.jellyfin.middlewares=crowdsec@docker"
+{% endif %}
 {% endif %}
 {% if gpu_vendor in ('amd', 'intel') %}
     devices:
@@ -74,8 +80,8 @@ services:
       - "traefik.http.routers.radarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.radarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.radarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -108,8 +114,8 @@ services:
       - "traefik.http.routers.sonarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.sonarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.sonarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -141,8 +147,8 @@ services:
       - "traefik.http.routers.prowlarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.prowlarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.prowlarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -180,8 +186,8 @@ services:
       - "traefik.http.routers.qbittorrent.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.qbittorrent.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.qbittorrent.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
 {% endif %}
@@ -215,8 +221,8 @@ services:
       - "traefik.http.routers.sabnzbd.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.sabnzbd.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.sabnzbd.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -247,8 +253,8 @@ services:
       - "traefik.http.routers.metube.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.metube.loadbalancer.server.port=8081"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.metube.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.metube.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -277,8 +283,8 @@ services:
       - "traefik.http.routers.downtify.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.downtify.loadbalancer.server.port=8000"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.downtify.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.downtify.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -324,7 +330,12 @@ services:
    extension, mobile, desktop) log in directly against its API and
    can't complete a browser SSO redirect either. Its own master
    password (plus its own optional two-factor authentication) is the
-   real protection layer, same pattern as Jellyfin. #}
+   real protection layer, same pattern as Jellyfin. Same crowdsec@docker
+   exception as Jellyfin too - see its own comment above. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.vaultwarden.middlewares=crowdsec@docker"
+      - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
+{% endif %}
 {% endif %}
     deploy:
       resources:
@@ -390,8 +401,8 @@ services:
       - "traefik.http.routers.maintainerr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.maintainerr.loadbalancer.server.port=6246"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.maintainerr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.maintainerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -421,8 +432,8 @@ services:
       - "traefik.http.routers.jellyseerr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.jellyseerr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.jellyseerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -455,8 +466,8 @@ services:
       - "traefik.http.routers.bazarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.bazarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.bazarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -530,8 +541,8 @@ services:
       - "traefik.http.routers.lidarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.lidarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.lidarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -564,8 +575,8 @@ services:
       - "traefik.http.routers.readarr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.readarr.loadbalancer.server.port=8787"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.readarr.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.readarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -596,6 +607,12 @@ services:
       - "--certificatesresolvers.cloudflare.acme.email={{ cloudflare_email or 'changeme@example.com' }}"
       - "--certificatesresolvers.cloudflare.acme.storage=/etc/traefik/acme.json"
 {% endif %}
+{% if 'crowdsec' in enabled %}
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--experimental.plugins.bouncer.modulename=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+      - "--experimental.plugins.bouncer.version=v1.7.1"
+{% endif %}
 {% if cloudflare_dns %}
     environment:
       - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
@@ -610,13 +627,16 @@ services:
       - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.routers.dashboard.service=api@internal"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.dashboard.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.dashboard.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/traefik:/etc/traefik
+{% if 'crowdsec' in enabled %}
+      - ./config/traefik/logs:/var/log/traefik
+{% endif %}
     ports:
       - "80:80"
       - "443:443"
@@ -625,6 +645,39 @@ services:
         limits:
           cpus: "{{ limits.traefik.cpus }}"
           memory: "{{ limits.traefik.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'crowdsec' in enabled %}
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    environment:
+      - COLLECTIONS=crowdsecurity/traefik
+      - CUSTOM_HOSTNAME=vulcan
+      - BOUNCER_KEY_TRAEFIK=${CROWDSEC_BOUNCER_KEY}
+    volumes:
+      - ./config/crowdsec/etc:/etc/crowdsec
+      - ./config/crowdsec/data:/var/lib/crowdsec/data
+{% if 'traefik' in enabled %}
+      - ./config/traefik/logs:/var/log/traefik:ro
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+{# Bouncer middleware definition lives on crowdsec's own container
+   block, same precedent as Authelia's forwardAuth middleware labels
+   above - Traefik's Docker provider reads labels from any container
+   with traefik.enable=true, not just ones that also carry a router of
+   their own, and crowdsec has no router/web UI to route to. #}
+      - "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true"
+      - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecmode=stream"
+      - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}"
+{% endif %}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.crowdsec.cpus }}"
+          memory: "{{ limits.crowdsec.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'authelia' in enabled %}
@@ -737,8 +790,8 @@ services:
       - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.homepage.loadbalancer.server.port=3000"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.homepage.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.homepage.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -766,8 +819,8 @@ services:
       - "traefik.http.routers.dashy.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.dashy.loadbalancer.server.port=8080"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.dashy.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.dashy.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:
@@ -795,8 +848,8 @@ services:
       - "traefik.http.routers.uptime-kuma.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.uptime-kuma.loadbalancer.server.port=3001"
-{% if 'authelia' in enabled %}
-      - "traefik.http.routers.uptime-kuma.middlewares=authelia@docker"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.uptime-kuma.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     deploy:

@@ -7,7 +7,7 @@ def test_all_known_services_have_a_resource_profile():
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
         "decluttarr", "maintainerr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
-        "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy"
+        "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected

@@ -36,6 +36,15 @@ STATE_FILENAME = ".vulcan-state.json"
 # points here until/unless a real docs site is built.
 WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/WALKTHROUGH.md"
 
+# CrowdSec's own acquis.yaml, telling it what log to read and how to
+# label it - real content confirmed against the crowdsec-bouncer-
+# traefik-plugin's own example acquis.yaml, not guessed. Completely
+# static (no per-install variable ever belongs in it - the log path is
+# fixed by the compose template's own volume mount, not user-chosen),
+# so this is a plain constant rather than a .j2 template like Decluttarr's
+# config.yaml, which genuinely has per-install values to fill in.
+_CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
+
 # Every service with its own routable web UI - the single source of
 # truth both Homepage's tile groups (below) and the Traefik template's
 # per-service labels (templates/docker-compose.yml.j2) draw from,
@@ -329,7 +338,8 @@ def render_env(
     cloudflare_dns_api_token: str = "changeme",
     cloudflare_acme_email: str = "changeme@example.com",
     vaultwarden_admin_token: str | None = None,
-    vaultwarden_signups_allowed: str = "true"
+    vaultwarden_signups_allowed: str = "true",
+    crowdsec_bouncer_key: str | None = None
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -364,7 +374,15 @@ def render_env(
         # placeholder - same reasoning as Authelia's own JWT_SECRET/
         # SESSION_SECRET (installer/auth.py's generate_authelia_secrets).
         vaultwarden_admin_token=vaultwarden_admin_token or secrets.token_hex(32),
-        vaultwarden_signups_allowed=vaultwarden_signups_allowed
+        vaultwarden_signups_allowed=vaultwarden_signups_allowed,
+        crowdsec_enabled="crowdsec" in enabled,
+        # Same reasoning as vaultwarden_admin_token above: this is a
+        # shared secret between Traefik's bouncer plugin and CrowdSec's
+        # own BOUNCER_KEY_TRAEFIK env var (which self-registers the
+        # bouncer - no manual `cscli bouncers add` step needed), not a
+        # credential for an external service, so Vulcan can generate a
+        # real value instead of a "changeme" placeholder.
+        crowdsec_bouncer_key=crowdsec_bouncer_key or secrets.token_hex(32)
     )
 
 
@@ -830,6 +848,9 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         ),
         vaultwarden_signups_allowed=_preserved_vpn_value(
             output_dir, "VAULTWARDEN_SIGNUPS_ALLOWED", "true"
+        ),
+        crowdsec_bouncer_key=(
+            _preserved_vpn_value(output_dir, "CROWDSEC_BOUNCER_KEY", "") or None
         )
     )
 
@@ -983,6 +1004,44 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "so nothing is actually protected and the login portal isn't reachable - "
                 "Authelia will start but do nothing useful until Traefik and a domain are "
                 "also enabled."
+            )
+
+    if "crowdsec" in enabled_service_keys(config):
+
+        acquis_path = output_dir / "config" / "crowdsec" / "etc" / "acquis.yaml"
+
+        if not acquis_path.exists():
+
+            acquis_path.parent.mkdir(parents=True, exist_ok=True)
+            acquis_path.write_text(_CROWDSEC_ACQUIS)
+
+        routed = "traefik" in enabled_service_keys(config) and config.domain
+
+        if not routed:
+
+            warnings.append(
+                "CrowdSec is enabled but Traefik isn't routing with a domain configured, so "
+                "there's no traffic for it to protect yet - CrowdSec will start but block "
+                "nothing until Traefik and a domain are also enabled."
+            )
+
+        else:
+
+            warnings.append(
+                "CrowdSec is watching Traefik's access log and will block IPs Traefik's "
+                "bouncer plugin flags as malicious, on every routed service - including "
+                "Jellyfin and Vaultwarden, which skip Authelia but not this. A real, "
+                "randomly generated CROWDSEC_BOUNCER_KEY in stack/.env ties the two "
+                "together automatically; nothing to fill in yourself. First requests after "
+                "a fresh start may take a few seconds while CrowdSec finishes pulling its "
+                "community blocklist collections. Traefik downloads the bouncer plugin from "
+                "its own plugin catalog on first start (needs internet access, separate from "
+                "the CrowdSec engine itself) - if requests aren't being filtered, check "
+                "`docker compose logs traefik` for a \"Plugins are disabled\" error; this is "
+                "a Traefik-side catalog issue, not something CrowdSec or Vulcan controls, and "
+                "has been seen to fail even for Traefik's own official demo plugin. "
+                "CrowdSec's own container has no PUID/PGID support - files under "
+                "stack/config/crowdsec/ are root-owned, same as Authelia's and Dashy's."
             )
 
     if "sabnzbd" in enabled_service_keys(config):

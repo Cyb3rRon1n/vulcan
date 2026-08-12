@@ -566,6 +566,96 @@ def test_render_compose_traefik_dashboard_unprotected_without_authelia():
     assert "dashboard.middlewares" not in output
 
 
+def test_render_compose_crowdsec_creates_service_with_bouncer_middleware():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")
+    )
+
+    crowdsec_block = _service_block(output, "crowdsec", "watchtower")
+
+    assert "image: crowdsecurity/crowdsec:latest" in crowdsec_block
+    assert "COLLECTIONS=crowdsecurity/traefik" in crowdsec_block
+    assert "BOUNCER_KEY_TRAEFIK=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
+    assert "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true" in crowdsec_block
+    assert "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
+
+    traefik_block = _service_block(output, "traefik", "crowdsec")
+    assert "--accesslog=true" in traefik_block
+    assert "--accesslog.filepath=/var/log/traefik/access.log" in traefik_block
+    assert "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin" in traefik_block
+    assert "./config/traefik/logs:/var/log/traefik" in traefik_block
+
+
+def test_render_compose_omits_crowdsec_when_disabled():
+
+    output = render_compose(make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com"))
+
+    assert "container_name: crowdsec" not in output
+    assert "--accesslog" not in output
+    assert "crowdsec-bouncer-traefik-plugin" not in output
+
+
+def test_render_compose_crowdsec_without_traefik_omits_bouncer_wiring():
+
+    output = render_compose(make_config("heavy", enabled_optional={"crowdsec"}))
+
+    # "watchtower" (not "authelia") as the end boundary - authelia isn't
+    # enabled in this test, so it wouldn't appear in output at all and
+    # the split would run to end-of-file instead of just this block.
+    crowdsec_block = _service_block(output, "crowdsec", "watchtower")
+
+    assert "plugin.bouncer" not in crowdsec_block
+    assert "depends_on" not in crowdsec_block
+    # The engine itself still renders (it's harmless standalone, just
+    # has nothing to protect yet - see write_stack()'s own warning for
+    # this exact case) - only the Traefik-specific wiring is gated.
+    assert "image: crowdsecurity/crowdsec:latest" in crowdsec_block
+
+
+def test_render_compose_radarr_gets_combined_crowdsec_and_authelia_middlewares():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik", "crowdsec", "authelia"},
+            domain="media.example.com"
+        )
+    )
+
+    assert "traefik.http.routers.radarr.middlewares=crowdsec@docker,authelia@docker" in output
+
+
+def test_render_compose_radarr_gets_crowdsec_only_middleware_without_authelia():
+
+    output = render_compose(
+        make_config("heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")
+    )
+
+    assert "traefik.http.routers.radarr.middlewares=crowdsec@docker" in output
+    assert "authelia@docker" not in output
+
+
+def test_render_compose_jellyfin_gets_crowdsec_middleware_despite_authelia_exclusion():
+    """
+    Jellyfin/Vaultwarden are deliberately excluded from authelia@docker
+    (native-app browser-redirect conflict), but crowdsec@docker is
+    IP-reputation blocking, not an auth challenge - it doesn't share
+    that conflict, so both still get it.
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"traefik", "crowdsec", "authelia"},
+            domain="media.example.com"
+        )
+    )
+
+    jellyfin_block = _service_block(output, "jellyfin", "radarr")
+
+    assert "traefik.http.routers.jellyfin.middlewares=crowdsec@docker" in jellyfin_block
+    assert "authelia@docker" not in jellyfin_block
+
+
 def test_render_compose_tailscale_uses_host_networking():
 
     output = render_compose(make_config("heavy", enabled_optional={"tailscale"}))
@@ -902,6 +992,28 @@ def test_render_env_omits_cloudflare_when_disabled():
     output = render_env(make_config("heavy", {"traefik"}, domain="media.example.com"))
 
     assert "CF_DNS_API_TOKEN" not in output
+
+
+def test_render_env_generates_random_crowdsec_bouncer_key_when_enabled():
+
+    output = render_env(make_config("heavy", {"crowdsec"}))
+
+    match = re.search(r"CROWDSEC_BOUNCER_KEY=([0-9a-f]{64})", output)
+    assert match is not None
+
+
+def test_render_env_accepts_explicit_crowdsec_bouncer_key():
+
+    output = render_env(make_config("heavy", {"crowdsec"}), crowdsec_bouncer_key="a-real-preserved-key")
+
+    assert "CROWDSEC_BOUNCER_KEY=a-real-preserved-key" in output
+
+
+def test_render_env_omits_crowdsec_when_disabled():
+
+    output = render_env(make_config("light"))
+
+    assert "CROWDSEC_BOUNCER_KEY" not in output
 
 
 def _homepage_groups(output: str) -> dict[str, dict[str, dict]]:
@@ -2665,6 +2777,84 @@ def test_write_stack_no_dashboard_warning_when_authelia_also_enabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("no login in front of it" in warning for warning in result["warnings"])
+
+
+def test_write_stack_creates_crowdsec_acquis_file_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "crowdsec"},
+        domain="media.example.com"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    acquis_path = tmp_path / "stack" / "config" / "crowdsec" / "etc" / "acquis.yaml"
+    assert acquis_path.is_file()
+
+    parsed = yaml.safe_load(acquis_path.read_text())
+    assert parsed["filenames"] == ["/var/log/traefik/access.log"]
+    assert parsed["labels"]["type"] == "traefik"
+
+
+def test_write_stack_never_overwrites_existing_crowdsec_acquis(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "crowdsec"},
+        domain="media.example.com"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    acquis_path = tmp_path / "stack" / "config" / "crowdsec" / "etc" / "acquis.yaml"
+    acquis_path.write_text("# hand-edited\n")
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert acquis_path.read_text() == "# hand-edited\n"
+
+
+def test_write_stack_warns_when_crowdsec_enabled_without_traefik_domain(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"crowdsec"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("no traffic for it to protect yet" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_crowdsec_unrouted_warning_when_traefik_and_domain_active(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "crowdsec"},
+        domain="media.example.com"
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("no traffic for it to protect yet" in warning for warning in result["warnings"])
+    assert any("watching Traefik's access log" in warning for warning in result["warnings"])
 
 
 def test_write_stack_no_dashboard_warning_without_domain(tmp_path):
