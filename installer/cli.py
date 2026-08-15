@@ -1,5 +1,7 @@
 import getpass
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import typer
@@ -88,9 +90,19 @@ def _launch_menu() -> int:
     --non-interactive --yes invocation (see menu.sh itself), so this
     function owns no interactive logic of its own, only the handoff.
     Returns the script's real exit code so `main()` can propagate it.
+
+    VULCAN_BIN is exported explicitly rather than left to menu.sh's own
+    PATH lookup: ./install (the real entry point) execs this venv's
+    python directly without activating the venv, so .venv/bin - where
+    the `vulcan` console script lives - is not on PATH and a bare
+    `vulcan` call would fail. sys.executable is this venv's python, so
+    the console script always sits right next to it.
     """
 
-    result = subprocess.run(["bash", str(MENU_SH_PATH)])
+    menu_env = os.environ.copy()
+    menu_env["VULCAN_BIN"] = str(Path(sys.executable).parent / "vulcan")
+
+    result = subprocess.run(["bash", str(MENU_SH_PATH)], env=menu_env)
     return result.returncode
 
 
