@@ -335,7 +335,7 @@ guided_setup() {
         default_pgid_value="$PREVIOUS_PGID"
         default_tz_value="$PREVIOUS_TIMEZONE"
     else
-        default_media_path="$HOME/media"
+        default_media_path="${STORAGE_MOUNT:-$HOME/media}"
         default_tier="$RECOMMENDED_TIER"
         default_puid_value="$DEFAULT_PUID"
         default_pgid_value="$DEFAULT_PGID"

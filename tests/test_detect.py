@@ -8,11 +8,13 @@ from installer.detect import (
     detect_docker,
     detect_gpu,
     detect_host_ip,
+    detect_media_disk_path,
     detect_media_redundancy,
     detect_memory,
     detect_os,
     detect_os_is_atomic,
     detect_render_group_gid,
+    detect_storage_mount,
     detect_system,
 )
 
@@ -143,6 +145,55 @@ def test_detect_disk_handles_missing_path():
         "disk_free_gb": 0.0,
         "disk_path_checked": "/does/not/exist"
     }
+
+
+def test_detect_storage_mount_reports_mnt_media_when_mounted():
+
+    with patch("installer.detect.os.path.ismount", return_value=True):
+
+        assert detect_storage_mount() == "/mnt/media"
+
+
+def test_detect_storage_mount_is_none_when_not_mounted():
+
+    with patch("installer.detect.os.path.ismount", return_value=False):
+
+        assert detect_storage_mount() is None
+
+
+def test_detect_media_disk_path_prefers_existing_previous_media_path(tmp_path):
+
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+
+    result = detect_media_disk_path(str(media_dir))
+
+    assert result == str(media_dir)
+
+
+def test_detect_media_disk_path_ignores_missing_previous_media_path(tmp_path):
+
+    missing = str(tmp_path / "does-not-exist")
+
+    def fake_isdir(path):
+        return path == "/mnt/media"
+
+    with patch("installer.detect.os.path.ismount", return_value=True), patch(
+        "installer.detect.os.path.isdir", side_effect=fake_isdir
+    ):
+
+        result = detect_media_disk_path(missing)
+
+    assert result == "/mnt/media"
+
+
+def test_detect_media_disk_path_falls_back_to_root():
+
+    with patch("installer.detect.os.path.ismount", return_value=False):
+
+        result = detect_media_disk_path(None)
+
+    assert result == "/"
 
 
 def _mock_findmnt(source: str, fstype: str, mountpoint: str = "/mnt/media") -> MagicMock:

@@ -11,6 +11,7 @@ nvidia-smi, no docker) just means "not present," not an error.
 """
 
 import grp
+import os
 import platform
 import shutil
 import socket
@@ -99,6 +100,44 @@ def detect_disk(path: str) -> dict:
         "disk_free_gb": round(free_bytes / (1024 ** 3), 2),
         "disk_path_checked": path
     }
+
+
+_STORAGE_MOUNT_DEFAULT = "/mnt/media"
+
+
+def detect_storage_mount() -> str | None:
+    """
+    The provisioned media-storage mount point (default /mnt/media) when
+    it's actually mounted, else None. This is what `vulcan storage
+    apply` mounts by default; reporting it lets the menu's Guided Setup
+    default the Media Library path to the provisioned RAID array instead
+    of $HOME/media on a machine that just provisioned one.
+    """
+
+    if os.path.ismount(_STORAGE_MOUNT_DEFAULT):
+        return _STORAGE_MOUNT_DEFAULT
+
+    return None
+
+
+def detect_media_disk_path(previous_media_path: str | None = None) -> str:
+    """
+    The real filesystem to measure disk free against for the tier
+    recommendation, when one is already known: the previous install's
+    media path if it still exists, else a provisioned storage mount
+    (default /mnt/media) if one is actually mounted, else "/". This is
+    what fixes the menu's Guided Setup reporting the boot disk's free
+    space instead of the RAID array's - the CLI flow already re-detects
+    against the real chosen path, the menu's one-shot `vulcan detect`
+    call had no way to before.
+    """
+
+    for candidate in (previous_media_path, detect_storage_mount()):
+
+        if candidate and os.path.isdir(candidate):
+            return candidate
+
+    return "/"
 
 
 _REDUNDANT_MDADM_LEVELS = {"raid1", "raid4", "raid5", "raid6", "raid10"}

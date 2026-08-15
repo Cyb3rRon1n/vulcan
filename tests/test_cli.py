@@ -122,6 +122,67 @@ def test_detect_shell_output_no_previous_state_leaves_previous_fields_blank(tmp_
     assert fields["DEFAULT_TIMEZONE"] != ""
 
 
+def test_detect_shell_measures_disk_against_previous_media_path(tmp_path):
+
+    info = make_system_info()
+
+    with patch("installer.cli.detect_system", return_value=info) as mock_detect, patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value=PREVIOUS_STATE), patch(
+        "installer.cli.detect_media_disk_path", return_value="/mnt/previous-media"
+    ):
+
+        runner.invoke(app, ["detect"])
+
+    mock_detect.assert_called_once_with(disk_path="/mnt/previous-media")
+
+
+def test_detect_shell_emits_storage_mount_when_provisioned(tmp_path):
+
+    info = make_system_info()
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value=None), patch(
+        "installer.cli.detect_storage_mount", return_value="/mnt/media"
+    ):
+
+        result = runner.invoke(app, ["detect"])
+
+    assert result.exit_code == 0
+
+    fields = {}
+
+    for line in result.output.splitlines():
+        key, _, value = line.partition("=")
+        fields[key] = value[1:-1]
+
+    assert fields["STORAGE_MOUNT"] == "/mnt/media"
+
+
+def test_detect_shell_emits_empty_storage_mount_when_not_provisioned(tmp_path):
+
+    info = make_system_info()
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value=None), patch(
+        "installer.cli.detect_storage_mount", return_value=None
+    ):
+
+        result = runner.invoke(app, ["detect"])
+
+    assert result.exit_code == 0
+
+    fields = {}
+
+    for line in result.output.splitlines():
+        key, _, value = line.partition("=")
+        fields[key] = value[1:-1]
+
+    assert fields["STORAGE_MOUNT"] == ""
+
+
 def test_launch_menu_runs_menu_sh_as_a_real_subprocess():
     """
     Real subprocess, not mocked - swaps installer.cli.MENU_SH_PATH for
