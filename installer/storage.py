@@ -180,6 +180,132 @@ def _mdadm_level_for_device_count(count: int) -> str:
     return "1" if count == 2 else "5"
 
 
+def _raid_usable_drive_equivalents(level: str, count: int) -> int:
+    """
+    How many drives' worth of usable capacity a RAID level leaves you
+    with on `count` devices - the honest math behind the picker's
+    "X of N drives" descriptors, not a guessed percentage. RAID1
+    mirrors two drives into one usable; RAID5 spends one drive on
+    parity; RAID6 spends two; RAID10 mirrors pairs so half the drives
+    are usable.
+    """
+
+    if level == "1":
+        return 1
+
+    if level == "5":
+        return max(count - 1, 0)
+
+    if level == "6":
+        return max(count - 2, 0)
+
+    if level == "10":
+        return count // 2
+
+    return count
+
+
+def _raid_level_options(count: int) -> list[dict]:
+    """
+    The real RAID choices worth offering for `count` devices, each with
+    honest tradeoff descriptors - the picker's source of truth. Single
+    device: no RAID makes sense, so nothing to choose. Two devices:
+    only RAID1 is a real redundancy option (mirror). 3+ devices: RAID5
+    is the recommended default, RAID6 and RAID10 (even counts only)
+    are the honest alternatives - deliberately not guessing which is
+    "best", since that genuinely depends on the user's priorities
+    (capacity vs. fault tolerance vs. rebuild speed).
+    """
+
+    options = []
+
+    if count < 2:
+        return options
+
+    if count == 2:
+        return [{
+            "level": "1",
+            "usable": 1,
+            "total": count,
+            "recommended": True,
+        }]
+
+    candidates = [
+        ("5", count >= _MDADM_MIN_DEVICES["5"]),
+        ("6", count >= _MDADM_MIN_DEVICES["6"]),
+        ("10", count >= _MDADM_MIN_DEVICES["10"] and count % 2 == 0),
+    ]
+
+    for level, available in candidates:
+
+        if not available:
+            continue
+
+        options.append({
+            "level": level,
+            "usable": _raid_usable_drive_equivalents(level, count),
+            "total": count,
+            "recommended": level == "5",
+        })
+
+    return options
+
+
+def describe_raid_option(option: dict) -> str:
+    """
+    The one shared renderer for a RAID picker option - the honest
+    tradeoffs as plain text, used identically by the CLI prompt and the
+    whiptail menu so neither drifts from the other. "X of N drives"
+    capacity, not a percentage, so the math stays true regardless of
+    actual drive size.
+    """
+
+    level = option["level"]
+    usable = option["usable"]
+    total = option["total"]
+
+    tradeoffs = {
+        "1": "mirrors 2 drives into 1 - slow, but the only redundancy option at 2 drives",
+        "5": f"~{usable} of {total} drives usable, survives 1 drive failure - read-friendly, slower writes",
+        "6": f"~{usable} of {total} drives usable, survives 2 drive failures - slowest writes",
+        "10": f"~{usable} of {total} drives usable, survives 1 drive failure - fastest reads/writes and fastest rebuilds",
+    }
+
+    label = f"RAID{level}"
+
+    if option.get("recommended"):
+        label = f"{label} (recommended)"
+
+    return f"{label} - {tradeoffs.get(level, '')}"
+
+
+def device_tree_text(device_path: str) -> str | None:
+    """
+    Real lsblk output for the newly-provisioned device - the post-apply
+    "here's what you actually have now" view the CLI/offer/menu print
+    after a successful run. For a RAID array this shows the md device
+    with its member drives beneath it; for a single device, the one
+    formatted disk. Read-only; None when lsblk can't see the device.
+    """
+
+    try:
+
+        result = subprocess.run(
+            ["lsblk", "-o", "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT", device_path],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    return result.stdout
+
+
 def plan_storage_layout(
     device_paths: list[str],
     mount_point: str,
@@ -247,6 +373,25 @@ def plan_storage_layout(
     if len(device_paths) > 1:
 
         level = raid_level or _mdadm_level_for_device_count(len(device_paths))
+        valid_levels = [o["level"] for o in _raid_level_options(len(device_paths))]
+
+        if raid_level is not None and raid_level not in valid_levels:
+
+            return {
+                "target_devices": device_paths,
+                "commands": [],
+                "warnings": warnings,
+                "already_has_data": already_has_data,
+                "mount_point": mount_point,
+                "target_device": None,
+                "fstab_line": None,
+                "error": (
+                    f"RAID{raid_level} isn't a valid choice for {len(device_paths)} "
+                    f"devices. Valid: {', '.join(f'RAID{v}' for v in valid_levels)}"
+                    f"{' (RAID10 needs an even number of devices)' if raid_level == '10' else ''}."
+                ),
+            }
+
         min_devices = _MDADM_MIN_DEVICES.get(level, 2)
 
         if len(device_paths) < min_devices:

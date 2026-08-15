@@ -303,6 +303,139 @@ setup() {
     [[ "$output" != *"storage apply"* ]]
 }
 
+@test "storage setup asks for a RAID level at 4+ devices and passes --raid-level" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd" "/dev/sde"' >&3; return 0 ;;
+            *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
+            *"Choose a RAID level"*) echo -n "6" >&3; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"vulcan storage apply --devices /dev/sdb,/dev/sdc,/dev/sdd,/dev/sde --mount-point /mnt/media --non-interactive --yes --raid-level 6"* ]]
+}
+
+@test "storage setup does not show the RAID picker at 3 devices (RAID5 is the only choice)" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd"' >&3; return 0 ;;
+            *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
+            # The confirm text is a whiptail --yesno arg, not stdout -
+            # echo it so the test can assert the level summary it carries.
+            *"--yesno"*) echo "$*" >&1; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"RAID5"* ]]
+    [[ "$output" != *"--raid-level"* ]]
+}
+
+@test "storage setup at 2 devices passes no --raid-level (engine defaults to RAID1)" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
+            *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
+            *"--yesno"*) echo "$*" >&1; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"RAID1"* ]]
+    [[ "$output" != *"--raid-level"* ]]
+}
+
+@test "main_menu is numbered with install-path items first" {
+
+    whiptail() {
+        # `echo >&1` (not >&2): main_menu swaps fds via 3>&1 1>&2 2>&3,
+        # so inside the command substitution fd1 is the *original*
+        # stderr, and fd2 has been redirected to the captured output -
+        # a `>&2` here would leak into CHOICE and never match "exit".
+        echo "$*" >&1
+        echo -n "exit" >&3
+        return 0
+    }
+    export -f whiptail
+
+    run bash -c "source '$MENU_SH'; main_menu"
+
+    [ "$status" -eq 0 ]
+    # Full rendered menu text (dialog args joined with spaces), asserting
+    # order: Guided Setup and Storage Setup (the new-install path) come
+    # before the maintenance items, and every item is numbered.
+    [[ "$output" == *"1. Guided Setup"* ]]
+    [[ "$output" == *"2. Media Storage Setup"* ]]
+    [[ "$output" == *"3. Update Stack"* ]]
+    [[ "$output" == *"4. Pull Images"* ]]
+    [[ "$output" == *"5. Backup Stack"* ]]
+    [[ "$output" == *"6. Restore Stack"* ]]
+    [[ "$output" == *"7. Uninstall Stack"* ]]
+    [[ "$output" == *"8. Update Vulcan"* ]]
+    [[ "$output" == *"0. Exit"* ]]
+
+    first_guided=$(echo "$output" | grep -b -o "1. Guided Setup" | cut -d: -f1)
+    first_storage=$(echo "$output" | grep -b -o "2. Media Storage Setup" | cut -d: -f1)
+    first_update=$(echo "$output" | grep -b -o "3. Update Stack" | cut -d: -f1)
+    [ "$first_guided" -lt "$first_storage" ]
+    [ "$first_storage" -lt "$first_update" ]
+}
+
 @test "every field menu.sh references from 'vulcan detect' is actually emitted by it" {
 
     cli_py="$BATS_TEST_DIRNAME/../installer/cli.py"

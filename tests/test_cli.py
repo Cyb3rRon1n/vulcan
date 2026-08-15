@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from installer.cli import _launch_menu, _offer_storage_setup, app
+from installer.cli import _choose_raid_level, _launch_menu, _offer_storage_setup, app
 from installer.detect import SystemInfo
 
 
@@ -2232,6 +2232,104 @@ def test_storage_apply_failure_exits_1():
     assert "mdadm --create /dev/md0" in result.output
 
 
+def test_choose_raid_level_two_devices_returns_raid1_without_prompting():
+
+    with patch("installer.cli.typer.prompt") as mock_prompt:
+        level = _choose_raid_level(2)
+
+    assert level == "1"
+    mock_prompt.assert_not_called()
+
+
+def test_choose_raid_level_single_device_returns_none():
+
+    assert _choose_raid_level(1) is None
+
+
+def test_choose_raid_level_four_devices_returns_chosen_level():
+
+    with patch("installer.cli.typer.prompt", return_value="6"):
+        level = _choose_raid_level(4)
+
+    assert level == "6"
+
+
+def test_choose_raid_level_four_devices_accepts_raid_tag():
+
+    with patch("installer.cli.typer.prompt", return_value="RAID10"):
+        level = _choose_raid_level(4)
+
+    assert level == "10"
+
+
+def test_choose_raid_level_invalid_choice_reprompts_until_valid():
+
+    with patch("installer.cli.typer.prompt", side_effect=["9", "6"]):
+        level = _choose_raid_level(4)
+
+    assert level == "6"
+
+
+def test_storage_apply_interactive_offers_raid_choice_at_three_plus_devices():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan) as mock_plan, patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde"],
+            input="6\n/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde\n"
+        )
+
+    assert result.exit_code == 0
+    assert mock_plan.call_args.args[3] == "6"
+
+
+def test_storage_apply_interactive_invalid_raid_choice_reprompts():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan) as mock_plan, patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde"],
+            input="9\n6\n/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde\n"
+        )
+
+    assert result.exit_code == 0
+    assert mock_plan.call_args.args[3] == "6"
+
+
+def test_storage_apply_success_prints_device_tree():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": ["mdadm --create /dev/md0"], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result), patch(
+        "installer.cli.device_tree_text", return_value="md0\n  sdb 4T\n  sdc 4T\n"
+    ):
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdb,/dev/sdc\n"
+        )
+
+    assert result.exit_code == 0
+    assert "md0" in result.output
+    assert "sdb 4T" in result.output
+
+
 def test_offer_storage_setup_skips_when_no_blank_devices():
 
     with patch("installer.cli.list_blank_unprotected_devices", return_value=[]):
@@ -2270,11 +2368,38 @@ def test_offer_storage_setup_applies_and_returns_mount_point():
         "installer.cli.typer.confirm", return_value=True
     ), patch("installer.cli.typer.prompt", side_effect=["/mnt/media", "/dev/sdb,/dev/sdc"]), patch(
         "installer.cli.plan_storage_layout", return_value=fake_plan
-    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result), patch(
+        "installer.cli.device_tree_text", return_value="md0\n  sdb 4T\n  sdc 4T\n"
+    ):
 
         result = _offer_storage_setup(non_interactive=False)
 
     assert result == "/mnt/media"
+
+
+def test_offer_storage_setup_asks_raid_level_for_three_plus_devices():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdd", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sde", "size": "4T", "model": "WD Red"},
+    ]
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=True
+    ), patch(
+        "installer.cli.typer.prompt", side_effect=["/mnt/media", "6", "/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde"]
+    ), patch("installer.cli.plan_storage_layout", return_value=fake_plan) as mock_plan, patch(
+        "installer.cli.apply_storage_layout", return_value=apply_result
+    ), patch("installer.cli.device_tree_text", return_value="md0\n"):
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result == "/mnt/media"
+    assert mock_plan.call_args.kwargs["raid_level"] == "6"
 
 
 def test_offer_storage_setup_mismatched_confirmation_returns_none():

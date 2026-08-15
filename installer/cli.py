@@ -55,8 +55,11 @@ from installer.post_install import (
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.self_update import update_vulcan_self
 from installer.storage import (
+    _raid_level_options,
     apply_storage_layout,
+    describe_raid_option,
     describe_storage_plan,
+    device_tree_text,
     identify_protected_devices,
     list_blank_unprotected_devices,
     list_block_devices,
@@ -300,6 +303,16 @@ def storage_apply(
         console.print("[red]--devices requires at least one device path.[/red]")
         raise typer.Exit(code=1)
 
+    if not non_interactive and raid_level is None and len(device_paths) > 1:
+
+        picked = _choose_raid_level(len(device_paths))
+
+        if picked is None:
+            console.print("[red]No valid RAID level chosen - nothing was executed.[/red]")
+            raise typer.Exit(code=1)
+
+        raid_level = picked
+
     plan = plan_storage_layout(device_paths, mount_point, filesystem, raid_level)
 
     console.print(describe_storage_plan(plan))
@@ -372,6 +385,11 @@ def storage_apply(
         f"[green]Storage provisioned: {', '.join(device_paths)} is now mounted "
         f"at {mount_point}. Use it as your media path.[/green]"
     )
+
+    tree = device_tree_text(plan["target_device"])
+
+    if tree:
+        console.print(tree)
 
 
 @app.command()
@@ -983,6 +1001,42 @@ def _ensure_docker_ready(
     return info, group_just_added
 
 
+def _choose_raid_level(device_count: int) -> str | None:
+    """
+    The interactive RAID picker, shared by `vulcan storage apply` and the
+    install-flow offer so the exact same choices/descriptors appear in
+    both. Shows the real valid options for this device count (each with
+    honest tradeoffs via describe_raid_option()), prompts for one, and
+    returns the chosen level - re-prompting on invalid input, never
+    guessing. Returns None only when there's nothing to choose (1
+    device: no RAID); otherwise always returns a valid level.
+    """
+
+    options = _raid_level_options(device_count)
+
+    if len(options) <= 1:
+        return options[0]["level"] if options else None
+
+    console.print("Choose a RAID level for these devices:")
+
+    for index, option in enumerate(options, start=1):
+        console.print(f"  {index}. {describe_raid_option(option)}")
+
+    while True:
+
+        raw = typer.prompt(
+            "RAID level (number or RAID#)",
+            default="5",
+        ).strip()
+
+        for index, option in enumerate(options, start=1):
+
+            if raw in (str(index), option["level"], f"RAID{option['level']}"):
+                return option["level"]
+
+        console.print(f"[red]'{raw}' isn't a valid choice - try again.[/red]")
+
+
 def _offer_storage_setup(non_interactive: bool) -> str | None:
     """
     The plain-CLI install flow's optional storage step: when the machine
@@ -1025,7 +1079,13 @@ def _offer_storage_setup(non_interactive: bool) -> str | None:
 
     device_paths = [d["path"] for d in blank_devices]
 
-    plan = plan_storage_layout(device_paths, mount_point)
+    raid_level = _choose_raid_level(len(device_paths))
+
+    if raid_level is None and len(device_paths) > 1:
+        console.print("[red]No valid RAID level chosen - skipping storage setup.[/red]")
+        return None
+
+    plan = plan_storage_layout(device_paths, mount_point, raid_level=raid_level)
 
     console.print(describe_storage_plan(plan))
 
@@ -1064,6 +1124,11 @@ def _offer_storage_setup(non_interactive: bool) -> str | None:
     console.print(
         f"[green]Media storage provisioned and mounted at {mount_point}.[/green]"
     )
+
+    tree = device_tree_text(plan["target_device"])
+
+    if tree:
+        console.print(tree)
 
     return mount_point
 
