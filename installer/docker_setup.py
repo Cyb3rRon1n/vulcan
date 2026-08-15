@@ -24,6 +24,31 @@ import subprocess
 from installer.shell import get_stream_sink, run_ok, run_privileged, run_streaming
 
 
+def prune_docker_artifacts() -> dict:
+    """
+    Run `docker system prune -a` to clean up all stopped containers,
+    unused networks, dangling images, and build cache. This is a
+    preventive measure run at the start of guided install to ensure
+    no leftover Docker artifacts from previous sessions cause port
+    conflicts or other issues. Does NOT remove named volumes (use
+    `--volumes` with caution - that would delete user data).
+
+    Returns a result dict consistent with this project's pattern:
+    {"success": bool, "error": str | None}.
+    """
+
+    result = run_privileged(["docker", "system", "prune", "-a"])
+
+    if result.returncode == 0:
+        return {"success": True, "error": None}
+    else:
+        return {
+            "success": False,
+            "error": "docker system prune -a exited with return code %d: %s"
+            % (result.returncode, result.stderr.strip() if result.stderr else "nostderr")
+        }
+
+
 DOCKER_SCRIPT_DISTROS = {"ubuntu", "debian", "raspbian", "fedora"}
 
 _DOCKER_CE_REPO_URL = "https://download.docker.com/linux/fedora/docker-ce.repo"
