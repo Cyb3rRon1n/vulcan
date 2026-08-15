@@ -22,9 +22,8 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # whiptail/newt only supports a fixed set of named colors (no
 # arbitrary hex) - this is the closest real mapping to the
 # cyan-panel / near-black-background / red-selection palette this
-# project's TUI used before (see smithy.theme's WHIPTAIL_THEME, which
-# this superseded), not a pixel-perfect port - that isn't possible in
-# whiptail.
+# project's TUI used before, not a pixel-perfect port - that isn't
+# possible in whiptail.
 export NEWT_COLORS='
 root=white,black
 border=cyan,black
