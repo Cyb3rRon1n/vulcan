@@ -1,3 +1,5 @@
+import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -140,6 +142,45 @@ def test_launch_menu_runs_menu_sh_as_a_real_subprocess():
 
         with patch.object(cli_module, "MENU_SH_PATH", stub_path):
             assert _launch_menu() == 7
+
+
+def test_launch_menu_passes_absolute_vulcan_bin_to_menu_sh():
+    """
+    Regression for a real bug found live on a fresh machine: menu.sh's
+    VULCAN_BIN defaults to a bare `vulcan` PATH lookup, but ./install
+    execs the venv python directly without activating the venv, so
+    .venv/bin (the console script's home) is never on PATH and every
+    `vulcan detect`/`vulcan ...` call from menu.sh died with "command
+    not found". _launch_menu() must hand the script the real console
+    script path, derived from sys.executable, not a PATH lookup.
+    """
+
+    import installer.cli as cli_module
+
+    expected_bin = Path(sys.executable).parent / "vulcan"
+    assert expected_bin.is_file(), (
+        "test assumes the vulcan console script sits next to "
+        f"sys.executable; missing at {expected_bin}"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+        out_file = Path(tmp_dir) / "vulcan_bin.txt"
+
+        stub_path = Path(tmp_dir) / "stub_menu.sh"
+        stub_path.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n" "${{VULCAN_BIN:-}}" > "{out_file}"\n'
+        )
+        stub_path.chmod(0o755)
+
+        with patch.object(cli_module, "MENU_SH_PATH", stub_path):
+            _launch_menu()
+
+        recorded = out_file.read_text().strip()
+
+    assert recorded == str(expected_bin)
+    assert os.path.isabs(recorded)
 
 
 def test_non_interactive_requires_yes():
