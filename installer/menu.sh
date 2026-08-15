@@ -119,15 +119,15 @@ main_menu() {
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
             --menu "Choose an action:" 20 76 9 \
-            "guided-setup"    "Guided Setup - detect hardware, generate a stack" \
-            "storage-setup"   "Media Storage Setup - provision blank drives as media storage" \
-            "update-stack"    "Update Stack - pull latest images, recreate containers" \
-            "pull-images"     "Pull Images - prep for an offline start later" \
-            "backup-stack"    "Backup Stack - archive config/compose/env to backups/" \
-            "restore-stack"   "Restore Stack - from the most recent backup" \
-            "uninstall-stack" "Uninstall Stack - stop and delete stack/ entirely" \
-            "update-self"     "Update Vulcan - fast-forward this checkout" \
-            "exit"            "Exit" \
+            "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)" \
+            "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)" \
+            "update-stack"    "3. Update Stack - pull latest images, recreate containers" \
+            "pull-images"     "4. Pull Images - prep for an offline start later" \
+            "backup-stack"    "5. Backup Stack - archive config/compose/env to backups/" \
+            "restore-stack"   "6. Restore Stack - from the most recent backup" \
+            "uninstall-stack" "7. Uninstall Stack - stop and delete stack/ entirely" \
+            "update-self"     "8. Update Vulcan - fast-forward this checkout" \
+            "exit"            "0. Exit" \
             3>&1 1>&2 2>&3)
         status=$?
 
@@ -234,9 +234,43 @@ storage_setup_flow() {
     local devices_csv
     devices_csv=$(IFS=,; echo "${CHOSEN_DEVICE_LIST[*]}")
 
+    local device_count="${#CHOSEN_DEVICE_LIST[@]}"
+    local raid_level=""
+    local level_summary=""
+
+    # The CLI offers the RAID picker only in interactive mode; from the
+    # menu it runs --non-interactive, so the choice is gathered here and
+    # passed through as --raid-level. Mirrors the engine's own option
+    # table (_raid_level_options in installer/storage.py): a real
+    # radiolist only when there's more than one valid option (4+
+    # devices); 3 devices has RAID5 as the only choice, and 1-2 devices
+    # have no picker at all (single ext4 / RAID1 by the engine's own
+    # default), so those cases just state what will happen.
+    if [ "$device_count" -ge 4 ]; then
+
+        RAID_LEVEL=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+            --radiolist "Choose a RAID level for these $device_count devices:" 14 76 3 \
+            "5"  "RAID5 - ~$((device_count - 1)) of $device_count drives usable, survives 1 drive failure (recommended)" "ON" \
+            "6"  "RAID6 - ~$((device_count - 2)) of $device_count drives usable, survives 2 drive failures" "OFF" \
+            "10" "RAID10 - ~$((device_count / 2)) of $device_count drives usable, survives 1 drive per pair" "OFF" \
+            3>&1 1>&2 2>&3) || return 0
+
+        raid_level="$RAID_LEVEL"
+        level_summary="mdadm RAID$RAID_LEVEL"
+    elif [ "$device_count" -eq 3 ]; then
+        level_summary="mdadm RAID5"
+    elif [ "$device_count" -eq 2 ]; then
+        level_summary="mdadm RAID1"
+    else
+        level_summary="a single ext4 volume"
+    fi
+
+    local raid_flag=()
+    [ -n "$raid_level" ] && raid_flag=(--raid-level "$raid_level")
+
     confirm_and_run "Media Storage Setup" \
-        "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT (mdadm RAID1 with 2 devices, RAID5 with 3+, or a single ext4 volume for one). Continue?" \
-        "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes
+        "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT as $level_summary. Continue?" \
+        "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}"
 }
 
 # --- Restore --------------------------------------------------------

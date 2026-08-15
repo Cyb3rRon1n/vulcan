@@ -2,8 +2,12 @@ import json
 from unittest.mock import MagicMock, patch
 
 from installer.storage import (
+    _raid_level_options,
+    _raid_usable_drive_equivalents,
     apply_storage_layout,
+    describe_raid_option,
     describe_storage_plan,
+    device_tree_text,
     identify_protected_devices,
     list_blank_unprotected_devices,
     list_block_devices,
@@ -178,7 +182,7 @@ def test_plan_storage_layout_raid_level_below_minimum_devices_errors():
         plan = plan_storage_layout(["/dev/sdb", "/dev/sdc"], "/mnt/media", raid_level="5")
 
     assert plan["error"] is not None
-    assert "at least 3 devices" in plan["error"]
+    assert "isn't a valid choice for 2 devices" in plan["error"]
 
 
 def test_plan_storage_layout_flags_device_with_existing_data():
@@ -251,6 +255,171 @@ def test_describe_storage_plan_lists_devices_commands_and_headroom_note():
     assert "mdadm --create" in output
     assert "nothing has been executed" in output
     assert "10-15%" in output
+
+
+def test_raid_level_options_single_device_has_no_raid_choice():
+
+    assert _raid_level_options(1) == []
+
+
+def test_raid_level_options_two_devices_only_offers_raid1():
+
+    options = _raid_level_options(2)
+
+    assert [o["level"] for o in options] == ["1"]
+
+
+def test_raid_level_options_three_devices_only_offers_raid5():
+
+    options = _raid_level_options(3)
+
+    assert [o["level"] for o in options] == ["5"]
+    assert options[0]["recommended"] is True
+
+
+def test_raid_level_options_four_devices_offers_5_6_10_with_5_recommended():
+
+    options = _raid_level_options(4)
+
+    assert [o["level"] for o in options] == ["5", "6", "10"]
+    assert options[0]["recommended"] is True
+    assert options[1]["recommended"] is False
+    assert options[2]["recommended"] is False
+
+
+def test_raid_level_options_five_devices_skips_raid10():
+
+    options = _raid_level_options(5)
+
+    assert [o["level"] for o in options] == ["5", "6"]
+
+
+def test_raid_level_options_six_devices_offers_raid10_again():
+
+    options = _raid_level_options(6)
+
+    assert [o["level"] for o in options] == ["5", "6", "10"]
+
+
+def test_raid_usable_capacity_four_drives_raid5_is_three():
+
+    assert _raid_usable_drive_equivalents("5", 4) == 3
+    assert _raid_usable_drive_equivalents("6", 4) == 2
+    assert _raid_usable_drive_equivalents("10", 4) == 2
+
+
+def test_raid_usable_capacity_three_drives_raid5_is_two():
+
+    assert _raid_usable_drive_equivalents("5", 3) == 2
+
+
+def test_describe_raid_option_renders_honest_tradeoffs():
+
+    text = describe_raid_option({"level": "5", "usable": 3, "total": 4})
+
+    assert "RAID5" in text
+    assert "3 of 4" in text
+    assert "survives 1 drive failure" in text
+
+
+def test_plan_storage_layout_explicit_raid6_with_four_devices():
+
+    fake_output = {
+        "blockdevices": [
+            {
+                "name": "sdb", "path": "/dev/sdb", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+            {
+                "name": "sdc", "path": "/dev/sdc", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+            {
+                "name": "sdd", "path": "/dev/sdd", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+            {
+                "name": "sde", "path": "/dev/sde", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+        ]
+    }
+
+    def dispatch(args, **kwargs):
+
+        if args[0] == "lsblk":
+            return _mock_lsblk(stdout=json.dumps(fake_output))
+
+        if args[0] == "findmnt":
+            return _mock_findmnt_missing()
+
+        raise AssertionError(f"unexpected call: {args}")
+
+    with patch("installer.storage.subprocess.run", side_effect=dispatch):
+        plan = plan_storage_layout(
+            ["/dev/sdb", "/dev/sdc", "/dev/sdd", "/dev/sde"],
+            "/mnt/media",
+            raid_level="6",
+        )
+
+    assert plan["error"] is None
+    assert plan["commands"][0][3] == "--level=6"
+
+
+def test_plan_storage_layout_rejects_raid10_with_odd_device_count():
+
+    fake_output = {
+        "blockdevices": [
+            {
+                "name": "sdb", "path": "/dev/sdb", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+            {
+                "name": "sdc", "path": "/dev/sdc", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+            {
+                "name": "sdd", "path": "/dev/sdd", "size": "4T", "type": "disk",
+                "fstype": None, "mountpoint": None, "model": None, "pkname": None
+            },
+        ]
+    }
+
+    def dispatch(args, **kwargs):
+
+        if args[0] == "lsblk":
+            return _mock_lsblk(stdout=json.dumps(fake_output))
+
+        if args[0] == "findmnt":
+            return _mock_findmnt_missing()
+
+        raise AssertionError(f"unexpected call: {args}")
+
+    with patch("installer.storage.subprocess.run", side_effect=dispatch):
+        plan = plan_storage_layout(
+            ["/dev/sdb", "/dev/sdc", "/dev/sdd"],
+            "/mnt/media",
+            raid_level="10",
+        )
+
+    assert plan["error"] is not None
+    assert "even number" in plan["error"]
+
+
+def test_device_tree_text_runs_lsblk_on_target():
+
+    with patch("installer.storage.subprocess.run", return_value=MagicMock(returncode=0, stdout="md0\ndevices...\n")):
+        text = device_tree_text("/dev/md0")
+
+    assert text == "md0\ndevices...\n"
+
+
+def test_device_tree_text_failure_returns_none():
+
+    with patch("installer.storage.subprocess.run", return_value=MagicMock(returncode=2, stdout="")):
+        text = device_tree_text("/dev/md0")
+
+    assert text is None
 
 
 def _probe_dispatch(
