@@ -851,6 +851,26 @@ def test_stack_containers_exist_false_when_docker_reports_nothing():
     assert result is False
 
 
+def test_stack_containers_exist_false_when_docker_is_absent():
+    """
+    Fresh-machine regression: a host with no Docker installed makes
+    subprocess.run raise FileNotFoundError (the docker binary doesn't
+    exist), and this crashed the whole `vulcan detect` that installer/
+    menu.sh evals on every menu redraw - found live on a fresh host.
+    Absent Docker is a legitimate "no containers exist" state, not an
+    error, so it must return False the same way detect.py treats every
+    other missing tool.
+    """
+
+    with patch(
+        "installer.post_install.subprocess.run",
+        side_effect=FileNotFoundError("[Errno 2] No such file or directory: 'docker'")
+    ):
+        result = stack_containers_exist("stack")
+
+    assert result is False
+
+
 def test_remove_orphaned_containers_success():
 
     proc = MagicMock(returncode=0)

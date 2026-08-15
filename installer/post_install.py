@@ -335,11 +335,16 @@ def stack_containers_exist(project_name: str) -> bool:
     on these, only the project name.
     """
 
-    result = subprocess.run(
-        ["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={project_name}", "-q"],
-        capture_output=True,
-        text=True
-    )
+    try:
+
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={project_name}", "-q"],
+            capture_output=True,
+            text=True
+        )
+
+    except OSError:
+        return False
 
     return bool(result.stdout.strip())
 
