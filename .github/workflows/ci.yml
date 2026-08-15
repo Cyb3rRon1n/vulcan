@@ -39,5 +39,11 @@ jobs:
         # this project already applies to ruff (see pyproject.toml).
         run: shellcheck -S warning installer/menu.sh
 
+      - name: Shellcheck install bootstrap
+        run: shellcheck -S warning install
+
       - name: Bats tests for installer/menu.sh
         run: bats tests/test_menu.bats
+
+      - name: Bats tests for install bootstrap
+        run: bats tests/test_install.bats
