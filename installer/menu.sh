@@ -90,7 +90,12 @@ confirm_and_run() {
     # this way without also reordering it) - status silently read 0
     # for every failed command, "Done." printed even on real failures.
     local status
-    "$@"
+    # VULCAN_PROGRESS=1 turns on the CLI's Rich live progress panel
+    # (installer/panel.py) - every menu action keeps its real, live
+    # install/docker output on screen inside a progress panel instead
+    # of dumping raw subprocess spew. Only set for this one command,
+    # not exported into the menu loop itself.
+    VULCAN_PROGRESS=1 "$@"
     status=$?
 
     echo
