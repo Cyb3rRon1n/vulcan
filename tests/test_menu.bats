@@ -436,6 +436,169 @@ setup() {
     [ "$first_storage" -lt "$first_update" ]
 }
 
+@test "guided-setup defaults Media Library path to the provisioned storage mount" {
+
+    # Full guided_setup run: VULCAN_BIN is stubbed with a fake detect
+    # that reports a provisioned storage mount, and whiptail answers
+    # the Media Library inputbox with whatever default it was offered
+    # (so the captured MEDIA_PATH is exactly the default the flow
+    # computed). The customize path is declined so the quick path runs,
+    # and the final `--media-path` handed to the vulcan invocation is
+    # what we assert on.
+    fake_vulcan() {
+        case "$*" in
+            detect)
+                echo "STORAGE_MOUNT='/mnt/media'"
+                echo "PREVIOUS_TIER=''"
+                echo "PREVIOUS_ENABLED_OPTIONAL=''"
+                echo "RECOMMENDED_TIER='medium'"
+                echo "CPU_CORES_LOGICAL='8'"
+                echo "RAM_TOTAL_GB='32.0'"
+                echo "DISK_FREE_GB='900.0'"
+                echo "RECOMMENDED_TIER_EXPLANATION='test'"
+                echo "DEFAULT_PUID='1000'"
+                echo "DEFAULT_PGID='1000'"
+                echo "DEFAULT_TIMEZONE='UTC'"
+                echo "DOCKER_INSTALLED='true'"
+                echo "DOCKER_RUNNING='true'"
+                echo "DOCKER_COMPOSE_V2='true'"
+                ;;
+            *)
+                echo "VULCAN_INVOKED:$*"
+                return 0
+                ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*)
+                echo -n "${@: -1}" >&3
+                return 0
+                ;;
+            *"Customize the full service list"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN=fake_vulcan
+        guided_setup
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VULCAN_INVOKED:"* ]]
+    [[ "$output" == *"--media-path /mnt/media"* ]]
+}
+
+@test "guided-setup falls back to HOME/media when no storage mount is provisioned" {
+
+    fake_vulcan() {
+        case "$*" in
+            detect)
+                echo "STORAGE_MOUNT=''"
+                echo "PREVIOUS_TIER=''"
+                echo "PREVIOUS_ENABLED_OPTIONAL=''"
+                echo "RECOMMENDED_TIER='medium'"
+                echo "CPU_CORES_LOGICAL='8'"
+                echo "RAM_TOTAL_GB='32.0'"
+                echo "DISK_FREE_GB='900.0'"
+                echo "RECOMMENDED_TIER_EXPLANATION='test'"
+                echo "DEFAULT_PUID='1000'"
+                echo "DEFAULT_PGID='1000'"
+                echo "DEFAULT_TIMEZONE='UTC'"
+                echo "DOCKER_INSTALLED='true'"
+                echo "DOCKER_RUNNING='true'"
+                echo "DOCKER_COMPOSE_V2='true'"
+                ;;
+            *)
+                echo "VULCAN_INVOKED:$*"
+                return 0
+                ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*)
+                echo -n "${@: -1}" >&3
+                return 0
+                ;;
+            *"Customize the full service list"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN=fake_vulcan
+        HOME=/home/testuser
+        guided_setup
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--media-path /home/testuser/media"* ]]
+}
+
+@test "guided-setup still defaults Media Library path to the previous install's path on a rerun" {
+
+    fake_vulcan() {
+        case "$*" in
+            detect)
+                echo "STORAGE_MOUNT='/mnt/media'"
+                echo "PREVIOUS_TIER='medium'"
+                echo "PREVIOUS_MEDIA_PATH='/mnt/old-media'"
+                echo "PREVIOUS_PUID='1000'"
+                echo "PREVIOUS_PGID='1000'"
+                echo "PREVIOUS_TIMEZONE='UTC'"
+                echo "PREVIOUS_ENABLED_OPTIONAL=''"
+                echo "RECOMMENDED_TIER='medium'"
+                echo "CPU_CORES_LOGICAL='8'"
+                echo "RAM_TOTAL_GB='32.0'"
+                echo "DISK_FREE_GB='900.0'"
+                echo "RECOMMENDED_TIER_EXPLANATION='test'"
+                echo "DEFAULT_PUID='1000'"
+                echo "DEFAULT_PGID='1000'"
+                echo "DEFAULT_TIMEZONE='UTC'"
+                echo "DOCKER_INSTALLED='true'"
+                echo "DOCKER_RUNNING='true'"
+                echo "DOCKER_COMPOSE_V2='true'"
+                ;;
+            *)
+                echo "VULCAN_INVOKED:$*"
+                return 0
+                ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*)
+                echo -n "${@: -1}" >&3
+                return 0
+                ;;
+            *"Customize the full service list"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN=fake_vulcan
+        guided_setup
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--media-path /mnt/old-media"* ]]
+}
+
 @test "every field menu.sh references from 'vulcan detect' is actually emitted by it" {
 
     cli_py="$BATS_TEST_DIRNAME/../installer/cli.py"
@@ -448,7 +611,7 @@ setup() {
         PREVIOUS_MEDIA_PATH PREVIOUS_PUID PREVIOUS_PGID PREVIOUS_TIMEZONE \
         PREVIOUS_ENABLED_OPTIONAL PREVIOUS_DOMAIN PREVIOUS_CLOUDFLARE_EMAIL \
         DEFAULT_PUID DEFAULT_PGID DEFAULT_TIMEZONE CPU_CORES_LOGICAL \
-        RAM_TOTAL_GB DISK_FREE_GB GPU_VENDOR; do
+        RAM_TOTAL_GB DISK_FREE_GB GPU_VENDOR STORAGE_MOUNT; do
 
         grep -q "\"$var\":" "$cli_py" || {
             echo "menu.sh references \$$var but detect_shell() never emits it" >&2

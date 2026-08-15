@@ -15,7 +15,9 @@ from installer.detect import (
     detect_disk,
     detect_docker,
     detect_host_ip,
+    detect_media_disk_path,
     detect_media_redundancy,
+    detect_storage_mount,
     detect_system,
 )
 from installer.docker_setup import (
@@ -141,9 +143,12 @@ def detect_shell():
     eval-ing a flat block is pure bash with zero new dependencies.
     """
 
-    info = detect_system()
-    recommendation = recommend_tier(info)
     previous = load_previous_state(STACK_DIR)
+
+    info = detect_system(
+        disk_path=detect_media_disk_path(previous["media_path"] if previous else None)
+    )
+    recommendation = recommend_tier(info)
 
     compose_path = STACK_DIR / "docker-compose.yml"
     stack_exists = compose_path.exists() or stack_containers_exist(STACK_DIR.name)
@@ -173,6 +178,10 @@ def detect_shell():
         "BLANK_STORAGE_DEVICES": ",".join(
             d["path"] for d in list_blank_unprotected_devices()
         ),
+        # The provisioned media-storage mount point (default /mnt/media)
+        # when one is actually mounted - installer/menu.sh defaults its
+        # Guided Setup Media Library path to this on a fresh install.
+        "STORAGE_MOUNT": detect_storage_mount() or "",
         "STACK_EXISTS": "true" if stack_exists else "false",
         "HAS_BACKUPS": "true" if has_backups else "false",
         "DEFAULT_PUID": default_puid,
