@@ -184,6 +184,54 @@ def resolve_ports(config: GenerationConfig) -> dict[str, int]:
     return {**_HOMEPAGE_PORTS, **config.port_overrides}
 
 
+def _detect_port_conflicts() -> dict[str, int] | None:
+    """
+    Scans _HOMEPAGE_PORTS for duplicate port values (two services
+    configured to use the same host port) and returns a
+    port_overrides dict remapping the second-occurring service to
+    the next available port above 3000, so the generated compose
+    file never has two services binding to the same port. Returns
+    None when there are no conflicts.
+    """
+
+    port_to_service: dict[int, str] = {}
+    conflicts: dict[str, int] = {}
+
+    for service, port in _HOMEPAGE_PORTS.items():
+        if port in port_to_service:
+            conflicts[service] = port
+        else:
+            port_to_service[port] = service
+
+    if not conflicts:
+        return None
+
+    overrides: dict[str, int] = {}
+    used_ports = set(_HOMEPAGE_PORTS.values())
+
+    for service, port in sorted(conflicts.items(), key=lambda item: list(_HOMEPAGE_PORTS.keys()).index(item[0])):
+        new_port = _find_next_available_port(port, used_ports)
+        if new_port is not None:
+            overrides[service] = new_port
+            used_ports.add(new_port)
+
+    return overrides if overrides else None
+
+
+def _find_next_available_port(excluded_port: int, used_ports: set[int]) -> int | None:
+    """Find the next available port starting from excluded_port + 1, skipping any already in use."""
+
+    port = excluded_port + 1
+    max_port = 65535
+
+    while port <= max_port:
+        if port not in used_ports:
+            return port
+        port += 1
+
+    return None
+
+
 def default_puid_pgid() -> tuple[int, int]:
 
     return os.getuid(), os.getgid()
@@ -824,6 +872,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     # (HOMEPAGE_ALLOWED_HOSTS), not just the warnings/Homepage-tile
     # logic further down that already used to be its first use.
     host_ip = detect_host_ip()
+
+    # Auto-resolve port conflicts before generating the compose file -
+    # if two services (e.g. SABnzbd + MeTube) are configured to use the
+    # same host port, remap the second-occurring one to the next available
+    # port so the generated stack never fails on `docker compose up -d`
+    # with "Bind for ... port is already allocated".
+    conflicts = _detect_port_conflicts()
+    if conflicts is not None:
+        config.port_overrides = conflicts
 
     # Read any existing .env before it gets overwritten - a real Gluetun
     # VPN credential the user already filled in must survive a regenerate,
