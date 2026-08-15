@@ -39,13 +39,13 @@ def prune_docker_artifacts() -> dict:
 
     result = run_privileged(["docker", "system", "prune", "-a"])
 
-    if result.returncode == 0:
+    if result["success"]:
         return {"success": True, "error": None}
     else:
         return {
             "success": False,
-            "error": "docker system prune -a exited with return code %d: %s"
-            % (result.returncode, result.stderr.strip() if result.stderr else "nostderr")
+            "error": "docker system prune -a failed: %s"
+            % result.get("error", "unknown error")
         }
 
 
