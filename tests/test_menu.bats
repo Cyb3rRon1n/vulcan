@@ -220,6 +220,89 @@ setup() {
     [ "$status" -eq 0 ]
 }
 
+@test "storage setup shells out to 'vulcan storage apply' for the chosen blank devices" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
+            *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"vulcan storage apply --devices /dev/sdb,/dev/sdc --mount-point /mnt/media --non-interactive --yes"* ]]
+}
+
+@test "storage setup reports when no blank devices exist and runs nothing" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() { return 0; }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"storage apply"* ]]
+}
+
+@test "storage setup does not run apply when no devices are selected" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Select storage devices"*) echo -n '' >&3; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_setup_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"storage apply"* ]]
+}
+
 @test "every field menu.sh references from 'vulcan detect' is actually emitted by it" {
 
     cli_py="$BATS_TEST_DIRNAME/../installer/cli.py"

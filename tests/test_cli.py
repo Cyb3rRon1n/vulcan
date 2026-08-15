@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from installer.cli import _launch_menu, app
+from installer.cli import _launch_menu, _offer_storage_setup, app
 from installer.detect import SystemInfo
 
 
@@ -2008,6 +2008,334 @@ def test_storage_plan_error_exits_1():
 
     assert result.exit_code == 1
     assert "protected" in result.output
+
+
+def _fake_apply_plan(already_has_data: dict | None = None) -> dict:
+
+    return {
+        "target_devices": ["/dev/sdb", "/dev/sdc"],
+        "commands": [["mdadm", "--create", "/dev/md0"]],
+        "warnings": [],
+        "already_has_data": already_has_data or {"/dev/sdb": False, "/dev/sdc": False},
+        "mount_point": "/mnt/media",
+        "target_device": "/dev/md0",
+        "fstab_line": "/dev/md0 /mnt/media ext4 defaults 0 2",
+        "error": None,
+    }
+
+
+def test_storage_apply_requires_devices_option():
+
+    result = runner.invoke(app, ["storage", "apply"])
+
+    assert result.exit_code != 0
+
+
+def test_storage_apply_plan_error_exits_1():
+
+    fake_plan = _fake_apply_plan()
+    fake_plan["error"] = "Refusing to plan against protected device(s) /dev/sda."
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ) as mock_describe, patch("installer.cli.apply_storage_layout") as mock_apply:
+
+        result = runner.invoke(app, ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"])
+
+    assert result.exit_code == 1
+    assert "a real rendered plan" in result.output
+    mock_describe.assert_called_once()
+    mock_apply.assert_not_called()
+
+
+def test_storage_apply_interactive_typed_confirmation_mismatch_aborts():
+
+    fake_plan = _fake_apply_plan()
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout") as mock_apply:
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdz\n"
+        )
+
+    assert result.exit_code == 1
+    assert "didn't match" in result.output
+    mock_apply.assert_not_called()
+
+
+def test_storage_apply_interactive_typed_confirmation_runs():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": ["mdadm --create /dev/md0"], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdb,/dev/sdc\n"
+        )
+
+    assert result.exit_code == 0
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is False
+
+
+def test_storage_apply_interactive_blank_devices_requires_no_confirm_wipe_flag():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdb,/dev/sdc\n"
+        )
+
+    assert result.exit_code == 0
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is False
+
+
+def test_storage_apply_non_interactive_requires_yes():
+
+    with patch("installer.cli.plan_storage_layout", return_value=_fake_apply_plan()):
+
+        result = runner.invoke(
+            app, ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc", "--non-interactive"]
+        )
+
+    assert result.exit_code == 1
+    assert "--yes" in result.output
+
+
+def test_storage_apply_non_interactive_blank_devices_with_yes_runs():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(
+            app,
+            [
+                "storage", "apply", "--devices", "/dev/sdb,/dev/sdc",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 0
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is False
+
+
+def test_storage_apply_non_interactive_non_blank_requires_confirm_wipe_flag():
+
+    fake_plan = _fake_apply_plan(already_has_data={"/dev/sdb": True, "/dev/sdc": False})
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout") as mock_apply:
+
+        result = runner.invoke(
+            app,
+            [
+                "storage", "apply", "--devices", "/dev/sdb,/dev/sdc",
+                "--non-interactive", "--yes"
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "--confirm-wipe" in result.output
+    mock_apply.assert_not_called()
+
+
+def test_storage_apply_non_interactive_non_blank_with_confirm_wipe_runs():
+
+    fake_plan = _fake_apply_plan(already_has_data={"/dev/sdb": True, "/dev/sdc": False})
+    apply_result = {"success": True, "already_provisioned": False, "ran": [], "skipped": []}
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(
+            app,
+            [
+                "storage", "apply", "--devices", "/dev/sdb,/dev/sdc",
+                "--non-interactive", "--yes", "--confirm-wipe"
+            ]
+        )
+
+    assert result.exit_code == 0
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is True
+
+
+def test_storage_apply_success_prints_ran_and_skipped():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {
+        "success": True,
+        "already_provisioned": False,
+        "ran": ["mdadm --create /dev/md0", "mkfs.ext4 /dev/md0"],
+        "skipped": ["/etc/fstab already has this mount - skipping append"],
+    }
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdb,/dev/sdc\n"
+        )
+
+    assert result.exit_code == 0
+    assert "mdadm --create /dev/md0" in result.output
+    assert "/etc/fstab already has this mount" in result.output
+
+
+def test_storage_apply_failure_exits_1():
+
+    fake_plan = _fake_apply_plan()
+    apply_result = {
+        "success": False,
+        "already_provisioned": False,
+        "ran": ["mdadm --create /dev/md0"],
+        "skipped": [],
+        "error": "Failed running mkfs.ext4 /dev/md0: exit code 1",
+    }
+
+    with patch("installer.cli.plan_storage_layout", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_plan", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = runner.invoke(
+            app,
+            ["storage", "apply", "--devices", "/dev/sdb,/dev/sdc"],
+            input="/dev/sdb,/dev/sdc\n"
+        )
+
+    assert result.exit_code == 1
+    assert "Failed running mkfs.ext4" in result.output
+    assert "mdadm --create /dev/md0" in result.output
+
+
+def test_offer_storage_setup_skips_when_no_blank_devices():
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=[]):
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result is None
+
+
+def test_offer_storage_setup_skips_when_user_declines():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+    ]
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=False
+    ):
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result is None
+
+
+def test_offer_storage_setup_applies_and_returns_mount_point():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+    ]
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": True, "already_provisioned": False, "ran": ["mdadm --create /dev/md0"], "skipped": []}
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=True
+    ), patch("installer.cli.typer.prompt", side_effect=["/mnt/media", "/dev/sdb,/dev/sdc"]), patch(
+        "installer.cli.plan_storage_layout", return_value=fake_plan
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result == "/mnt/media"
+
+
+def test_offer_storage_setup_mismatched_confirmation_returns_none():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+    ]
+    fake_plan = _fake_apply_plan()
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=True
+    ), patch("installer.cli.typer.prompt", side_effect=["/mnt/media", "/dev/sdz"]), patch(
+        "installer.cli.plan_storage_layout", return_value=fake_plan
+    ), patch("installer.cli.apply_storage_layout") as mock_apply:
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result is None
+    mock_apply.assert_not_called()
+
+
+def test_offer_storage_setup_plan_error_returns_none():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+    ]
+    fake_plan = _fake_apply_plan()
+    fake_plan["error"] = "Refusing to plan against protected device(s) /dev/sda."
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=True
+    ), patch("installer.cli.typer.prompt", side_effect=["/mnt/media", "/dev/sdb,/dev/sdc"]), patch(
+        "installer.cli.plan_storage_layout", return_value=fake_plan
+    ), patch("installer.cli.apply_storage_layout") as mock_apply:
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result is None
+    mock_apply.assert_not_called()
+
+
+def test_offer_storage_setup_apply_failure_returns_none():
+
+    blank_devices = [
+        {"path": "/dev/sdb", "size": "4T", "model": "WD Red"},
+        {"path": "/dev/sdc", "size": "4T", "model": "WD Red"},
+    ]
+    fake_plan = _fake_apply_plan()
+    apply_result = {"success": False, "already_provisioned": False, "ran": [], "skipped": [], "error": "Failed running mdadm --create /dev/md0: exit code 1"}
+
+    with patch("installer.cli.list_blank_unprotected_devices", return_value=blank_devices), patch(
+        "installer.cli.typer.confirm", return_value=True
+    ), patch("installer.cli.typer.prompt", side_effect=["/mnt/media", "/dev/sdb,/dev/sdc"]), patch(
+        "installer.cli.plan_storage_layout", return_value=fake_plan
+    ), patch("installer.cli.apply_storage_layout", return_value=apply_result):
+
+        result = _offer_storage_setup(non_interactive=False)
+
+    assert result is None
 
 
 def test_pull_no_stack_found_exits_1(tmp_path):

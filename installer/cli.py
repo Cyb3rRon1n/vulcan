@@ -55,8 +55,10 @@ from installer.post_install import (
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.self_update import update_vulcan_self
 from installer.storage import (
+    apply_storage_layout,
     describe_storage_plan,
     identify_protected_devices,
+    list_blank_unprotected_devices,
     list_block_devices,
     plan_storage_layout,
 )
@@ -162,6 +164,12 @@ def detect_shell():
         "RECOMMENDED_TIER": recommendation.tier.name,
         "RECOMMENDED_TIER_MEETS_MINIMUM": "true" if recommendation.meets_minimum else "false",
         "RECOMMENDED_TIER_EXPLANATION": recommendation.explanation,
+        # Comma-separated blank, unprotected devices available to be
+        # provisioned as media storage - installer/menu.sh's "Media
+        # Storage Setup" item builds its whiptail checklist from this.
+        "BLANK_STORAGE_DEVICES": ",".join(
+            d["path"] for d in list_blank_unprotected_devices()
+        ),
         "STACK_EXISTS": "true" if stack_exists else "false",
         "HAS_BACKUPS": "true" if has_backups else "false",
         "DEFAULT_PUID": default_puid,
@@ -257,6 +265,113 @@ def storage_plan(
 
     if plan["error"]:
         raise typer.Exit(code=1)
+
+
+@storage_app.command(name="apply")
+def storage_apply(
+    devices: str = typer.Option(
+        ..., "--devices",
+        help="Comma-separated device paths to provision, e.g. /dev/sdb,/dev/sdc"
+    ),
+    mount_point: str = typer.Option("/mnt/media", "--mount-point"),
+    filesystem: str = typer.Option("ext4", "--filesystem"),
+    raid_level: str | None = typer.Option(
+        None, "--raid-level", help="mdadm RAID level (1/5/6/10) - only used with 2+ devices"
+    ),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    confirm_wipe: bool = typer.Option(
+        False, "--confirm-wipe",
+        help="Deliberately destroy data already on the target device(s) - required in "
+        "non-interactive mode for devices that have a filesystem or partition table."
+    )
+):
+    """
+    Actually provision the given device(s) into a single mounted volume -
+    the real mdadm/mkfs/mount run that `vulcan storage plan` only prints.
+    Every step is re-checked against live state first, so a re-run on an
+    already-provisioned mount is a no-op and a re-run against an existing
+    array/filed system resumes instead of re-creating anything.
+    """
+
+    device_paths = [d.strip() for d in devices.split(",") if d.strip()]
+
+    if not device_paths:
+        console.print("[red]--devices requires at least one device path.[/red]")
+        raise typer.Exit(code=1)
+
+    plan = plan_storage_layout(device_paths, mount_point, filesystem, raid_level)
+
+    console.print(describe_storage_plan(plan))
+
+    if plan["error"]:
+        raise typer.Exit(code=1)
+
+    already_has_data = plan.get("already_has_data", {})
+    non_blank = [
+        path for path in device_paths if already_has_data.get(path) is True
+    ]
+
+    if non_interactive:
+
+        if not yes:
+            console.print(
+                "[red]--yes is required alongside --non-interactive.[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        if non_blank and not confirm_wipe:
+
+            console.print(
+                f"[red]Refusing: {', '.join(non_blank)} already has a filesystem "
+                "or partition table. Re-run with --confirm-wipe to destroy it.[/red]"
+            )
+            raise typer.Exit(code=1)
+
+    else:
+
+        if non_blank:
+            console.print(
+                f"[yellow]! {', '.join(non_blank)} already has a filesystem or "
+                "partition table - this will destroy it. Type the full device "
+                "list to confirm.[/yellow]"
+            )
+
+        typed = typer.prompt(
+            f"Type the exact device list to confirm ({', '.join(device_paths)})",
+            hide_input=False,
+        )
+
+        if {p.strip() for p in typed.split(",") if p.strip()} != set(device_paths):
+
+            console.print("[red]Confirmation didn't match - nothing was executed.[/red]")
+            raise typer.Exit(code=1)
+
+        confirm_wipe = bool(non_blank)
+
+    result = apply_storage_layout(plan, confirm_wipe=confirm_wipe)
+
+    for command in result.get("ran", []):
+        console.print(f"[green]ran:[/green] {command}")
+
+    for note in result.get("skipped", []):
+        console.print(f"[cyan]skipped:[/cyan] {note}")
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    if result.get("already_provisioned"):
+        console.print(
+            f"[green]{mount_point} is already provisioned from "
+            f"{plan['target_device']} - nothing to do.[/green]"
+        )
+        raise typer.Exit(code=0)
+
+    console.print(
+        f"[green]Storage provisioned: {', '.join(device_paths)} is now mounted "
+        f"at {mount_point}. Use it as your media path.[/green]"
+    )
 
 
 @app.command()
@@ -868,6 +983,91 @@ def _ensure_docker_ready(
     return info, group_just_added
 
 
+def _offer_storage_setup(non_interactive: bool) -> str | None:
+    """
+    The plain-CLI install flow's optional storage step: when the machine
+    has genuinely spare (blank, unprotected) disks, offer to provision
+    them as a single media volume before the media-path prompt - a fresh
+    nanorack with four empty drives should be asked "want this set up as
+    your media storage?" instead of silently pointing MEDIA_PATH at the
+    boot disk. Returns the mount point when storage was provisioned,
+    None when there was nothing to offer or the user declined/failed.
+    Reuses the exact same engine + gates as `vulcan storage apply`
+    (typed-device confirmation included), never a separate path.
+    """
+
+    if non_interactive:
+        return None
+
+    blank_devices = list_blank_unprotected_devices()
+
+    if not blank_devices:
+        return None
+
+    total = ", ".join(
+        f"{d['path']} ({d['size']})" for d in blank_devices
+    )
+
+    console.print(
+        f"[bold]Detected spare storage:[/bold] {total} - blank, "
+        "not backing the system disk."
+    )
+
+    if not typer.confirm(
+        "Set these up as a single media storage volume "
+        "(mdadm RAID if 2+ devices)?"
+    ):
+        return None
+
+    default_mount = "/mnt/media"
+
+    mount_point = typer.prompt("Mount point for the media volume", default=default_mount)
+
+    device_paths = [d["path"] for d in blank_devices]
+
+    plan = plan_storage_layout(device_paths, mount_point)
+
+    console.print(describe_storage_plan(plan))
+
+    if plan["error"]:
+        console.print(f"[red]Can't plan this storage: {plan['error']}[/red]")
+        return None
+
+    typed = typer.prompt(
+        f"Type the exact device list to confirm ({', '.join(device_paths)})",
+        hide_input=False,
+    )
+
+    if {p.strip() for p in typed.split(",") if p.strip()} != set(device_paths):
+
+        console.print("[red]Confirmation didn't match - skipping storage setup.[/red]")
+        return None
+
+    result = apply_storage_layout(plan)
+
+    for command in result.get("ran", []):
+        console.print(f"[green]ran:[/green] {command}")
+
+    for note in result.get("skipped", []):
+        console.print(f"[cyan]skipped:[/cyan] {note}")
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        return None
+
+    if result.get("already_provisioned"):
+        console.print(
+            f"[green]{mount_point} was already provisioned - using it.[/green]"
+        )
+        return mount_point
+
+    console.print(
+        f"[green]Media storage provisioned and mounted at {mount_point}.[/green]"
+    )
+
+    return mount_point
+
+
 def _gather_generation_config(
     info: SystemInfo,
     tier: str | None,
@@ -907,6 +1107,13 @@ def _gather_generation_config(
     if media_path is None:
 
         default_media_path = previous["media_path"] if previous else str(Path.home() / "media")
+
+        if not non_interactive and previous is None:
+
+            storage_mount = _offer_storage_setup(non_interactive)
+
+            if storage_mount is not None:
+                default_media_path = storage_mount
 
         media_path = default_media_path if non_interactive else typer.prompt(
             "Media library path", default=default_media_path
