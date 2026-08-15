@@ -118,8 +118,9 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
-            --menu "Choose an action:" 20 76 8 \
+            --menu "Choose an action:" 20 76 9 \
             "guided-setup"    "Guided Setup - detect hardware, generate a stack" \
+            "storage-setup"   "Media Storage Setup - provision blank drives as media storage" \
             "update-stack"    "Update Stack - pull latest images, recreate containers" \
             "pull-images"     "Pull Images - prep for an offline start later" \
             "backup-stack"    "Backup Stack - archive config/compose/env to backups/" \
@@ -138,6 +139,9 @@ main_menu() {
         case "$CHOICE" in
             guided-setup)
                 guided_setup
+                ;;
+            storage-setup)
+                storage_setup_flow
                 ;;
             update-stack)
                 confirm_and_run "Update Stack" \
@@ -168,6 +172,71 @@ main_menu() {
         esac
 
     done
+}
+
+# --- Media Storage Setup ------------------------------------------------
+#
+# The whiptail front end for `vulcan storage apply`: detects the real
+# blank, unprotected devices (`vulcan detect`'s BLANK_STORAGE_DEVICES,
+# computed by installer/storage.py's list_blank_unprotected_devices()),
+# lets the user pick which ones to provision, and hands the resulting
+# argv to the exact same `vulcan storage apply --non-interactive --yes`
+# command the CLI's own plain path would build - all the real safety
+# gates (plan errors, non-blank refusal without --confirm-wipe, etc.)
+# live in the CLI/engine, not re-implemented in bash.
+storage_setup_flow() {
+
+    refresh_detect
+
+    if [ -z "$BLANK_STORAGE_DEVICES" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+            --msgbox "No blank, unprotected storage devices found. A blank device is one with no filesystem and no partition table, and not backing / or /boot." 12 76
+        return 0
+    fi
+
+    local default_mount_point="/mnt/media"
+
+    MEDIA_MOUNT_POINT=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+        --inputbox "Mount point for the media storage volume" 10 70 "$default_mount_point" \
+        3>&1 1>&2 2>&3) || return 0
+    [ -z "$MEDIA_MOUNT_POINT" ] && return 0
+
+    # BLANK_STORAGE_DEVICES is a comma-separated list (e.g.
+    # /dev/sdb,/dev/sdc) - turn it into a real bash array, then build a
+    # whiptail --checklist with every blank device pre-selected (they're
+    # blank, so there's nothing to wipe - selecting them by default
+    # matches the "identify available blank storage" intent, and the
+    # user can still deselect any they want to keep spare).
+    local -a blank_devices
+    IFS=',' read -r -a blank_devices <<< "$BLANK_STORAGE_DEVICES"
+
+    local -a checklist_args=()
+    local device
+    for device in "${blank_devices[@]:-}"; do
+        checklist_args+=( "$device" "blank storage device" "ON" )
+    done
+
+    CHOSEN_DEVICES=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+        --checklist "Select which blank device(s) to provision as media storage:" 16 76 6 \
+        "${checklist_args[@]}" \
+        3>&1 1>&2 2>&3) || return 0
+
+    # Same safe-eval idiom as the Optional Services checklist above:
+    # whiptail's own --checklist output is properly double-quoted
+    # space-separated tags, so eval is the standard idiom here too.
+    # shellcheck disable=SC2034,SC2154
+    eval "CHOSEN_DEVICE_LIST=($CHOSEN_DEVICES)"
+
+    if [ "${#CHOSEN_DEVICE_LIST[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    local devices_csv
+    devices_csv=$(IFS=,; echo "${CHOSEN_DEVICE_LIST[*]}")
+
+    confirm_and_run "Media Storage Setup" \
+        "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT (mdadm RAID1 with 2 devices, RAID5 with 3+, or a single ext4 volume for one). Continue?" \
+        "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes
 }
 
 # --- Restore --------------------------------------------------------
