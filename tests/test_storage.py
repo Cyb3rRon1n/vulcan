@@ -141,7 +141,8 @@ def test_plan_storage_layout_refuses_protected_device():
 
 def test_plan_storage_layout_single_device_no_raid():
 
-    with patch("installer.storage.subprocess.run", side_effect=_dispatch):
+    with patch("installer.storage._provision_owner", return_value="1000:1000"), \
+         patch("installer.storage.subprocess.run", side_effect=_dispatch):
         plan = plan_storage_layout(["/dev/sdb"], "/mnt/media")
 
     assert plan["error"] is None
@@ -149,6 +150,7 @@ def test_plan_storage_layout_single_device_no_raid():
         ["mkfs.ext4", "/dev/sdb"],
         ["mkdir", "-p", "/mnt/media"],
         ["mount", "/dev/sdb", "/mnt/media"],
+        ["chown", "1000:1000", "/mnt/media"],
         ["sh", "-c", "echo '/dev/sdb /mnt/media ext4 defaults 0 2' >> /etc/fstab"],
     ]
 
@@ -487,6 +489,7 @@ def _apply_plan(
     commands.append([f"mkfs.{filesystem}", target])
     commands.append(["mkdir", "-p", mount])
     commands.append(["mount", target, mount])
+    commands.append(["chown", "1000:1000", mount])
     commands.append(["sh", "-c", f"echo '{fstab_line}' >> /etc/fstab"])
 
     return {
@@ -563,6 +566,7 @@ def test_apply_storage_layout_single_device_runs_full_command_sequence():
         ["mkfs.ext4", "/dev/sdb"],
         ["mkdir", "-p", "/mnt/media"],
         ["mount", "/dev/sdb", "/mnt/media"],
+        ["chown", "1000:1000", "/mnt/media"],
         ["sh", "-c", "echo '/dev/sdb /mnt/media ext4 defaults 0 2' >> /etc/fstab"],
     ]
 
@@ -592,13 +596,14 @@ def test_apply_storage_layout_already_mounted_returns_noop():
 
     with patch("installer.storage.subprocess.run",
                side_effect=_probe_dispatch(mount_source="/dev/sdb")), \
-         patch("installer.storage.run_privileged", side_effect=recorder):
+         patch("installer.storage.run_privileged", side_effect=recorder), \
+         patch("installer.storage._provision_owner", return_value="1000:1000"):
 
         result = apply_storage_layout(_apply_plan())
 
     assert result["success"] is True
     assert result["already_provisioned"] is True
-    assert recorder.calls == []
+    assert recorder.calls == [["chown", "1000:1000", "/mnt/media"]]
 
 
 def test_apply_storage_layout_refuses_mount_point_held_by_other_device():

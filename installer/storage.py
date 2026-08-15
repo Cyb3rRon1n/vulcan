@@ -14,6 +14,7 @@ it - confirmed directly with the owner before writing any of this.
 """
 
 import json
+import os
 import subprocess
 
 from installer.shell import run_privileged
@@ -306,6 +307,20 @@ def device_tree_text(device_path: str) -> str | None:
     return result.stdout
 
 
+def _provision_owner() -> str:
+    """The uid:gid the provisioned media volume should be owned by - the
+    invoking user (SUDO_UID/SUDO_GID when the CLI is run under sudo,
+    else the process's own euid/egid). A fresh mkfs root is root:root
+    mode 755, which would otherwise make write_stack()'s media/
+    directory scaffolding fail with EACCES for the unprivileged user
+    that actually runs the stack - the real bug this chown exists to
+    fix."""
+
+    uid = int(os.environ.get("SUDO_UID") or os.geteuid())
+    gid = int(os.environ.get("SUDO_GID") or os.getegid())
+    return f"{uid}:{gid}"
+
+
 def plan_storage_layout(
     device_paths: list[str],
     mount_point: str,
@@ -418,6 +433,10 @@ def plan_storage_layout(
     commands.append([f"mkfs.{filesystem}", target_device])
     commands.append(["mkdir", "-p", mount_point])
     commands.append(["mount", target_device, mount_point])
+
+    owner = _provision_owner()
+    if owner != "0:0":
+        commands.append(["chown", owner, mount_point])
 
     fs_passno = "0" if filesystem in ("btrfs", "xfs") else "2"
     fstab_line = f"{target_device} {mount_point} {filesystem} defaults 0 {fs_passno}"
@@ -668,11 +687,23 @@ def apply_storage_layout(plan: dict, confirm_wipe: bool = False) -> dict:
 
     if current_source == target_device:
 
+        chown = ["chown", _provision_owner(), mount_point]
+        result = run_privileged(chown)
+
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": f"Failed fixing ownership on {mount_point}: {result['error']}",
+                "already_provisioned": False,
+                "ran": [],
+                "skipped": ["already mounted at target"],
+            }
+
         return {
             "success": True,
             "error": None,
             "already_provisioned": True,
-            "ran": [],
+            "ran": [" ".join(chown)],
             "skipped": ["already mounted at target"],
         }
 
