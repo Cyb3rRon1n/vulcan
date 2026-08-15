@@ -44,12 +44,25 @@ def pull_stack(compose_path: str, env_path: str) -> dict:
     return {"success": True, "error": None}
 
 
-def update_stack(compose_path: str, env_path: str) -> dict:
+def update_stack(compose_path: str, env_path: str, on_phase=None) -> dict:
+    """
+    Pull the latest images, then recreate containers - as two distinct
+    steps so a pull failure reports distinctly from a recreate failure.
+    on_phase, when given, is called with a phase label between the two
+    steps (the CLI's progress panel advances its bar on real step
+    completion; engine behavior is identical with or without it).
+    """
+
+    if on_phase is not None:
+        on_phase("Pull images")
 
     pull_result = pull_stack(compose_path, env_path)
 
     if not pull_result["success"]:
         return pull_result
+
+    if on_phase is not None:
+        on_phase("Recreate containers")
 
     up = run_docker_command(
         ["docker", "compose", "-f", compose_path, "--env-file", env_path, "up", "-d"]

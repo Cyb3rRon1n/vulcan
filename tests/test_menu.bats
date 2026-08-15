@@ -48,6 +48,28 @@ setup() {
     [[ "$output" == *"Failed (exit 3)"* ]]
 }
 
+@test "confirm_and_run exports VULCAN_PROGRESS=1 to the command" {
+
+    whiptail() { return 0; }
+    export -f whiptail
+
+    run bash -c "source '$MENU_SH'; confirm_and_run 'Test' 'confirm text' env <<< ''"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VULCAN_PROGRESS=1"* ]]
+}
+
+@test "VULCAN_PROGRESS is not exported into the menu loop itself" {
+
+    whiptail() { return 0; }
+    export -f whiptail
+
+    run bash -c "source '$MENU_SH'; if [ -n \"\${VULCAN_PROGRESS:-}\" ]; then echo 'unexpectedly set'; else echo 'not set'; fi"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not set"* ]]
+}
+
 @test "quick guided-setup toggles map checked services to their real CLI flags" {
 
     whiptail() {

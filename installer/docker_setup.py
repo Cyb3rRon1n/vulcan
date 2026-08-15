@@ -21,7 +21,7 @@ import shlex
 import shutil
 import subprocess
 
-from installer.shell import run_ok, run_privileged
+from installer.shell import get_stream_sink, run_ok, run_privileged, run_streaming
 
 
 DOCKER_SCRIPT_DISTROS = {"ubuntu", "debian", "raspbian", "fedora"}
@@ -313,8 +313,23 @@ def run_docker_command(args: list[str], use_group_workaround: bool = False):
     if use_group_workaround:
 
         if shutil.which("sg"):
-            return subprocess.run(["sg", "docker", "-c", shlex.join(args)])
+            command = ["sg", "docker", "-c", shlex.join(args)]
 
-        return subprocess.run(["sudo", *args])
+        else:
+            command = ["sudo", *args]
 
-    return subprocess.run(args)
+    else:
+        command = args
+
+    sink = get_stream_sink()
+
+    if sink is not None:
+
+        returncode = run_streaming(command, sink)
+
+        # Callers only ever read .returncode, so a synthetic
+        # CompletedProcess carries everything they need from the
+        # streaming path (which has no captured stdout/stderr anyway).
+        return subprocess.CompletedProcess(command, returncode)
+
+    return subprocess.run(command)

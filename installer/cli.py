@@ -55,6 +55,7 @@ from installer.post_install import (
     update_stack,
 )
 from installer.preflight import check_ports_available, format_port_conflicts
+from installer.panel import progress_panel
 from installer.self_update import update_vulcan_self
 from installer.storage import (
     _raid_level_options,
@@ -371,7 +372,13 @@ def storage_apply(
 
         confirm_wipe = bool(non_blank)
 
-    result = apply_storage_layout(plan, confirm_wipe=confirm_wipe)
+    result = None
+
+    with progress_panel(
+        "Media Storage Setup", ["Provision storage"], console=console
+    ) as panel:
+        result = apply_storage_layout(plan, confirm_wipe=confirm_wipe)
+        panel.advance()
 
     for command in result.get("ran", []):
         console.print(f"[green]ran:[/green] {command}")
@@ -426,7 +433,16 @@ def update(
         console.print("Aborted.")
         raise typer.Exit(code=0)
 
-    result = update_stack(str(compose_path), str(STACK_DIR / ".env"))
+    result = None
+
+    with progress_panel(
+        "Update Stack", ["Pull images", "Recreate containers"], console=console
+    ) as panel:
+        result = update_stack(
+            str(compose_path), str(STACK_DIR / ".env"),
+            on_phase=panel.advance
+        )
+        panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
@@ -456,7 +472,13 @@ def update_self(
         console.print("Aborted.")
         raise typer.Exit(code=0)
 
-    result = update_vulcan_self()
+    result = None
+
+    with progress_panel(
+        "Update Vulcan", ["Update Vulcan"], console=console
+    ) as _panel:
+        result = update_vulcan_self()
+        _panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
@@ -485,7 +507,13 @@ def pull():
         console.print("[red]No stack found - run `vulcan` first to generate one.[/red]")
         raise typer.Exit(code=1)
 
-    result = pull_stack(str(compose_path), str(STACK_DIR / ".env"))
+    result = None
+
+    with progress_panel(
+        "Pull Images", ["Pull images"], console=console
+    ) as _panel:
+        result = pull_stack(str(compose_path), str(STACK_DIR / ".env"))
+        _panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
@@ -504,7 +532,13 @@ def backup():
     Archive the generated stack's config directories and compose files.
     """
 
-    result = backup_stack()
+    result = None
+
+    with progress_panel(
+        "Backup Stack", ["Backup stack"], console=console
+    ) as _panel:
+        result = backup_stack()
+        _panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
@@ -610,20 +644,46 @@ def restore(
         console.print("Aborted.")
         raise typer.Exit(code=0)
 
-    result = restore_stack(chosen, str(compose_path), str(env_path))
+    # `start` is always explicit in the menu path (--start/--no-start),
+    # so the panel's "Start stack" phase is only shown when it will
+    # actually run. When start is None the panel is inert anyway (the
+    # env var that activates it is only ever set by menu.sh).
+    phases = ["Restore stack"]
+    if start is True:
+        phases.append("Start stack")
 
-    if not result["success"]:
-        console.print(f"[red]{result['error']}[/red]")
-        raise typer.Exit(code=1)
+    result = None
 
-    console.print("[green]Stack restored.[/green]")
+    with progress_panel("Restore Stack", phases, console=console) as panel:
+        result = restore_stack(chosen, str(compose_path), str(env_path))
+
+        if not result["success"]:
+            panel.finish(False)
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        console.print("[green]Stack restored.[/green]")
+
+        if start is True:
+
+            proc = run_docker_command(
+                ["docker", "compose", "-f", str(compose_path), "--env-file", str(env_path), "up", "-d"]
+            )
+
+            if proc.returncode == 0:
+                panel.advance()
+                console.print("[green]Stack is up.[/green]")
+            else:
+                panel.finish(False)
+                console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
+                raise typer.Exit(code=1)
 
     if start is None:
         do_start = False if non_interactive else typer.confirm("Start the restored stack now?", default=True)
     else:
         do_start = start
 
-    if do_start:
+    if do_start and start is not True:
 
         proc = run_docker_command(
             ["docker", "compose", "-f", str(compose_path), "--env-file", str(env_path), "up", "-d"]
@@ -674,11 +734,17 @@ def uninstall(
         console.print("Aborted.")
         raise typer.Exit(code=0)
 
-    result = uninstall_stack(
-        str(STACK_DIR / "docker-compose.yml"),
-        str(STACK_DIR / ".env"),
-        purge_artifacts=purge_artifacts
-    )
+    result = None
+
+    with progress_panel(
+        "Uninstall Stack", ["Uninstall stack"], console=console
+    ) as _panel:
+        result = uninstall_stack(
+            str(STACK_DIR / "docker-compose.yml"),
+            str(STACK_DIR / ".env"),
+            purge_artifacts=purge_artifacts
+        )
+        _panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
@@ -863,30 +929,47 @@ def run_install(
 
         custom_services_from_flag = requested
 
-    console.print("[bold]Detecting your system...[/bold]")
-    info = detect_system()
+    # start is always explicit (--start/--no-start) in the menu path,
+    # which is the only path that activates the panel - so the "Start
+    # stack" phase only exists when it will actually run.
+    phases = ["Detect system", "Docker ready", "Configure stack", "Generate stack"]
+    if start is not False:
+        phases.append("Start stack")
 
-    console.print(
-        f"  CPU: {info.cpu_cores_logical} logical cores ({info.cpu_model or 'unknown'})\n"
-        f"  RAM: {info.ram_total_gb}GB total\n"
-        f"  GPU: {info.gpu_vendor or 'none detected'}\n"
-        f"  OS: {info.os_pretty_name or info.os_id or 'unknown'} ({info.architecture})"
-    )
+    with progress_panel("Guided Setup", phases, console=console) as panel:
+        console.print("[bold]Detecting your system...[/bold]")
+        info = detect_system()
 
-    info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline)
+        console.print(
+            f"  CPU: {info.cpu_cores_logical} logical cores ({info.cpu_model or 'unknown'})\n"
+            f"  RAM: {info.ram_total_gb}GB total\n"
+            f"  GPU: {info.gpu_vendor or 'none detected'}\n"
+            f"  OS: {info.os_pretty_name or info.os_id or 'unknown'} ({info.architecture})"
+        )
+        panel.advance()
 
-    if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
-        console.print("[red]Docker isn't ready - can't continue.[/red]")
-        raise typer.Exit(code=1)
+        info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline)
 
-    config = _gather_generation_config(
-        info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
-        downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
-        non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
-        cloudflare_email, auth_username, auth_password
-    )
+        if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
+            panel.finish(False)
+            console.print("[red]Docker isn't ready - can't continue.[/red]")
+            raise typer.Exit(code=1)
 
-    _generate_and_maybe_start(config, non_interactive, yes, start, group_just_added)
+        panel.advance()
+
+        config = _gather_generation_config(
+            info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
+            downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
+            non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
+            cloudflare_email, auth_username, auth_password
+        )
+        panel.advance()
+
+        _generate_and_maybe_start(
+            config, non_interactive, yes, start, group_just_added,
+            on_phase=panel.advance
+        )
+        panel.finish(True)
 
 
 def _ensure_docker_ready(
@@ -1852,7 +1935,8 @@ def _generate_and_maybe_start(
     non_interactive: bool,
     yes: bool,
     start: bool | None,
-    group_just_added: bool
+    group_just_added: bool,
+    on_phase=None
 ) -> dict:
 
     console.print("\n[bold]Review[/bold]")
@@ -1907,6 +1991,9 @@ def _generate_and_maybe_start(
 
     console.print(f"[green]Stack written to {result['compose_path']}[/green]")
 
+    if on_phase is not None:
+        on_phase("Generate stack")
+
     for warning in result["warnings"]:
         console.print(f"[yellow]! {warning}[/yellow]")
 
@@ -1930,6 +2017,9 @@ def _generate_and_maybe_start(
         )
 
         if proc.returncode == 0:
+
+            if on_phase is not None:
+                on_phase("Start stack")
 
             console.print("[green]Stack is up:[/green]")
 
