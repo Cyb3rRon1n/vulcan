@@ -11,7 +11,14 @@
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
 </p>
 
-<p align="center"><strong>An intelligent media stack forge.</strong></p>
+<p align="center"><strong>An intelligent media stack forge.
+<p align="center">
+  <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml">
+    <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-forge-banner.svg" 
+         alt="Vulcan - Self-Hosted Media Stack Forge"
+         style="max-width: 100%; height: auto;">
+  </a>
+</p></strong></p>
 
 <p align="center">
   📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="walkthrough.md">Walkthrough</a>
