@@ -1,10 +1,11 @@
 # Walkthrough
 # Vulcan
 
+<!-- Vulcan Banner Option 3: Tier-focused -->
 <p align="center">
   <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml">
-    <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-forge-banner.svg" 
-         alt="Vulcan - Self-Hosted Media Stack Forge"
+    <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-banner-tiers.svg" 
+         alt="Vulcan - Media Server Stack with Tier Levels"
          style="max-width: 100%; height: auto;">
   </a>
 </p>
@@ -14,11 +15,11 @@
 </h2>
 
 <p align="center" style="font-size: 1rem; color: #666; margin: 0.5rem 0;">
-  Self-Hosted Media Stack · Docker Compose
+  Self-Hosted Media Server Stack
 </p>
 
 <p align="center" style="font-size: 0.875rem; color: #999;">
-  Light · Medium · Heavy Tiers · 17 Services · GPU Transcoding
+  Light · Medium · Heavy · 17 Services
 </p>
 
 

@@ -15,7 +15,13 @@
 
 <p align="center">
   📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="walkthrough.md">Walkthrough</a>
-</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-favicon.svg" 
+       alt="Vulcan Logo" 
+       width="32" height="32" 
+       style="vertical-align: middle; margin-left: 0.5rem;">
+</p></p>
 
 Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
 
