@@ -792,7 +792,10 @@ def main(
         "traefik+domain are all enabled"
     ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
-    gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
+    version: bool | None = typer.Option(
+        None, "--version/--no-version",
+        help="Show vulcan version and exit"
+    ),    gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     timezone: str | None = typer.Option(None, "--timezone"),
