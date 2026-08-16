@@ -3,6 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
+homepage = "https://github.com/Cyb3rRon1n/vulcan"
+repository = "https://github.com/Cyb3rRon1n/vulcan"
 name = "vulcan-forge"
 version = "0.1.0-alpha"
 description = "An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
