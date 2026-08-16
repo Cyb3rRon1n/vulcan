@@ -616,6 +616,18 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 
 ---
 
+
+## "Host validation failed"
+1. Ensure \`HOMEPAGE_ALLOWED_HOSTS\` is properly set in the generated configuration.
+2. Restart the Homepage container: \`sudo docker compose restart homepage\`
+3. Verify access at \`http://<your-ip>:3000\`.
+
+### "You are not using a secure context"
+1. This is a browser restriction for the Web Crypto API.
+2. Use \`http://127.0.0.1\` instead of \`http://localhost\` in your browser.
+2. Or configure Vaultwarden with \`GLOBAL_WEBCRYPTO=true\` env var.
+3. Or add a browser exception for the HTTPS warning.
+
 ## 📋 Resources & Further Reading
 
 - **Full Documentation**: https://cyb3rron1n.github.io/vulcan/
