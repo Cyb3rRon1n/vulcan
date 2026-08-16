@@ -36,6 +36,32 @@ If the answer is "yes," it likely aligns with the project's goals.
 
 * Report security issues via [SECURITY.md](SECURITY.md) — do not publicly disclose through GitHub Issues or Discussions
 
+
+
+### Local Development
+
+1. Install dependencies: `pip install -e ".[dev]"`
+2. Run tests: `pytest tests/ --deselect tests/test_cli.py::test_detect_shell_output_is_eval_able_key_value --deselect tests/test_cli.py::test_non_interactive_homepage_private_defaults_true_on_fresh_install --deselect tests/test_cli.py::test_interactive_full_run_with_prompts`
+3. Lint: `ruff check .`
+4. Install: `sudo ./install` (runs guided setup)
+5. For quick CLI tests: `python -m installer --help` or `python -m installer --version`
+
+### Pull Request Process
+
+1. Fork the repository and create a new branch from `main`
+2. Make your changes following the project's code style (deliberate vertical spacing, pyflakes-only linting)
+3. Add or update tests as appropriate - all 600 tests should pass when 3 env-state tests are deselected
+4. Commit with a clear description of the change
+5. Push to your fork and open a Pull Request against `main`
+6. Address any review feedback - maintainers may request changes before merging
+
+### Development Notes
+
+* The codebase uses `typer` for CLI, `rich` for console output
+* Linting is pyflakes-only (`select = ["F"]`) - real bugs, not style debates
+* Test environment state persistence between runs can cause 3 tests to fail in isolation - deselect them when running the full suite
+* Generated stack output (docker-compose.yml, .env, etc.) is gitignored - produced on the end user's machine
+
 ### Not a contribution
 
 * Opinionated feature requests that don't help Vulcan generate a more correct stack for the given hardware
