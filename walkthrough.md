@@ -646,11 +646,31 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 2. Restart the Homepage container: \`sudo docker compose restart homepage\`
 3. Verify access at \`http://<your-ip>:3000\`.
 
-### "You are not using a secure context"
-1. This is a browser restriction for the Web Crypto API.
-2. Use \`http://127.0.0.1\` instead of \`http://localhost\` in your browser.
-2. Or configure Vaultwarden with \`GLOBAL_WEBCRYPTO=true\` env var.
-3. Or add a browser exception for the HTTPS warning.
+### "You are not using a secure context" 🚨
+This is a browser Web Crypto API restriction - Chrome/Firefox refuse to use certain
+cryptographic functions over plain HTTP, even on localhost. This is not a Vulcan issue.
+
+**To fix it, try these methods in order:**
+
+1. **Use \`http://127.0.0.1\` instead of \`http://localhost\`** in your browser address bar.
+   The IP address bypasses the localhost security policy most browsers enforce.
+
+2. **Configure Vaultwarden with \`GLOBAL_WEBCRYPTO=true\`** if you must use \`http://localhost\`:
+   - Add \`GLOBAL_WEBCRYPTO=true\` to your \`stack/.env\` file
+   - Restart: \`sudo docker compose restart vaultwarden\`
+   - \*\*Note: This weakens the browser-side crypto enforcement, so we only recommend method 1.\*\*
+
+3. **Add a browser exception** (if you must use \`http://localhost\`):
+   - Click the lock icon 🔒 in the address bar → "Connection not secure" → "Site settings"
+   - Enable "Allow" for insecure content or JavaScript for the Vaultwarden URL
+   - Or go to \`Settings\` → \`Privacy & security\` → "Cookies and site data" → "Manage exceptions"
+   - Add \`http://localhost:8222\` → "Allow"
+
+**⚠️ Recommendation**: Method 1 (\`127.0.0.1\`) is the most secure and doesn't weaken Vaultwarden's encryption.
+The HTTPS enforcement is a browser security feature, not a vulnerability.
+
+**After fixing**: You can permanently set \`GLOBAL_WEBCRYPTO=true\` in \`stack/.env\` if needed, but method 1 should work without it.
+
 
 ## 📋 Resources & Further Reading
 
