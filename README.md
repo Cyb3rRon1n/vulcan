@@ -28,13 +28,13 @@ sudo ./install
 
 `sudo ./install` bootstraps a local virtual environment, then opens a persistent **Main Menu** — Guided Setup (whiptail-driven), plus Update/Pull/Backup/Restore/Uninstall for an already-generated stack. Every item is always listed; picking a task before a stack exists gives a real "no stack found" message. **Guided Setup** walks you through:
 
-1. Detects your system (CPU cores, RAM, disk, GPU)
-2. Gets Docker ready if it isn't already (may prompt for `sudo` password)
-3. Recommends a tier based on real hardware
+1. Detects your system
+2. Gets Docker ready if needed
+3. Recommends a tier
 4. Asks only what matters (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
 5. Generates a ready-to-run stack, with an option to start it
 
-Before starting, Vulcan checks that every needed port is free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once up, it prints the real URL for every service you enabled.
+Before starting, Vulcan checks that every needed port is free and refuses cleanly (naming the conflict) rather than letting Docker fail partway through. Once up, it prints the real URL for every service you enabled.
 
 Scripted use is also supported:
 
@@ -52,9 +52,9 @@ Each tier's actual services are shown before you pick — not just the name.
 
 | Tier | Target Hardware | Core Services |
 |------|-----------------|---------------|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | qBittorrent, Radarr, Sonarr, Prowlarr |
-| Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr |
-| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Uptime Kuma, Watchtower |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | qBittorrent, Radarr, Sonarr, Prowlarr |
+| Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + Jellyseerr, Bazarr, FlareSolverr |
+| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + Uptime Kuma, Watchtower |
 
 Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube/Downtify (downloaders), Netdata (monitoring), Vaultwarden (password manager). Heavy adds GPU transcoding (when a GPU is detected), plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, and Tailscale via custom mode.
 
@@ -114,15 +114,6 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 
 ---
 
-## Design Principles
-
-- **Deterministic, not AI-driven.** Tier recommendations from fixed rules over detected hardware — no LLM in the decision path.
-- **Observe, then act.** The installer shows what it detected and what it's about to generate before doing anything; nothing is silently overwritten.
-- **Re-run safe.** Running again against an existing stack should offer to upgrade/reconfigure, not clobber it.
-- **Secrets stay out of git.** Generated `.env` files are never committed; `.gitignore` excludes the whole `stack/` output directory.
-
----
-
 ## Currently Implemented Services (27 total, more coming)
 
 **Core `*arr` stack (present in every tier):** Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent
@@ -132,6 +123,35 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 **Heavy tier only (via custom mode):** Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale
 
 **More services planned:** Additional downloaders, automation tools, and dashboard options are actively being researched and will be added in future releases. The service list of 27 is already the most comprehensive in its class, but the project continues to evolve based on homelab community needs.
+
+**Current Container Stack** (default Light/Medium/Heavy core):
+
+The following 11 services containerize the default stack:
+
+- **Jellyfin** - media streaming server
+- **Radarr** - movie management
+- **Sonarr** - TV show management
+- **Prowlarr** - indexer manager
+- **qBittorrent** / **SABnzbd** - download client (one active)
+- **FlareSolverr** - CAPTCHA solver for *arr apps
+- **Jellyseerr** - request manager
+- **Bazarr** - subtitle manager
+- **Netdata** - system monitoring
+- **Vaultwarden** - password manager
+
+**Additional services (opt-in via custom mode):**
+
+- **Lidarr** - music management
+- **Readarr** - book management
+- **Traefik** - reverse proxy with routing
+- **Authelia** - login authentication
+- **CrowdSec** - intrusion protection
+- **Tailscale** - private remote access
+- **Homepage** / **Dashy** - dashboards
+- **MeTube** / **Downtify** - video/audio downloaders
+- **Decluttarr** / **Maintainerr** - queue/library cleanup
+
+*More services are actively being researched and added based on homelab community needs.*
 
 ---
 
