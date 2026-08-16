@@ -121,7 +121,7 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 
 ## Currently Implemented Services (27 total, more coming)
 
-**Core `*arr` stack (present in every tier):** Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent
+**Core media server stack (present in every tier): qBittorrent, Radarr, Sonarr, Prowlarr
 
 **Tier-agnostic optional:** Gluetun (VPN), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube (YouTube downloader), Downtify (Spotify downloader), Netdata (monitoring), Vaultwarden (password manager)
 
@@ -133,12 +133,12 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 
 The following 11 services containerize the default stack:
 
-- **Jellyfin** - media streaming server
+- **Media Server** - stream and manage your media library
 - **Radarr** - movie management
 - **Sonarr** - TV show management
 - **Prowlarr** - indexer manager
 - **qBittorrent** / **SABnzbd** - download client (one active)
-- **FlareSolverr** - CAPTCHA solver for *arr apps
+- **FlareSolverr** - CAPTCHA solver for media server apps
 - **Jellyseerr** - request manager
 - **Bazarr** - subtitle manager
 - **Netdata** - system monitoring

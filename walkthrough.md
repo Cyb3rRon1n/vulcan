@@ -14,7 +14,7 @@
 </h2>
 
 <p align="center" style="font-size: 1rem; color: #666; margin: 0.5rem 0;">
-  Self-Hosted Media Stack · Docker Compose · Jellyfin + *arr
+  Self-Hosted Media Stack · Docker Compose
 </p>
 
 <p align="center" style="font-size: 0.875rem; color: #999;">
@@ -115,7 +115,7 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 
 ## Currently Implemented Services (27 total, more coming)
 
-**Core `*arr` stack (present in every tier):** Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent
+**Core media server stack (present in every tier): qBittorrent, Radarr, Sonarr, Prowlarr
 
 **Tier-agnostic optional:** Gluetun (VPN), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube (YouTube downloader), Downtify (Spotify downloader), Netdata (monitoring), Vaultwarden (password manager)
 
@@ -127,12 +127,12 @@ Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →
 
 The following 11 services containerize the default stack:
 
-- **Jellyfin** - media streaming server
+- **Media Server** - stream and manage your media library
 - **Radarr** - movie management
 - **Sonarr** - TV show management
 - **Prowlarr** - indexer manager
 - **qBittorrent** / **SABnzbd** - download client (one active)
-- **FlareSolverr** - CAPTCHA solver for *arr apps
+- **FlareSolverr** - CAPTCHA solver for media server apps
 - **Jellyseerr** - request manager
 - **Bazarr** - subtitle manager
 - **Netdata** - system monitoring
@@ -253,7 +253,7 @@ After configuring Sonarr, immediately save the login to Vaultwarden:
 1. Visit `http://<your-ip>:8080`
 2. Set up a real username/password
 3. Go to "Settings" → "Download Clients" → add download client
-3. Configure each *arr app to use qBittorrent as download client
+3. Configure media server apps to use qBittorrent as download client
 
 **SABnzbd** - Usenet downloader, port 8081
 
@@ -285,12 +285,12 @@ After configuring Sonarr, immediately save the login to Vaultwarden:
 
 ### 4. **FlareSolverr**
 
-**FlareSolverr** - CAPTCHA solver for *arr apps, port 8191
+**FlareSolverr** - CAPTCHA solver for media server apps, port 8191
 
 **Setup**:
 1. Visit `http://<your-ip>:8191`
-2. No configuration needed - it just works as a solver for *arr apps
-3. Ensure *arr apps (Radarr, Sonarr, etc.) are using FlareSolverr
+2. No configuration needed - it just works as a solver for media server apps
+3. Ensure media server apps (Radarr, Sonarr, etc.) are using FlareSolverr
 
 ### 💾 Save Credential to Vaultwarden
 
@@ -312,9 +312,9 @@ After configuring FlareSolverr, immediately save the login to Vaultwarden:
 **Setup**:
 1. Visit `http://<your-ip>:5055`
 2. Complete initial setup (create account if prompted)
-3. Go to "Settings" → "Jellyfin"
-4. Enter Jellyfin URL: `http://<your-ip>:8096`
-5. Enter Jellyfin API key (found in Jellyfin → "Dashboard" → "API Tokens")
+3. Go to "Settings" → "Media Server"
+4. Enter media server URL: `http://<your-ip>:8096`
+5. Enter media server API key (found in Media Server → "Dashboard" → "API Tokens")
 6. Save
 
 ### 💾 Save Credential to Vaultwarden
@@ -409,7 +409,7 @@ After configuring Dashy, immediately save the login to Vaultwarden:
 1. Visit `http://<your-ip>:8081`
 2. Paste a YouTube playlist URL to start download
 3. Downloads land in `stack/media/youtube` on the host
-4. To see in Jellyfin: Add a library pointing at `/data/media/youtube`
+4. To see in media server: Add a library pointing at `/data/media/youtube`
 
 ### 💾 Save Credential to Vaultwarden
 
@@ -581,8 +581,8 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 - [ ] Radarr/Sonarr configured with Prowlarr
 - [ ] qBittorrent/SABnzbd login set up
 - [ ] Gluetun VPN confirmed connected
-- [ ] Jellyfin library created with media
-- [ ] Jellyseerr connected to Jellyfin/Radarr
+- [ ] Media server library created with media
+- [ ] Media server connected to media server/Radarr
 - [ ] Bazarr subtitles configured
 - [ ] Homepage/Dashy dashboard verified
 - [ ] Netdata monitoring confirmed
@@ -599,7 +599,7 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 
 ### 🛡️ Security Checklist
 - [ ] Vaultwarden `SIGNUPS_ALLOWED=false` set (after onboarding)
-- [ ] Jellyfin 2FA enabled
+- [ ] Media server 2FA enabled
 - [ ] All default passwords changed
 - [ ] No services exposed to public internet without VPN/Tailscale
 - [ ] Router not needed for internal access (Tailscale handles remote access)
@@ -625,11 +625,11 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 3. Check that qBittorrent shows "Connected" in its status
 4. Restart Gluetun: `sudo docker restart gluetun`
 
-### "Can't access Jellyfin"
-1. Check `docker ps` - is Jellyfin container running?
+### "Can't access media server"
+1. Check `docker ps` - is media server container running?
 2. Visit `http://<your-ip>:8096` directly
-3. Check Jellyfin logs: `docker compose logs jellyfin`
-4. Ensure 2FA isn't blocking access (enable in Jellyfin settings)
+3. Check media server logs: `docker compose logs jellyfin`
+4. Ensure 2FA isn't blocking access (enable in media server settings)
 
 ### "Subtitles not found (Bazarr)"
 1. Verify Radarr/Sonarr have content in their libraries
