@@ -248,6 +248,59 @@ After configuring Sonarr, immediately save the login to Vaultwarden:
 
 **Why**: Prevents credential loss, makes Vaultwarden immediately useful.
 
+### VPN Setup (Gluetun) - **Do This Before qBittorrent**
+
+Gluetun is enabled by default. Until it has real VPN credentials and actually
+connects, its firewall stays in kill-switch mode and blocks **all** traffic through
+it - including qBittorrent's own web UI, which will show "connection refused," not
+just a slow load. Verified live: qBittorrent's page was completely unreachable with
+the generated `stack/.env`'s placeholder credentials, and started working immediately
+after real ones were set and Gluetun was restarted.
+
+**The file to edit is `stack/.env` on the server** (not your own laptop) - **and it's
+owned by root, so you need `sudo` to edit it**:
+```bash
+sudo nano stack/.env
+```
+
+**If you don't have a VPN provider account yet**:
+1. Sign up with a WireGuard-compatible provider - ProtonVPN, Mullvad, and most others
+   Gluetun supports work (full list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers)
+2. Generate a WireGuard configuration from your provider's account dashboard. For
+   ProtonVPN: `account.proton.me/u/0/vpn/WireGuard` → **Create WireGuard
+   configuration** → platform **Router** or **Linux** → **Create**
+3. The generated config has an `[Interface]` block with a `PrivateKey = ...` line -
+   that's the value you need below. **Most providers only show this once**, at
+   generation time - save the downloaded `.conf` file somewhere safe in case you need
+   it again later.
+
+**If you already have a VPN account**: Vulcan currently only has WireGuard wired up
+end to end (the generated `.env`/compose files only reference
+`WIREGUARD_PRIVATE_KEY`, no OpenVPN username/password fields exist yet). If your
+provider only gave you OpenVPN credentials (a username + password, not a WireGuard
+config), generate a WireGuard configuration from your provider's dashboard instead -
+most Gluetun-supported providers, including ProtonVPN, offer both.
+
+**Edit `stack/.env`** (with `sudo`) and set:
+```
+VPN_SERVICE_PROVIDER=<your provider, lowercase - e.g. protonvpn>
+VPN_TYPE=wireguard
+WIREGUARD_PRIVATE_KEY=<your real key, no quotes>
+```
+The generated defaults (`changeme`) will never connect - don't skip this step
+expecting qBittorrent to work in the meantime.
+
+**Apply it and confirm it worked**:
+```bash
+cd stack
+sudo docker compose up -d gluetun qbittorrent
+docker compose logs gluetun --tail 30
+```
+Look for a line like `[ip getter] Public IP address is <ip> (<location>...)`. If
+that IP is different from your server's real WAN IP, the tunnel is genuinely up -
+not just "no error in the log." Then visit qBittorrent at `http://<your-ip>:8080`;
+it should load the login page immediately.
+
 ### 3. **qBittorrent** / **SABnzbd**
 
 **qBittorrent** - download client, port 8080 (always - Gluetun doesn't change the port, it just proxies the same port through its own VPN network namespace)
