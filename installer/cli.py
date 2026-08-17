@@ -54,6 +54,7 @@ from installer.post_install import (
     stack_containers_exist,
     uninstall_stack,
     update_stack,
+    verify_stack_running,
 )
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.panel import progress_panel
@@ -218,6 +219,46 @@ def detect_shell():
     # to be piped/eval-ed, not read as formatted terminal output.
     for key, value in fields.items():
         print(f"{key}={_shell_quote(str(value))}")
+
+
+@app.command(name="urls")
+def urls_shell():
+    """
+    Print real per-service access URLs for the currently-generated
+    stack, plain text (one per line) - not eval-able KEY=VALUE like
+    `detect`, since installer/menu.sh only needs to display these in a
+    whiptail msgbox, not read them into shell variables. Reuses
+    render_stack_summary() against a GenerationConfig rebuilt from the
+    same saved state `detect`'s PREVIOUS_* fields already read, so the
+    URL list is never a second, drifting implementation of what the
+    live console output already prints during a real install.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        return
+
+    config = GenerationConfig(
+        tier=TIERS[previous["tier"]],
+        media_path=previous["media_path"],
+        puid=previous["puid"],
+        pgid=previous["pgid"],
+        timezone=previous["timezone"],
+        enabled_optional=set(previous["enabled_optional"]),
+        gpu_vendor=previous.get("gpu_vendor"),
+        custom_services=(
+            set(previous["custom_services"]) if previous.get("custom_services") is not None else None
+        ),
+        domain=previous.get("domain"),
+        cloudflare_dns=previous.get("cloudflare_dns", False),
+        cloudflare_email=previous.get("cloudflare_email"),
+        port_overrides=previous.get("port_overrides", {}),
+        homepage_private=previous.get("homepage_private", True),
+        dashy_private=previous.get("dashy_private", True),
+    )
+
+    print(render_stack_summary(config, detect_host_ip()))
 
 
 @storage_app.command(name="report")
@@ -2024,6 +2065,27 @@ def _generate_and_maybe_start(
 
             if on_phase is not None:
                 on_phase("Start stack")
+
+            # `up -d` only waits for containers to start, not for the
+            # process inside to actually stay up - a real check here
+            # catches a crash-loop `up -d` alone would silently report
+            # as success.
+            verification = verify_stack_running(result["compose_path"])
+
+            if not verification["all_running"]:
+
+                console.print("[red]Stack started but isn't actually running:[/red]")
+
+                if verification["error"]:
+                    console.print(f"[red]{verification['error']}[/red]")
+
+                for entry in verification["not_running"]:
+                    console.print(
+                        f"[red]  {entry['service']}: {entry['state']} ({entry['status']})[/red]"
+                    )
+
+                console.print("[red]Check `docker compose logs` for the failing service(s).[/red]")
+                raise typer.Exit(code=1)
 
             console.print("[green]Stack is up:[/green]")
 
