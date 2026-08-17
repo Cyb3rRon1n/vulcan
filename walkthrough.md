@@ -173,10 +173,21 @@ The following 11 services containerize the default stack:
 
 **Recommended**: Install Bitwarden browser extension after creating Vaultwarden account.
 
+**Install links** (official Bitwarden store listings):
+- **Chrome**: https://chromewebstore.google.com/detail/bitwarden-free-password-m/nngceckbapebfimnlniiiahkandclblb
+- **Brave**: same listing as Chrome (Brave installs Chrome Web Store extensions directly) - https://chrome.google.com/webstore/detail/bitwarden-free-password-m/nngceckbapebfimnlniiiahkandclblb
+- **Firefox**: https://addons.mozilla.org/en-US/firefox/addon/bitwarden-password-manager/
+- **Edge**: https://microsoftedge.microsoft.com/addons/detail/jbkfoedolllekgbhcbcoahefnbanhhlh
+- **Opera**: https://addons.opera.com/extensions/details/bitwarden-free-password-manager/
+- **Vivaldi**: same listing as Chrome, works the same way
+- **Safari**: no standalone extension listing - install the Bitwarden desktop app (Mac App Store, or `bitwarden.com/download`), which bundles the Safari extension and lets you enable it from Safari's own Extensions settings
+
+All confirmed current via `bitwarden.com/download`'s own outbound links, not a general web search - if any of these move, that page is the authoritative source to re-check.
+
 **How**:
-1. Go to `bitwarden.com/download` in your browser
-2. Install the official Bitwarden extension
-3. Point it at `http://<your-ip>:8222`
+1. Install the extension for your browser from the links above
+2. Point it at `http://<your-ip>:8222` as the self-hosted server URL (Settings → gear icon → Self-hosted → Server URL, before logging in)
+3. Log in with the account you just created
 4. It will immediately start auto-saving credentials
 
 **Why this pattern works**: Users see immediate value - they're saving credentials *as* they configure services, not "later."
