@@ -28,6 +28,7 @@ All three originally-planned phases are complete; everything below shipped after
 - [x] **`vulcan uninstall` orphaned-container cleanup** — also tears down containers left running when `stack/` was deleted some other way, not just via `vulcan uninstall` itself; found via a real user bug report, reproduced, fixed
 - [x] **`detect_gpu()` real functional check** — fixed to run a real per-vendor query instead of just checking tool presence; this exact dev machine had been reporting a false `"amd"` for this project's entire history until this fix, found while building the sibling Anvil project
 - [x] **Keyboard-accessible TUI guidance** — `DescendantFocus`-based tooltips reach keyboard-only users, not just mouse-hover; five previously-untooltipped fields also got real tooltip text along the way
+- [x] **`detect_cpu()` ARM64 `cpu_model` fallback** — `/proc/cpuinfo` has no `"model name"` line on ARM64, the x86 convention this function originally only knew about; falls back to the real `CPU implementer`/`CPU part` hex codes ARM64 does expose (e.g. `"0x41"`/`"0xd08"` for a Cortex-A72) instead of reporting `None`/"unknown". Still genuinely unverified against real ARM hardware — same limitation as the rest of aarch64 support below, closes the display-gap specifically, not the broader verification item.
 
 ## Next
 
@@ -38,7 +39,6 @@ The following are genuine open items, not shipped:
 - [ ] **`whiptail` interactive testing** — no `Pilot`-equivalent automation harness exists, and the dev sandbox has no `whiptail`/shellcheck/`bats` installed nor passwordless `sudo`/general internet access to install them. Full interactive `whiptail` dialog rendering and navigation in an actual terminal is unverified.
 - [ ] **Real GUIX/GuixSD support** — not currently in scope; only x86_64/Fedora, Ubuntu/Debian/Raspbian, and Arch are tested/verified.
 - [ ] **Tailscale plugin download for Traefik** — the Traefik plugin catalog itself returned `error: 500` in this dev environment against two plugin versions and the official `plugindemo` example. Strong evidence this is a Traefik-plugin-catalog-side issue, not a CrowdSec or Vulcan-specific misconfiguration, but genuinely unconfirmed whether it's environment-specific or a live upstream problem.
-- [ ] **`detect_cpu()` `cpu_model` display gap on ARM** — `cpu_model` parsing looks for a `"model name"` line in `/proc/cpuinfo`, the x86 convention. Real ARM64 Linux typically exposes `CPU implementer`/`CPU part` fields instead, so `cpu_model` will likely come back `None` ("unknown" in the CLI's own summary) on real ARM hardware. Not a crash, since the function already treats a missing field as "not present" by design, but a real display gap worth knowing about going in.
 
 ## How to read this file
 
