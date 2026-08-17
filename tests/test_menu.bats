@@ -70,10 +70,46 @@ setup() {
     [[ "$output" == *"not set"* ]]
 }
 
+@test "quick guided-setup select-all enables every optional service without showing the checklist" {
+
+    whiptail() {
+        case "$*" in
+            *"Select All"*) return 0 ;;
+            *"Optional Services"*"checklist"*) echo "CHECKLIST_SHOWN" >&2; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_TIER=''
+        PREVIOUS_ENABLED_OPTIONAL=''
+        TIER='medium'
+        GPU_VENDOR=''
+        TOGGLE_FLAGS=()
+        _guided_setup_quick_toggles
+        echo \"\${TOGGLE_FLAGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"CHECKLIST_SHOWN"* ]]
+    [[ "$output" == *"--vpn"* ]]
+    [[ "$output" == *"--sabnzbd"* ]]
+    [[ "$output" == *"--recyclarr"* ]]
+    [[ "$output" == *"--homepage"* ]]
+    [[ "$output" == *"--metube"* ]]
+    [[ "$output" == *"--downtify"* ]]
+    [[ "$output" == *"--netdata"* ]]
+    [[ "$output" == *"--vaultwarden"* ]]
+    [[ "$output" == *"--dashy"* ]]
+}
+
 @test "quick guided-setup toggles map checked services to their real CLI flags" {
 
     whiptail() {
         case "$*" in
+            *"Select All"*) return 1 ;;
             *"Optional Services"*) echo -n '"gluetun" "homepage" "netdata"' >&3; return 0 ;;
             *) return 0 ;;
         esac
@@ -107,6 +143,7 @@ setup() {
 
     whiptail() {
         case "$*" in
+            *"Select All"*) return 1 ;;
             *"Optional Services"*) echo -n '' >&3; return 0 ;;
             *"GPU Passthrough"*) echo "GPU_PROMPT_SHOWN" >&2; return 0 ;;
             *) return 0 ;;
