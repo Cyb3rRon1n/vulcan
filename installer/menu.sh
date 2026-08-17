@@ -50,6 +50,28 @@ disabledentry=gray,cyan
 compactbutton=black,cyan
 '
 
+# --- Structured logging (Security Onion pattern) --------------------
+#
+# Every setup step is logged to $SETUP_LOG with timestamps and levels.
+# In interactive mode the log is silent; on failure it's shown to the user.
+
+SETUP_LOG="${SETUP_LOG:-/tmp/vulcan-setup.log}"
+
+log() {
+    local msg="$1" level="${2:-INFO}"
+    local now
+    now=$(date +"%Y-%m-%dT%H:%M:%S%z")
+    echo "$now | $level | $msg" >> "$SETUP_LOG" 2>&1
+}
+
+log_info()  { log "$1" "INFO"; }
+log_error() { log "$1" "ERROR"; }
+
+# Writes a section header to the log (visible in the log file, not on screen).
+log_title() {
+    echo -e "\n-----------------------------\n $1\n-----------------------------\n" >> "$SETUP_LOG" 2>&1
+}
+
 # --- Small helpers ---------------------------------------------------
 
 # Reads real detected state into the current shell as plain vars
@@ -324,12 +346,27 @@ uninstall_flow() {
 # old TUI screens gathered.
 guided_setup() {
 
+    # --- Welcome screen (Security Onion pattern) ---
+    if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
+        "Welcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" 20 76; then
+        return 0
+    fi
+    log_title "Starting Guided Setup"
+    log_info "User entered guided setup"
+
+    log_title "Phase 1: System Detection"
     refresh_detect
+    log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"
+    log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
+    log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
     if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
+        log_info "Docker not fully ready, showing warning"
         whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
             "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." 12 76
     fi
+
+    log_title "Phase 2: Configuration"
 
     local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
 
@@ -404,6 +441,38 @@ guided_setup() {
         START_FLAG="--start"
     fi
 
+    local services_summary
+    if [ "$customize" = true ]; then
+        services_summary="${SERVICES_FLAG[1]:-none selected}"
+    else
+        services_summary="$TIER tier defaults"
+        [ "${#TOGGLE_FLAGS[@]}" -gt 0 ] && services_summary+=" (${TOGGLE_FLAGS[*]})"
+    fi
+
+    # --- Phase 3: Review & Execute ---
+    log_title "Phase 3: Review & Execute"
+    log_info "Selected tier: $TIER"
+    log_info "Media path: $MEDIA_PATH"
+    log_info "PUID=$PUID PGID=$PGID TZ=$TIMEZONE"
+    log_info "Services: $services_summary"
+    log_info "Start: $START_FLAG"
+
+    # Show a full settings summary before executing (Security Onion pattern).
+    local summary=""
+    summary+="Tier:        $TIER\n"
+    summary+="Media Path:  $MEDIA_PATH\n"
+    summary+="PUID/PGID:   $PUID / $PGID\n"
+    summary+="Timezone:    $TIMEZONE\n"
+    summary+="Services:    $services_summary\n"
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && summary+="Domain/Auth: configured\n"
+    summary+="Auto-start:  $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")\n"
+    summary+="\nPress TAB to select yes or no."
+
+    if ! whiptail --backtitle "$BACKTITLE" --title "Review Settings" \
+        --yesno "$summary" 20 76 --scrolltext; then
+        return 0
+    fi
+
     confirm_and_run "Guided Setup" \
         "About to generate a $TIER stack at $MEDIA_PATH (PUID=$PUID PGID=$PGID TZ=$TIMEZONE). Continue?" \
         "$VULCAN_BIN" --non-interactive --yes \
@@ -411,6 +480,32 @@ guided_setup() {
             --puid "$PUID" --pgid "$PGID" --timezone "$TIMEZONE" \
             "${SERVICES_FLAG[@]}" "${TOGGLE_FLAGS[@]}" "${DOMAIN_FLAGS[@]}" \
             "$START_FLAG"
+    local rc=$?
+
+    if [ "$rc" -eq 0 ]; then
+        log_info "Guided setup completed successfully"
+
+        # --- Setup Complete (Security Onion pattern) ---
+        if [ "$START_FLAG" = "--start" ]; then
+
+            local urls
+            urls=$("$VULCAN_BIN" urls 2>/dev/null)
+
+            local complete_msg="Vulcan setup is complete!\n\nYour stack is running."
+            [ -n "$urls" ] && complete_msg+="\n\nService URLs:\n$urls"
+            complete_msg+="\n\nTo manage your stack:\n  docker compose -f stack/docker-compose.yml ps\n  docker compose -f stack/docker-compose.yml down"
+
+            whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
+                --msgbox "$complete_msg" 24 76 --scrolltext
+        else
+            whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
+                "Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 76
+        fi
+    else
+        log_error "Guided setup failed (exit $rc)"
+    fi
+
+    return "$rc"
 }
 
 # Quick path: tier's own default services, plus the same individual
@@ -621,5 +716,23 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         exit 1
     fi
 
-    main_menu
+    # Preserve old log on each run (Security Onion pattern).
+    [ -f "$SETUP_LOG" ] && mv "$SETUP_LOG" "$SETUP_LOG.$(date +%Y%m%d%H%M%S)" 2>/dev/null
+
+    # Trap unhandled errors - show the failed screen before exiting.
+    trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 76 2>/dev/null; exit 1' ERR
+
+    # First run (no stack yet) skips the Main Menu entirely and drops
+    # straight into Guided Setup, matching Security Onion's so-setup -
+    # a single linear wizard, not a menu to pick from. The Main Menu
+    # only appears once a stack exists, for the real day-2 operations
+    # (start/stop/status/update/backup) so-setup's own one-shot model
+    # never needed.
+    refresh_detect
+
+    if [ "$STACK_EXISTS" = "true" ]; then
+        main_menu
+    else
+        guided_setup
+    fi
 fi

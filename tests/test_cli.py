@@ -98,6 +98,36 @@ def test_detect_shell_output_is_eval_able_key_value(tmp_path):
     assert fields["STACK_EXISTS"] == "false"
 
 
+def test_urls_shell_prints_real_service_urls_from_saved_state(tmp_path):
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=PREVIOUS_STATE
+    ), patch(
+        "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ):
+
+        result = runner.invoke(app, ["urls"])
+
+    assert result.exit_code == 0, result.output
+    assert "http://192.168.1.50" in result.output
+
+
+def test_urls_shell_prints_nothing_with_no_previous_state(tmp_path):
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=None
+    ):
+
+        result = runner.invoke(app, ["urls"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == ""
+
+
 def test_detect_shell_output_no_previous_state_leaves_previous_fields_blank(tmp_path):
 
     info = make_system_info()
@@ -648,6 +678,9 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
     ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ) as mock_run_docker:
 
@@ -690,6 +723,9 @@ def test_start_success_prints_service_url_summary(tmp_path):
         return_value={"available": True, "conflicts": []}
     ), patch(
         "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
@@ -814,6 +850,9 @@ def test_interactive_start_remaps_conflicting_port_and_retries(tmp_path):
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
 
@@ -870,6 +909,9 @@ def test_interactive_start_own_orphan_conflict_cleans_up_and_retries(tmp_path):
     ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
 
@@ -926,6 +968,9 @@ def test_interactive_start_own_orphan_multiple_ports_confirms_once(tmp_path):
     ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
 
