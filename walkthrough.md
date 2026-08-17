@@ -399,6 +399,26 @@ After configuring Jellyseerr, immediately save the login to Vaultwarden:
 
 **Why**: Prevents credential loss, makes Vaultwarden immediately useful.
 
+### Adding more users (family/friends) - no separate Jellyseerr account needed
+
+Jellyseerr doesn't need its own user-creation step. Confirmed against Jellyseerr's own
+docs: **anyone with a real Jellyfin account can log into Jellyseerr directly with those
+same credentials** - Jellyseerr checks the login against Jellyfin's own auth, and the
+Jellyseerr account is created automatically on that first login (no admin "import" step
+required first, though there's an **Import Jellyfin Users** button on Jellyseerr's User
+List page if you'd rather pre-populate the list).
+
+**So the whole flow for a new person is just**:
+1. Create their account once, in Jellyfin - Jellyfin's own Dashboard → Users → **New
+   User**
+2. Give them Jellyfin's URL (`http://<your-ip>:8096`) and Jellyseerr's URL
+   (`http://<your-ip>:5055`) - the same username/password work at both
+3. Done - no second account to create anywhere
+
+If you ever want to stop new Jellyfin logins from auto-creating a Jellyseerr account
+(e.g. a user you don't want requesting content), Jellyseerr → Settings → Users → uncheck
+**Enable New Jellyfin Sign-In**.
+
 ### 6. **Bazarr**
 
 **Bazarr** - subtitle manager, port 6767
@@ -563,6 +583,23 @@ After configuring Vaultwarden itself, save the master password to... Vaultwarden
 6. **Notes**: "Vaultwarden - password manager, port 8222. **MASTER PASSWORD - MUST REMEMBER**"
 
 **Why**: The master password is the one credential you cannot reset or recover. Store it securely.
+
+### Adding more users (family/friends) - only you need the tunnel
+
+The SSH-tunnel/secure-context dance in Troubleshooting only matters for reaching the
+*web vault page* - and that's only needed once per person, to create their account.
+For everyone else you add:
+
+1. **You** (the admin) create their account - either by leaving `SIGNUPS_ALLOWED=true`
+   temporarily and having them register themselves through your tunnel, or by inviting
+   them directly from the web vault (Organizations → Invite User, if you've set one up).
+2. Once their account exists, **they never need the tunnel at all** - just send them the
+   Bitwarden extension links from the Browser Extension step above and your server's URL
+   (`http://<your-ip>:8222`). They install the extension, log in with the credentials you
+   gave them, and it works immediately over plain HTTP - the extension isn't gated by the
+   secure-context check the web vault page is.
+3. Set `SIGNUPS_ALLOWED=false` in `stack/.env` once everyone who needs an account has
+   one (already on your Post-Install Checklist, below).
 
 ### 10. **Tailscale**
 
