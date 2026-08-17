@@ -127,7 +127,14 @@ confirm_and_run() {
         echo "Failed (exit $status) - see output above."
     fi
 
-    read -rp "Press Enter to return to the menu..." _dummy
+    # Guided Setup's own success path flows straight into the Setup
+    # Complete screen (see guided_setup) rather than pausing here first -
+    # every other menu action still waits for a real keypress before the
+    # screen clears.
+    if [ "$status" -ne 0 ] || [ -z "${SKIP_RETURN_PROMPT:-}" ]; then
+        read -rp "Press Enter to return to the menu..." _dummy
+    fi
+
     return "$status"
 }
 
@@ -473,7 +480,7 @@ guided_setup() {
         return 0
     fi
 
-    confirm_and_run "Guided Setup" \
+    SKIP_RETURN_PROMPT=true confirm_and_run "Guided Setup" \
         "About to generate a $TIER stack at $MEDIA_PATH (PUID=$PUID PGID=$PGID TZ=$TIMEZONE). Continue?" \
         "$VULCAN_BIN" --non-interactive --yes \
             --tier "$TIER" --media-path "$MEDIA_PATH" \
@@ -495,8 +502,18 @@ guided_setup() {
             [ -n "$urls" ] && complete_msg+="\n\nService URLs:\n$urls"
             complete_msg+="\n\nTo manage your stack:\n  docker compose -f stack/docker-compose.yml ps\n  docker compose -f stack/docker-compose.yml down"
 
+            local landing_note="Not sure where to start? "
+            if echo "$urls" | grep -q "Homepage"; then
+                landing_note+="Open Homepage above - it links out to everything you enabled."
+            elif echo "$urls" | grep -q "Dashy"; then
+                landing_note+="Open Dashy above - it links out to everything you enabled."
+            else
+                landing_note+="Jump straight to a service above, or the full walkthrough for setup order and details."
+            fi
+            complete_msg+="\n\n${landing_note}\nFull walkthrough: https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrough.md"
+
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
-                --msgbox "$complete_msg" 24 76 --scrolltext
+                --msgbox "$complete_msg" 26 76 --scrolltext
         else
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
                 "Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 76
@@ -526,26 +543,36 @@ _guided_setup_quick_toggles() {
         fi
     }
 
-    CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Optional Services" \
-        --checklist "Choose optional services to enable:" 20 78 9 \
-        "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun on)" \
-        "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
-        "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
-        "homepage"    "Homepage dashboard"                     "$(_default_on homepage on)" \
-        "metube"      "MeTube - YouTube downloader"             "$(_default_on metube off)" \
-        "downtify"    "Downtify - Spotify downloader"           "$(_default_on downtify off)" \
-        "netdata"     "Netdata - system monitoring"             "$(_default_on netdata off)" \
-        "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
-        "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
-        3>&1 1>&2 2>&3) || CHOSEN=""
+    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy)
 
-    # whiptail's own --checklist output is a properly double-quoted,
-    # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
-    # the standard, safe idiom for turning that into a real bash array,
-    # since the quoting is whiptail's own, not unsanitized user input.
-    # Static analysis can't trace an eval'd assignment, hence the disables below:
-    # shellcheck disable=SC2034,SC2154
-    eval "SELECTED=($CHOSEN)"
+    if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
+        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy)\n\nChoose No to pick individually instead." \
+        12 76 --defaultno; then
+
+        SELECTED=("${all_optional_keys[@]}")
+    else
+
+        CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Optional Services" \
+            --checklist "Choose optional services to enable:" 20 78 9 \
+            "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun on)" \
+            "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
+            "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
+            "homepage"    "Homepage dashboard"                     "$(_default_on homepage on)" \
+            "metube"      "MeTube - YouTube downloader"             "$(_default_on metube off)" \
+            "downtify"    "Downtify - Spotify downloader"           "$(_default_on downtify off)" \
+            "netdata"     "Netdata - system monitoring"             "$(_default_on netdata off)" \
+            "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
+            "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
+            3>&1 1>&2 2>&3) || CHOSEN=""
+
+        # whiptail's own --checklist output is a properly double-quoted,
+        # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
+        # the standard, safe idiom for turning that into a real bash array,
+        # since the quoting is whiptail's own, not unsanitized user input.
+        # Static analysis can't trace an eval'd assignment, hence the disables below:
+        # shellcheck disable=SC2034,SC2154
+        eval "SELECTED=($CHOSEN)"
+    fi
 
     _has() {
         local needle="$1" item
