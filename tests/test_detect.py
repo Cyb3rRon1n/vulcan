@@ -65,6 +65,17 @@ FAKE_CPUINFO = (
     "cpu MHz\t\t: 3600.000\n"
 )
 
+FAKE_CPUINFO_ARM64 = (
+    "processor\t: 0\n"
+    "BogoMIPS\t: 108.00\n"
+    "Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid\n"
+    "CPU implementer\t: 0x41\n"
+    "CPU architecture: 8\n"
+    "CPU variant\t: 0x0\n"
+    "CPU part\t: 0xd08\n"
+    "CPU revision\t: 3\n"
+)
+
 FAKE_OS_RELEASE = (
     'NAME="Fedora Linux"\n'
     'VERSION="44 (Workstation Edition)"\n'
@@ -100,6 +111,21 @@ def test_detect_cpu_handles_missing_proc_cpuinfo():
         "cpu_cores_physical": 4,
         "cpu_cores_logical": 8,
         "cpu_model": None
+    }
+
+
+def test_detect_cpu_falls_back_to_implementer_part_on_arm64():
+
+    with patch(
+        "installer.detect.psutil.cpu_count", side_effect=[4, 4]
+    ), patch("builtins.open", mock_open(read_data=FAKE_CPUINFO_ARM64)):
+
+        result = detect_cpu()
+
+    assert result == {
+        "cpu_cores_physical": 4,
+        "cpu_cores_logical": 4,
+        "cpu_model": "ARM CPU (implementer 0x41, part 0xd08)"
     }
 
 
