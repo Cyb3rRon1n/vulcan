@@ -52,6 +52,8 @@ class SystemInfo:
 def detect_cpu() -> dict:
 
     cpu_model = None
+    cpu_implementer = None
+    cpu_part = None
 
     try:
 
@@ -63,6 +65,20 @@ def detect_cpu() -> dict:
 
                     cpu_model = line.split(":", 1)[1].strip()
                     break
+
+                elif line.startswith("CPU implementer"):
+                    cpu_implementer = line.split(":", 1)[1].strip()
+
+                elif line.startswith("CPU part"):
+                    cpu_part = line.split(":", 1)[1].strip()
+
+        # ARM64 /proc/cpuinfo has no "model name" line at all - the x86
+        # convention this function originally only knew about. It does
+        # carry CPU implementer/part hex codes (e.g. "0x41"/"0xd08" for
+        # a Cortex-A72), which aren't a friendly name but are real and
+        # better than reporting "unknown" on every ARM host.
+        if cpu_model is None and cpu_implementer and cpu_part:
+            cpu_model = f"ARM CPU (implementer {cpu_implementer}, part {cpu_part})"
 
     except OSError:
         cpu_model = None
