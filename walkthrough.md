@@ -165,6 +165,8 @@ The following 11 services containerize the default stack:
 
 **Why**: Every credential created below has nowhere to go immediately. Vaultwarden is the "landing pad" for all passwords.
 
+**⚠️ If your server has no GUI/browser of its own** (e.g. headless Ubuntu Server, and you're browsing from a separate laptop/desktop): visiting `http://<your-ip>:8222` directly from that other device will show a browser error insisting the page must be HTTPS. This is a real browser restriction (the Web Crypto API the web vault needs refuses to run over plain HTTP from a *remote* address) - see "You are not using a secure context" in Troubleshooting, below, for the actual fix (an SSH tunnel to reach it as `127.0.0.1`, not the browser-exception workarounds).
+
 **Action**: Open now, create account, then continue walkthrough.
 
 ### 2. Browser Extension - **Add After Vaultwarden Account**
@@ -248,13 +250,15 @@ After configuring Sonarr, immediately save the login to Vaultwarden:
 
 ### 3. **qBittorrent** / **SABnzbd**
 
-**qBittorrent** - download client, port 8080 (or `8081` if using Gluetun)
+**qBittorrent** - download client, port 8080 (always - Gluetun doesn't change the port, it just proxies the same port through its own VPN network namespace)
 
 **Setup**:
 1. Visit `http://<your-ip>:8080`
 2. Set up a real username/password
 3. Go to "Settings" → "Download Clients" → add download client
 3. Configure media server apps to use qBittorrent as download client
+
+**If the page won't load at all (connection refused) and Gluetun is enabled**: this is almost always Gluetun's VPN kill switch, not a Vulcan bug. Gluetun blocks *all* traffic through it - including qBittorrent's own web UI - until the VPN actually connects. Check `stack/.env` for real `VPN_SERVICE_PROVIDER`/`WIREGUARD_PRIVATE_KEY` values (the defaults are literally `changeme`), then `docker compose logs gluetun` to confirm the tunnel is up before assuming anything else is wrong.
 
 **SABnzbd** - Usenet downloader, port 8081
 
@@ -620,11 +624,20 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 2. Check that Bazarr can reach Radarr/Sonarr URLs
 3. Ensure Radarr/Sonarr are running and have content
 
-### "VPN not connected (Gluetun)"
-1. Check `docker compose logs gluetun`
-2. Verify VPN provider credentials are correct
-3. Check that qBittorrent shows "Connected" in its status
-4. Restart Gluetun: `sudo docker restart gluetun`
+### "VPN not connected (Gluetun)" / "qBittorrent's web UI won't load at all"
+These are usually the same problem: Gluetun's firewall is a kill switch - it blocks
+*all* traffic through it, including qBittorrent's own web UI port, until the VPN
+actually connects. A "connection refused" trying to reach qBittorrent's page (not a
+slow load, not a login screen - nothing responds) points here first, before assuming
+anything else is broken.
+1. Check `stack/.env` for real `VPN_SERVICE_PROVIDER`/`WIREGUARD_PRIVATE_KEY` values -
+   the generated defaults are literally `changeme`, and Gluetun will never connect
+   with them
+2. Check `docker compose logs gluetun` for the actual connection error
+3. Verify VPN provider credentials are correct
+4. Once connected, qBittorrent's web UI should load; confirm it also shows "Connected"
+   in its own status, not just that the page loads
+5. Restart Gluetun after fixing credentials: `sudo docker restart gluetun`
 
 ### "Can't access media server"
 1. Check `docker ps` - is media server container running?
@@ -647,27 +660,48 @@ After configuring Maintainerr, immediately save the login to Vaultwarden:
 3. Verify access at \`http://<your-ip>:3000\`.
 
 ### "You are not using a secure context" 🚨
-This is a browser Web Crypto API restriction - Chrome/Firefox refuse to use certain
-cryptographic functions over plain HTTP, even on localhost. This is not a Vulcan issue.
+This is a browser restriction, not a Vulcan bug: the Web Crypto API the Vaultwarden web
+vault needs to encrypt/decrypt your data client-side refuses to run outside a "secure
+context" - HTTPS, or the literal addresses `localhost`/`127.0.0.1`. A LAN IP like
+`http://192.168.1.50:8222` is neither, so the browser blocks it outright.
 
-**To fix it, try these methods in order:**
+**If you're sitting at the server itself** (a real GUI/browser on the same machine): use
+`http://127.0.0.1:8222` instead of the LAN IP - `127.0.0.1` and `localhost` are always
+treated as secure contexts, so the page loads normally.
 
-1. **Use \`http://127.0.0.1\` instead of \`http://localhost\`** in your browser address bar.
-   The IP address bypasses the localhost security policy most browsers enforce.
+**If your server is headless** (no GUI - e.g. Ubuntu Server) and you're browsing from a
+different device: `127.0.0.1` typed into *that* browser points at your own laptop, not
+the server, so it won't help by itself. Two real options:
 
-2. **Configure Vaultwarden with \`GLOBAL_WEBCRYPTO=true\`** if you must use \`http://localhost\`:
-   - Add \`GLOBAL_WEBCRYPTO=true\` to your \`stack/.env\` file
-   - Restart: \`sudo docker compose restart vaultwarden\`
-   - \*\*Note: This weakens the browser-side crypto enforcement, so we only recommend method 1.\*\*
+1. **SSH local port forward** (fastest, no config changes) - run this from your own
+   client device, not the server:
+   ```bash
+   ssh -L 8222:127.0.0.1:8222 <user>@<server-ip>
+   ```
+   Keep that SSH session open, then visit `http://127.0.0.1:8222` in your browser - the
+   connection tunnels to the server, but your browser sees a genuine `127.0.0.1` origin,
+   satisfying the secure-context check. (This is `-L`, a *local* forward - `-R`, remote
+   forward, sends traffic the opposite direction and won't work for this.) Only needed
+   for web-vault visits (initial signup, and any later trip back to the full web UI);
+   close the tunnel when you're done.
 
-3. **Add a browser exception** (if you must use \`http://localhost\`):
-   - Click the lock icon 🔒 in the address bar → "Connection not secure" → "Site settings"
-   - Enable "Allow" for insecure content or JavaScript for the Vaultwarden URL
-   - Or go to \`Settings\` → \`Privacy & security\` → "Cookies and site data" → "Manage exceptions"
-   - Add \`http://localhost:8222\` → "Allow"
+2. **Real HTTPS via Traefik** (the properly-supported fix, if you enabled Traefik + a
+   domain during setup) - Vaultwarden gets a real `https://vaultwarden.<domain>` URL
+   through Traefik's own TLS termination, a genuine secure context from any device on
+   your LAN, no tunnel needed. Not available without regenerating the stack with those
+   options if you didn't set them up initially.
 
-**⚠️ Recommendation**: Method 1 (\`127.0.0.1\`) is the most secure and doesn't weaken Vaultwarden's encryption.
-The HTTPS enforcement is a browser security feature, not a vulnerability.
+**Day-to-day use after the account exists**: you generally don't need the tunnel again.
+Install the Bitwarden browser extension, point its "self-hosted server URL" setting at
+`http://<your-ip>:8222` (the plain LAN IP is fine here), and log in - the extension talks
+to Vaultwarden's API directly rather than loading the web-vault page in a tab, and isn't
+gated by the same secure-context check. The tunnel (or Traefik) is only needed for the
+actual web UI - initial signup, and anything else that needs the full web vault (e.g. the
+`/admin` page).
+
+**Not real**: there is no `GLOBAL_WEBCRYPTO` (or similar) Vaultwarden setting that relaxes
+this check - confirmed against Vaultwarden's own `.env.template` and source, it doesn't
+exist. The options above are the only real fixes.
 
 **After fixing**: You can permanently set \`GLOBAL_WEBCRYPTO=true\` in \`stack/.env\` if needed, but method 1 should work without it.
 
