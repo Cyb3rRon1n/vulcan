@@ -731,6 +731,10 @@ the server, so it won't help by itself. Two real options:
    ```bash
    ssh -L 8222:127.0.0.1:8222 <user>@<server-ip>
    ```
+   Or, copy `scripts/vault-tunnel.sh` from this repo to your own device and run
+   `./vault-tunnel.sh <user>@<server-ip>` - same command, without needing to remember
+   the flag syntax each time.
+
    Keep that SSH session open, then visit `http://127.0.0.1:8222` in your browser - the
    connection tunnels to the server, but your browser sees a genuine `127.0.0.1` origin,
    satisfying the secure-context check. (This is `-L`, a *local* forward - `-R`, remote
