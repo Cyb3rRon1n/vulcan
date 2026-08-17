@@ -47,6 +47,8 @@ Some tests may fail on fresh install due to persistent stack directory state bet
 - `test_interactive_full_run_with_prompts`
 
 Run with: `pytest tests/ --deselect tests/test_cli.py::test_detect_shell_output_is_eval_able_key_value --deselect tests/test_cli.py::test_non_interactive_homepage_private_defaults_true_on_fresh_install --deselect tests/test_cli.py::test_interactive_full_run_with_prompts`
+
+Separately, `test_media_path_prompted_when_not_passed` fails on a clean checkout too, but isn't environment-state - it's a fixed-count `input="...\n\n\n..."` string that looks stale against the current interactive prompt sequence (likely drifted when a later feature, e.g. Tailscale/Cloudflare DNS-01, added a prompt). Not yet root-caused or fixed.
 ## Quick Start
 
 ```bash
