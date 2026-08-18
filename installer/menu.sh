@@ -66,11 +66,20 @@ compactbutton=cyan,black
 # actlistbox/etc. for other widgets) - so no matter what button/actbutton
 # above are set to, Tab/arrow-key focus between Yes and No was never
 # visible. --fullbuttons renders real boxed buttons that DO use
-# button/actbutton, restoring a visible focus indicator. Shadowing the
-# `whiptail` binary here applies it to every call in this script.
-whiptail() {
-    command whiptail --fullbuttons "$@"
-}
+# button/actbutton, restoring a visible focus indicator.
+#
+# Only define this if nothing already has - tests/test_menu.bats
+# exports its own `whiptail` mock function (real dialogs can't run
+# without a terminal) to intercept every call in this script; an
+# unconditional definition here would silently override that mock
+# with the real binary instead, and every test relying on the mock's
+# recorded output would break. Confirmed live: it did, until this
+# guard was added.
+if ! declare -F whiptail >/dev/null; then
+    whiptail() {
+        command whiptail --fullbuttons "$@"
+    }
+fi
 
 # --- Structured logging (Security Onion pattern) --------------------
 #
