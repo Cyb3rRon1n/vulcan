@@ -11,4 +11,4 @@ def test_version():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.1.0-alpha" in result.output
+    assert "0.1.0" in result.output

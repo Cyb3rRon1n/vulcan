@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 homepage = "https://github.com/Cyb3rRon1n/vulcan"
 repository = "https://github.com/Cyb3rRon1n/vulcan"
 name = "vulcan-forge"
-version = "0.1.0-alpha"
+version = "0.1.0"
 description = "An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,7 +27,7 @@ keywords = [
 ]
 
 classifiers = [
-"Development Status :: 2 - Pre-Alpha",
+"Development Status :: 4 - Beta",
 "Intended Audience :: End Users/Desktop",
 "License :: OSI Approved :: MIT License",
 "Programming Language :: Python :: 3",

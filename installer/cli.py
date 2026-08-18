@@ -26,7 +26,6 @@ from installer.docker_setup import (
     ensure_compose_v2,
     install_docker,
     install_plan_for,
-    prune_docker_artifacts,
     run_docker_command,
     start_docker_service,
 )
