@@ -310,8 +310,6 @@ def test_non_interactive_mode_never_launches_menu_with_or_without_plain(tmp_path
         return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ), patch(
-        "installer.cli.prune_docker_artifacts", return_value={"success": True, "error": None}
     ):
 
         result = runner.invoke(

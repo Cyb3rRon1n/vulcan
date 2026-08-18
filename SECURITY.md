@@ -4,7 +4,7 @@ Vulcan inspects your hardware, installs and operates Docker (including privilege
 
 ## Supported Versions
 
-Vulcan is early, single-maintainer, pre-1.0 software (currently `0.1.0-alpha`). There is no release-branch or LTS structure yet.
+Vulcan is early, single-maintainer, pre-1.0 software (currently `0.1.0`). There is no release-branch or LTS structure yet.
 
 | Version | Supported |
 | ------- | --------: |
