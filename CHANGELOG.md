@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
+
+## v0.2.0 - 2026-08-18
 ### Added
 - `vulcan uninstall --prune-docker` — runs `docker system prune -a` after stack
   teardown (opt-in; affects the whole Docker host, not just vulcan's containers)
@@ -15,12 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   alongside the existing direct port-forward path (28 services total, up from 27)
 
 ### Changed
-- Development status bumped Pre-Alpha → Beta; version `0.1.0-alpha` → `0.1.0`
+- Development status bumped Pre-Alpha → Beta
 - Repo cleanup: removed a stale session-scratch file, trimmed CLAUDE.md's
   Project Status to real architecture facts, fixed malformed README markup
+- README simplified (185 → 132 lines): dropped the test-count badge and the
+  whole "Known Issues" section (redundant with CONTRIBUTING.md, one claim
+  was stale), removed a fully-duplicate services listing, added a Main Menu
+  screenshot
+- About tagline no longer names Jellyfin/*arr specifically (pyproject.toml,
+  mkdocs.yml, GitHub's About field, docs/index.md) — "self-hosted media
+  homelab" instead, functional docs left untouched since those need the
+  real service names
 
 ### Fixed
 - CI: removed an unused import that had been failing `ruff check .` on every run
+- `menu.sh`'s NEWT_COLORS: unfocused buttons/checkboxes/list rows used the
+  same color as the dialog background (invisible), fixed for every
+  interactive whiptail element
+- Gluetun's walkthrough section had no real VPN provider setup steps; added
+  ProtonVPN/NordVPN/Mullvad/Surfshark (sourced from gluetun-wiki), plus a
+  new optional `WIREGUARD_ADDRESSES` var some providers need
+- Restored per-browser Bitwarden extension install links, lost when the
+  root `walkthrough.md` was deleted during the docs-site split
+- Cloudflare DNS record + API token setup steps were entirely missing from
+  the walkthrough despite the CLI flags being documented; added real steps
+- README's CI badge rendered a different size than License/Python (mismatched
+  shields.io style param); main-menu.svg mockup was missing a real menu item
 
 ## v0.1.0
 ### Added
