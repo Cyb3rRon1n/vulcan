@@ -4,9 +4,6 @@
   <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/Cyb3rRon1n/vulcan/ci.yml?label=CI&style=for-the-badge" alt="CI">
   </a>
-  <span style="font-size: 0.75rem; color: #666; vertical-align: middle;">
-    600 passing (3 env-state tests excluded on fresh stack)
-  </span>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
 </p>
@@ -29,19 +26,6 @@
 
 ---
 
-
-
-## Known Issues
-
-Some tests may fail on fresh install due to persistent stack directory state between test runs. This is not a code bug - all 600 tests pass when 3 environment-state tests are deselected:
-
-- `test_detect_shell_output_is_eval_able_key_value`
-- `test_non_interactive_homepage_private_defaults_true_on_fresh_install`
-- `test_interactive_full_run_with_prompts`
-
-Run with: `pytest tests/ --deselect tests/test_cli.py::test_detect_shell_output_is_eval_able_key_value --deselect tests/test_cli.py::test_non_interactive_homepage_private_defaults_true_on_fresh_install --deselect tests/test_cli.py::test_interactive_full_run_with_prompts`
-
-Separately, `test_media_path_prompted_when_not_passed` fails on a clean checkout too, but isn't environment-state - it's a fixed-count `input="...\n\n\n..."` string that looks stale against the current interactive prompt sequence (likely drifted when a later feature, e.g. Tailscale/Cloudflare DNS-01, added a prompt). Not yet root-caused or fixed.
 ## Quick Start
 
 ```bash
@@ -67,6 +51,11 @@ sudo ./install --tier medium --media-path /mnt/media --non-interactive --yes --s
 ```
 
 `--non-interactive` requires `--yes` and an explicit `--tier`/`--media-path`. `--start` is opt-in on every path: generating a stack never launches it without being asked or told. Use `--plain` for the plain-prompt flow (no whiptail). Use `--offline` to skip the Docker install attempt when there's no connection (CLI-only; a real gap tracked in ROADMAP.md).
+
+<p align="center">
+  <img src="docs/images/screenshots/main-menu.svg" alt="Vulcan Main Menu example" style="max-width: 100%; width: 700px;"><br>
+  <sub>The persistent Main Menu (representative mockup, real <code>whiptail</code> theme) — <a href="https://cyb3rron1n.github.io/vulcan/">more in the docs →</a></sub>
+</p>
 
 ---
 
@@ -135,47 +124,6 @@ Commands reachable from the Main Menu (not CLI-only):
 Airgap/offline: `--offline` skips the Docker install attempt; `vulcan export`/`import` move a stack's images to a machine never online at all.
 
 Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →](https://cyb3rron1n.github.io/vulcan/maintenance/) (or [docs/maintenance.md](docs/maintenance.md)).
-
----
-
-## Currently Implemented Services (27 total, more coming)
-
-**Core media server stack** (present in every tier): qBittorrent, Radarr, Sonarr, Prowlarr
-
-**Tier-agnostic optional:** Gluetun (VPN), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube (YouTube downloader), Downtify (Spotify downloader), Netdata (monitoring), Vaultwarden (password manager)
-
-**Heavy tier only (via custom mode):** Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale
-
-**More services planned:** Additional downloaders, automation tools, and dashboard options are actively being researched and will be added in future releases. The service list of 27 is already the most comprehensive in its class, but the project continues to evolve based on homelab community needs.
-
-**Current Container Stack** (default Light/Medium/Heavy core):
-
-The following 11 services containerize the default stack:
-
-- **Media Server** - stream and manage your media library
-- **Radarr** - movie management
-- **Sonarr** - TV show management
-- **Prowlarr** - indexer manager
-- **qBittorrent** / **SABnzbd** - download client (one active)
-- **FlareSolverr** - CAPTCHA solver for media server apps
-- **Jellyseerr** - request manager
-- **Bazarr** - subtitle manager
-- **Netdata** - system monitoring
-- **Vaultwarden** - password manager
-
-**Additional services (opt-in via custom mode):**
-
-- **Lidarr** - music management
-- **Readarr** - book management
-- **Traefik** - reverse proxy with routing
-- **Authelia** - login authentication
-- **CrowdSec** - intrusion protection
-- **Tailscale** - private remote access
-- **Homepage** / **Dashy** - dashboards
-- **MeTube** / **Downtify** - video/audio downloaders
-- **Decluttarr** / **Maintainerr** - queue/library cleanup
-
-*More services are actively being researched and added based on homelab community needs.*
 
 ---
 
