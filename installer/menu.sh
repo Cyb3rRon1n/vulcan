@@ -766,9 +766,33 @@ _guided_setup_customize_services() {
 # project's Python CLI/TUI code already follows.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
-    if ! command -v whiptail >/dev/null 2>&1; then
-        echo "whiptail is required but not installed. Install it (e.g. 'sudo apt install whiptail' or 'sudo dnf install newt') and try again." >&2
-        exit 1
+    # type -P, not command -v: this script defines its own `whiptail`
+    # shell function a few dozen lines up (the --fullbuttons wrapper),
+    # and `command -v` reports functions as a match too - it would
+    # always "find" whiptail here even with the real binary missing.
+    # -P forces a real PATH search, ignoring functions/aliases/builtins.
+    if ! type -P whiptail >/dev/null 2>&1; then
+
+        echo "whiptail not found - installing it (needed for this menu)..."
+        SUDO=""
+        [ "$EUID" -ne 0 ] && SUDO="sudo"
+
+        if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq && $SUDO apt-get install -y whiptail
+        elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y newt
+        elif command -v pacman >/dev/null 2>&1; then
+            $SUDO pacman -Sy --noconfirm libnewt
+        elif command -v zypper >/dev/null 2>&1; then
+            $SUDO zypper install -y newt
+        elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache newt
+        fi
+
+        if ! type -P whiptail >/dev/null 2>&1; then
+            echo "whiptail is required but could not be auto-installed. Install it manually (Debian/Ubuntu: whiptail, Fedora/RHEL: newt, Arch: libnewt, openSUSE: newt) and try again." >&2
+            exit 1
+        fi
     fi
 
     # Preserve old log on each run (Security Onion pattern).
