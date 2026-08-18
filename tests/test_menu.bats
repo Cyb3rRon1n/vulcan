@@ -70,10 +70,46 @@ setup() {
     [[ "$output" == *"not set"* ]]
 }
 
+@test "quick guided-setup select-all enables every optional service without showing the checklist" {
+
+    whiptail() {
+        case "$*" in
+            *"Select All"*) return 0 ;;
+            *"Optional Services"*"checklist"*) echo "CHECKLIST_SHOWN" >&2; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_TIER=''
+        PREVIOUS_ENABLED_OPTIONAL=''
+        TIER='medium'
+        GPU_VENDOR=''
+        TOGGLE_FLAGS=()
+        _guided_setup_quick_toggles
+        echo \"\${TOGGLE_FLAGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"CHECKLIST_SHOWN"* ]]
+    [[ "$output" == *"--vpn"* ]]
+    [[ "$output" == *"--sabnzbd"* ]]
+    [[ "$output" == *"--recyclarr"* ]]
+    [[ "$output" == *"--homepage"* ]]
+    [[ "$output" == *"--metube"* ]]
+    [[ "$output" == *"--downtify"* ]]
+    [[ "$output" == *"--netdata"* ]]
+    [[ "$output" == *"--vaultwarden"* ]]
+    [[ "$output" == *"--dashy"* ]]
+}
+
 @test "quick guided-setup toggles map checked services to their real CLI flags" {
 
     whiptail() {
         case "$*" in
+            *"Select All"*) return 1 ;;
             *"Optional Services"*) echo -n '"gluetun" "homepage" "netdata"' >&3; return 0 ;;
             *) return 0 ;;
         esac
@@ -107,6 +143,7 @@ setup() {
 
     whiptail() {
         case "$*" in
+            *"Select All"*) return 1 ;;
             *"Optional Services"*) echo -n '' >&3; return 0 ;;
             *"GPU Passthrough"*) echo "GPU_PROMPT_SHOWN" >&2; return 0 ;;
             *) return 0 ;;
@@ -240,6 +277,51 @@ setup() {
 @test "menu.sh is valid bash syntax" {
     run bash -n "$MENU_SH"
     [ "$status" -eq 0 ]
+}
+
+@test "entry point runs Guided Setup directly, no Main Menu, when no stack exists" {
+
+    fake_vulcan() {
+        case "$*" in
+            detect) echo "STACK_EXISTS='false'" ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        echo "WHIPTAIL_CALL:$*" >&2
+        # Decline immediately - just need to see which flow got entered.
+        return 1
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan '$MENU_SH'"
+
+    [[ "$output" == *"WHIPTAIL_CALL:"*"Welcome"* ]]
+    [[ "$output" != *"WHIPTAIL_CALL:"*"Choose an action"* ]]
+}
+
+@test "entry point runs Main Menu, not Guided Setup, when a stack already exists" {
+
+    fake_vulcan() {
+        case "$*" in
+            detect) echo "STACK_EXISTS='true'" ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        echo "WHIPTAIL_CALL:$*" >&2
+        return 1
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan '$MENU_SH'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"WHIPTAIL_CALL:"*"Welcome"* ]]
 }
 
 @test "storage setup shells out to 'vulcan storage apply' for the chosen blank devices" {
