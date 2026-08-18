@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - `vulcan uninstall --prune-docker` — runs `docker system prune -a` after stack
   teardown (opt-in; affects the whole Docker host, not just vulcan's containers)
+- Cloudflare Tunnel (`cloudflared` custom-mode service, requires `traefik`) —
+  reach the stack from the internet with no forwarded ports at all; points at
+  Traefik as its single upstream via a new internal-only entrypoint, additive
+  alongside the existing direct port-forward path (28 services total, up from 27)
 
 ### Changed
 - Development status bumped Pre-Alpha → Beta; version `0.1.0-alpha` → `0.1.0`

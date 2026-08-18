@@ -373,6 +373,7 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         dashy_private=config.dashy_private,
         cloudflare_dns=config.cloudflare_dns,
         cloudflare_email=config.cloudflare_email,
+        tunnel_entrypoints=",tunnel" if "cloudflared" in enabled else "",
         ports=resolve_ports(config)
     )
 
@@ -388,7 +389,8 @@ def render_env(
     cloudflare_acme_email: str = "changeme@example.com",
     vaultwarden_admin_token: str | None = None,
     vaultwarden_signups_allowed: str = "true",
-    crowdsec_bouncer_key: str | None = None
+    crowdsec_bouncer_key: str | None = None,
+    tunnel_token: str = "changeme"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -432,7 +434,9 @@ def render_env(
         # bouncer - no manual `cscli bouncers add` step needed), not a
         # credential for an external service, so Vulcan can generate a
         # real value instead of a "changeme" placeholder.
-        crowdsec_bouncer_key=crowdsec_bouncer_key or secrets.token_hex(32)
+        crowdsec_bouncer_key=crowdsec_bouncer_key or secrets.token_hex(32),
+        cloudflared_enabled="cloudflared" in enabled,
+        tunnel_token=tunnel_token
     )
 
 
@@ -914,7 +918,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         ),
         crowdsec_bouncer_key=(
             _preserved_vpn_value(output_dir, "CROWDSEC_BOUNCER_KEY", "") or None
-        )
+        ),
+        tunnel_token=_preserved_vpn_value(output_dir, "TUNNEL_TOKEN", "changeme")
     )
 
     compose_path.write_text(render_compose(config, host_ip))
@@ -1028,6 +1033,22 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "Let's Encrypt certificates - see the TODO comments there. Until then, "
             "Traefik will fail to obtain a certificate and fall back to its self-signed "
             "default."
+        )
+
+    if "cloudflared" in enabled_service_keys(config) and "traefik" not in enabled_service_keys(config):
+
+        warnings.append(
+            "Cloudflare Tunnel is enabled but Traefik isn't - the tunnel has nothing to "
+            "route to without it. Enable Traefik too."
+        )
+
+    elif "cloudflared" in enabled_service_keys(config):
+
+        warnings.append(
+            "Cloudflare Tunnel requires a real Tunnel token in stack/.env (TUNNEL_TOKEN) - "
+            "create one at the Zero Trust dashboard's Networks > Tunnels > Create a tunnel > "
+            "Docker tab, then add a Public Hostname there pointing at this host's internal "
+            "tunnel entrypoint (http://traefik:8081). See the walkthrough for the full steps."
         )
 
     if "traefik" in enabled_service_keys(config) and config.domain and "authelia" not in enabled_service_keys(config):

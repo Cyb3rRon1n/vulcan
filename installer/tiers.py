@@ -104,6 +104,15 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     # those two (see the compose template's own comments on each).
     ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True),
     ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True),
+    # Custom-mode only, requires Traefik (see write_stack()'s own warning) -
+    # points at Traefik as its single upstream rather than routing each
+    # service itself, so it inherits every existing router/TLS/middleware
+    # decision instead of duplicating it. Removes the need to forward
+    # ports 80/443 from the router at all; --cloudflare-dns's real
+    # certificates and this are independent (the tunnel's own internal
+    # entrypoint to Traefik is plain HTTP - Cloudflare's edge already
+    # terminated public TLS by the time traffic reaches it).
+    ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
 ]

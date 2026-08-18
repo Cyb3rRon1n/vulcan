@@ -16,7 +16,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.{{ domain }}`)"
-      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.jellyfin.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.jellyfin.tls.certresolver=cloudflare"
@@ -74,7 +74,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.radarr.rule=Host(`radarr.{{ domain }}`)"
-      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.radarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.radarr.tls.certresolver=cloudflare"
@@ -108,7 +108,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sonarr.rule=Host(`sonarr.{{ domain }}`)"
-      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.sonarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.sonarr.tls.certresolver=cloudflare"
@@ -141,7 +141,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.{{ domain }}`)"
-      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.prowlarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.prowlarr.tls.certresolver=cloudflare"
@@ -180,7 +180,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.{{ domain }}`)"
-      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.qbittorrent.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.qbittorrent.tls.certresolver=cloudflare"
@@ -215,7 +215,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{ domain }}`)"
-      - "traefik.http.routers.sabnzbd.entrypoints=websecure"
+      - "traefik.http.routers.sabnzbd.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.sabnzbd.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.sabnzbd.tls.certresolver=cloudflare"
@@ -247,7 +247,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.metube.rule=Host(`metube.{{ domain }}`)"
-      - "traefik.http.routers.metube.entrypoints=websecure"
+      - "traefik.http.routers.metube.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.metube.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.metube.tls.certresolver=cloudflare"
@@ -277,7 +277,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.downtify.rule=Host(`downtify.{{ domain }}`)"
-      - "traefik.http.routers.downtify.entrypoints=websecure"
+      - "traefik.http.routers.downtify.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.downtify.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.downtify.tls.certresolver=cloudflare"
@@ -311,14 +311,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.{{ domain }}`)"
-      - "traefik.http.routers.vaultwarden.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.vaultwarden.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.vaultwarden.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
       - "traefik.http.routers.vaultwarden-ws.rule=Host(`vaultwarden.{{ domain }}`) && Path(`/notifications/hub`)"
-      - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure"
+      - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.vaultwarden-ws.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.vaultwarden-ws.tls.certresolver=cloudflare"
@@ -395,7 +395,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.maintainerr.rule=Host(`maintainerr.{{ domain }}`)"
-      - "traefik.http.routers.maintainerr.entrypoints=websecure"
+      - "traefik.http.routers.maintainerr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.maintainerr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.maintainerr.tls.certresolver=cloudflare"
@@ -426,7 +426,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{ domain }}`)"
-      - "traefik.http.routers.jellyseerr.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.jellyseerr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.jellyseerr.tls.certresolver=cloudflare"
@@ -460,7 +460,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bazarr.rule=Host(`bazarr.{{ domain }}`)"
-      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.bazarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.bazarr.tls.certresolver=cloudflare"
@@ -536,7 +536,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lidarr.rule=Host(`lidarr.{{ domain }}`)"
-      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.lidarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.lidarr.tls.certresolver=cloudflare"
@@ -570,7 +570,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.readarr.rule=Host(`readarr.{{ domain }}`)"
-      - "traefik.http.routers.readarr.entrypoints=websecure"
+      - "traefik.http.routers.readarr.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.readarr.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.readarr.tls.certresolver=cloudflare"
@@ -598,6 +598,9 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--api=true"
       - "--api.dashboard=true"
+{% if 'cloudflared' in enabled %}
+      - "--entrypoints.tunnel.address=:8081"
+{% endif %}
 {% if domain %}
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
@@ -622,7 +625,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.{{ domain }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
-      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.dashboard.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
@@ -647,6 +650,22 @@ services:
           cpus: "{{ limits.traefik.cpus }}"
           memory: "{{ limits.traefik.memory }}"
     restart: unless-stopped
+{% endif %}
+{% if 'cloudflared' in enabled %}
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.cloudflared.cpus }}"
+          memory: "{{ limits.cloudflared.memory }}"
+    restart: unless-stopped
+{% if 'traefik' in enabled %}
+    depends_on:
+      - traefik
+{% endif %}
 {% endif %}
 {% if 'crowdsec' in enabled %}
   crowdsec:
@@ -699,7 +718,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.authelia.rule=Host(`authelia.{{ domain }}`)"
-      - "traefik.http.routers.authelia.entrypoints=websecure"
+      - "traefik.http.routers.authelia.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.authelia.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.authelia.tls.certresolver=cloudflare"
@@ -785,7 +804,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.homepage.rule=Host(`homepage.{{ domain }}`)"
-      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.homepage.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
@@ -814,7 +833,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashy.rule=Host(`dashy.{{ domain }}`)"
-      - "traefik.http.routers.dashy.entrypoints=websecure"
+      - "traefik.http.routers.dashy.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.dashy.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.dashy.tls.certresolver=cloudflare"
@@ -843,7 +862,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.uptime-kuma.rule=Host(`uptime-kuma.{{ domain }}`)"
-      - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
+      - "traefik.http.routers.uptime-kuma.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.uptime-kuma.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.uptime-kuma.tls.certresolver=cloudflare"

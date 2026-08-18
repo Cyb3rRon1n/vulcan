@@ -22,6 +22,19 @@ If your domain's DNS is managed by Cloudflare, add `--cloudflare-dns` (with `--c
 
 You'll need a scoped Cloudflare API token (`Zone:DNS:Edit` on your domain's zone) filled into `stack/.env` (`CF_DNS_API_TOKEN`) before this actually issues anything — Vulcan reminds you after generating, the same "never invent a secret, always tell you what's needed" pattern every other credential in this project follows. For the actual token-creation and DNS-record steps (Vulcan doesn't create either for you), see [the walkthrough's "Reaching everything remotely" section](walkthrough.md#reaching-everything-remotely).
 
+## No forwarded ports at all (Cloudflare Tunnel)
+
+Add `cloudflared` alongside `traefik` in a custom selection to reach your stack from the internet without forwarding ports 80/443 from your router at all — an outbound-only connection from your host to Cloudflare's edge, instead of the router accepting inbound connections. It points at Traefik as its single upstream, so every existing router/TLS/middleware decision (Authelia, CrowdSec, per-service routing) keeps working unchanged; nothing is duplicated or bypassed.
+
+```bash
+./install --plain --tier heavy --services jellyfin,radarr,sonarr,traefik,cloudflared --domain media.example.com --non-interactive --yes --media-path /mnt/media
+```
+
+Needs a real Tunnel token (`TUNNEL_TOKEN` in `stack/.env`) from the Zero Trust dashboard's Networks → Tunnels → Create a tunnel → Docker tab, and a Public Hostname added there pointing at `http://traefik:8081` (an internal, plain-HTTP-only entrypoint Vulcan adds to Traefik just for this — Cloudflare's edge already terminated public TLS by the time traffic reaches it, so there's nothing to gain from also encrypting the internal hop). Unlike the direct port-forward path above, DNS is dashboard-managed: adding a Public Hostname creates its own DNS record, no manual A record needed. Additive, not a replacement — Traefik's `80`/`443` host ports stay published for LAN access either way. Full steps: [the walkthrough's "Reaching everything remotely" section](walkthrough.md#reaching-everything-remotely).
+
+!!! warning "Not yet run against a real tunnel"
+    This is a real, tested compose/env change (`stack/docker-compose.yml` generation, `.env` credential handling), but has never been verified end-to-end against a live Cloudflare account and domain — the same real-infrastructure-verification gap the [Roadmap](roadmap.md) tracks project-wide. If something doesn't match what's documented here, that's the likely reason.
+
 ## Private remote access (Tailscale)
 
 Add `tailscale` to your custom selection for access to every host-published port in your stack from anywhere, with zero public exposure and no port-forwarding — a real alternative to Traefik+domain routing when you'd rather not expose anything to the public internet at all, or a complement to it for services you'd rather keep private. Needs a real auth key (`TS_AUTHKEY` in `stack/.env`, generated at [login.tailscale.com/admin/settings/keys](https://login.tailscale.com/admin/settings/keys)) before it connects. Runs with host networking, so once it's authenticated, every service's existing host-published port (Jellyfin at `:8096`, Radarr at `:7878`, etc.) is reachable from any device on your tailnet at this host's Tailscale address — no per-service setup needed.

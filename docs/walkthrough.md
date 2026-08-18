@@ -258,9 +258,32 @@ native-app login of its own, so Authelia protects all of those cleanly.
      Either way, ports 80/443 still need to reach this host from your
      router (port forward, or your ISP already routes them) - Cloudflare's
      proxy hides *who* traffic came from publicly, it doesn't tunnel
-     traffic in without a real path to the host (that would need a
-     Cloudflare Tunnel, a separate `cloudflared` setup Vulcan doesn't
-     generate).
+     traffic in without a real path to the host. That's what Cloudflare
+     Tunnel (below) is for.
+- **Cloudflare Tunnel** (`cloudflared`, alongside `traefik`), if enabled, skips
+  port-forwarding entirely - an outbound-only connection to Cloudflare's edge,
+  no inbound port needed on your router at all.
+
+  1. **Create the tunnel.** Zero Trust dashboard → Networks → Tunnels →
+     Create a tunnel → name it → Docker environment → copy the token from
+     the run command shown (just the token, not the whole command) into
+     `stack/.env`'s `TUNNEL_TOKEN`.
+  2. **Add a Public Hostname**, same screen: subdomain + your domain →
+     Service type `HTTP` → URL `traefik:8081` (Vulcan's internal
+     tunnel-only entrypoint - plain HTTP is correct here, Cloudflare's edge
+     already terminated public TLS by the time traffic reaches it). One
+     wildcard hostname (`*.yourdomain.com`) covers every routed service at
+     once; per-subdomain hostnames work too if you'd rather be explicit.
+  3. **No DNS record step needed** - unlike the direct port-forward path
+     above, adding a Public Hostname creates its own DNS record
+     automatically.
+  4. Restart the stack (`sudo vulcan update`) once `TUNNEL_TOKEN` is filled
+     in, then `docker compose -f stack/docker-compose.yml logs cloudflared`
+     to confirm it connected.
+
+  Traefik's `80`/`443` ports stay published either way - this adds a
+  second, port-forward-free path to the same Traefik, it doesn't replace
+  the direct one.
 
 Both can be enabled together - Tailscale for your own admin access
 (Homepage, Traefik's dashboard, anything you'd rather keep off the public

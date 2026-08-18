@@ -75,7 +75,7 @@ All tiers share the same directory layout and volume naming, so re-running later
 
 ### Custom mode
 
-Pick exactly which services to include, from all 27 known services regardless of tier, pre-checked based on your hardware:
+Pick exactly which services to include, from all 28 known services regardless of tier, pre-checked based on your hardware:
 
 ```bash
 sudo ./install --plain --tier medium --services qbittorrent,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
@@ -87,7 +87,7 @@ Resource limits scale using whichever tier you choose — picking Homepage along
 
 ## Optional Integrations
 
-Beyond the core stack, custom mode (`--services` list) unlocks: Traefik (domain-based `<service>.<domain>` routing, self-signed HTTPS by default), Cloudflare DNS (real Let's Encrypt certs), Tailscale (private remote access, no public exposure), Authelia (login wall for routed services), CrowdSec (blocks malicious IPs at the edge), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
+Beyond the core stack, custom mode (`--services` list) unlocks: Traefik (domain-based `<service>.<domain>` routing, self-signed HTTPS by default), Cloudflare DNS (real Let's Encrypt certs) and Cloudflare Tunnel (no forwarded ports at all), Tailscale (private remote access, no public exposure), Authelia (login wall for routed services), CrowdSec (blocks malicious IPs at the edge), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
 
 Full detail, gotchas, and copy-pasteable commands for each: [Optional Integrations →](https://cyb3rron1n.github.io/vulcan/integrations/) (or [docs/integrations.md](docs/integrations.md)).
 

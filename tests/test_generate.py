@@ -676,6 +676,33 @@ def test_render_compose_omits_tailscale_when_disabled():
     assert "container_name: tailscale" not in output
 
 
+def test_render_compose_cloudflared_points_at_traefik():
+
+    output = render_compose(make_config(
+        "heavy", enabled_optional={"traefik", "cloudflared", "crowdsec"}, domain="media.example.com"
+    ))
+
+    cloudflared_block = _service_block(output, "cloudflared", "crowdsec")
+
+    assert "cloudflare/cloudflared:latest" in cloudflared_block
+    assert "tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}" in cloudflared_block
+    assert "depends_on" in cloudflared_block
+    assert "- traefik" in cloudflared_block
+    assert "ports:" not in cloudflared_block
+
+    assert "--entrypoints.tunnel.address=:8081" in output
+    assert "traefik.http.routers.jellyfin.entrypoints=websecure,tunnel" in output
+
+
+def test_render_compose_omits_tunnel_entrypoint_when_cloudflared_disabled():
+
+    output = render_compose(make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com"))
+
+    assert "container_name: cloudflared" not in output
+    assert "entrypoints.tunnel" not in output
+    assert "traefik.http.routers.jellyfin.entrypoints=websecure\"" in output
+
+
 def test_render_compose_metube_and_downtify_mount_into_media_library():
 
     output = render_compose(make_config("light", enabled_optional={"metube", "downtify"}))
@@ -1398,6 +1425,57 @@ def test_write_stack_no_tailscale_warning_when_disabled(tmp_path):
     result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("TS_AUTHKEY" in warning for warning in result["warnings"])
+
+
+def test_write_stack_warns_cloudflared_without_traefik(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"cloudflared"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "Cloudflare Tunnel is enabled but Traefik isn't" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_warns_cloudflared_needs_real_token(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "cloudflared"}
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("TUNNEL_TOKEN" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_cloudflared_warning_when_disabled(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set()
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("Cloudflare Tunnel" in warning for warning in result["warnings"])
 
 
 def test_write_stack_warns_when_netdata_enabled(tmp_path):
@@ -2398,6 +2476,30 @@ def test_render_env_accepts_preserved_vpn_values():
     assert "VPN_SERVICE_PROVIDER=mullvad" in output
     assert "WIREGUARD_PRIVATE_KEY=real-secret-key-value" in output
     assert "changeme" not in output
+
+
+def test_render_env_cloudflared_token_default_placeholder():
+
+    output = render_env(make_config("heavy", {"traefik", "cloudflared"}))
+
+    assert "TUNNEL_TOKEN=changeme" in output
+
+
+def test_render_env_omits_tunnel_token_when_cloudflared_disabled():
+
+    output = render_env(make_config("heavy", {"traefik"}))
+
+    assert "TUNNEL_TOKEN" not in output
+
+
+def test_render_env_accepts_preserved_tunnel_token():
+
+    output = render_env(
+        make_config("heavy", {"traefik", "cloudflared"}),
+        tunnel_token="a-real-tunnel-token"
+    )
+
+    assert "TUNNEL_TOKEN=a-real-tunnel-token" in output
 
 
 def test_render_env_wireguard_addresses_defaults_empty():
