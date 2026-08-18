@@ -303,15 +303,21 @@ restore_stack_flow() {
 uninstall_flow() {
 
     local purge_flags=()
+    local prune_flags=()
 
     if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
         --yesno "Also delete backups/ and exports/? (default: No - leave your backup archives in place)" 10 70 --defaultno; then
         purge_flags=(--purge-artifacts)
     fi
 
+    if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
+        --yesno "Also run 'docker system prune -a' afterward? Reclaims disk space, but affects the whole Docker host, not just vulcan's containers. (default: No)" 10 70 --defaultno; then
+        prune_flags=(--prune-docker)
+    fi
+
     confirm_and_run "Uninstall Stack" \
         "This will stop the running stack (if any) and permanently delete stack/ (containers, network, and all app config/data). Your media library is always left untouched." \
-        "$VULCAN_BIN" uninstall --non-interactive --yes "${purge_flags[@]}"
+        "$VULCAN_BIN" uninstall --non-interactive --yes "${purge_flags[@]}" "${prune_flags[@]}"
 }
 
 # --- Guided Setup ------------------------------------------------------

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+### Added
+- `vulcan uninstall --prune-docker` — runs `docker system prune -a` after stack
+  teardown (opt-in; affects the whole Docker host, not just vulcan's containers)
+
+### Changed
+- Development status bumped Pre-Alpha → Beta; version `0.1.0-alpha` → `0.1.0`
+- Repo cleanup: removed a stale session-scratch file, trimmed CLAUDE.md's
+  Project Status to real architecture facts, fixed malformed README markup
+
+### Fixed
+- CI: removed an unused import that had been failing `ruff check .` on every run
+
 ## v0.1.0
 ### Added
 - Guided install with system detection
