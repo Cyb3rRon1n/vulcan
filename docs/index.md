@@ -1,6 +1,6 @@
 # Vulcan
 
-**An intelligent media stack forge.**
+**Deploy a self-hosted media homelab, sized to your hardware.**
 
 Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light / Medium / Heavy), and generates a ready-to-run Jellyfin + `*arr` Docker Compose media stack — scoped to what your machine can actually handle, not a one-size-fits-all stack that either starves a small machine or wastes a big one. Tier decisions are deterministic, fixed rules over detected CPU/RAM/disk/GPU — no LLM in the decision path.
 
