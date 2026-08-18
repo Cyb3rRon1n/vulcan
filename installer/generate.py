@@ -783,9 +783,12 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
     if "gluetun" in enabled:
 
         steps.append(
-            "Gluetun: confirm the VPN actually connected (docker compose logs gluetun) "
-            "before trusting qBittorrent's traffic - it stays offline if Gluetun can't "
-            "connect."
+            "Gluetun: if qBittorrent's web UI won't load at all (connection refused), "
+            "this is why - Gluetun's firewall acts as a kill switch and blocks ALL "
+            "traffic through it, including qBittorrent's own WebUI port, until the VPN "
+            "actually connects. With the default VPN_SERVICE_PROVIDER/WIREGUARD_PRIVATE_KEY "
+            "placeholders still in stack/.env, it never will. Set real VPN credentials, "
+            "then check `docker compose logs gluetun` to confirm it connected."
         )
 
     if "bazarr" in enabled:

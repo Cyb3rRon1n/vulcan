@@ -11,12 +11,21 @@ Skip any section for a service you didn't enable - your guided-menu/CLI run
 also printed a copy of this same order, trimmed to just what you actually
 enabled, right after the stack came up.
 
+!!! note "Representative mockups, not literal captures"
+    The screenshots below are hand-built to show the shape of each screen,
+    not pixel-accurate captures of the real apps - the real UI you'll see
+    will differ in layout and styling.
+
 ## 1. Vaultwarden - do this first
 
 If you enabled it: visit it and create your account before touching
 anything else below. Every login, password, and API key you create for the
 rest of this walkthrough goes here as you create it - it's much easier to
 save each one in the moment than to try to gather them all after the fact.
+
+<p align="center">
+  <img src="images/screenshots/vaultwarden-signup.svg" alt="Vaultwarden account creation example" style="max-width: 100%; width: 820px;">
+</p>
 
 Once you've created every account you need, set `VAULTWARDEN_SIGNUPS_ALLOWED=false`
 in `stack/.env` and restart the container to stop accepting new signups.
@@ -82,6 +91,10 @@ docker compose -f stack/docker-compose.yml logs gluetun
 qBittorrent has no network access at all if Gluetun can't connect (that's
 the point - it fails closed, not open), so a stalled download queue here
 usually means check this first.
+
+<p align="center">
+  <img src="images/screenshots/gluetun-log.svg" alt="Gluetun connection log example" style="max-width: 100%; width: 820px;">
+</p>
 
 ## 7. Bazarr
 
@@ -149,6 +162,10 @@ above are actually running.
   service you want to track.
 - **Netdata** and the **Traefik dashboard** need no setup at all - both
   are ready to view as soon as their containers start.
+
+<p align="center">
+  <img src="images/screenshots/homepage-dashboard.svg" alt="Homepage dashboard example" style="max-width: 100%; width: 820px;">
+</p>
 
 ## A note on Authelia
 
