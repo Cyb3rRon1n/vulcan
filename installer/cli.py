@@ -26,6 +26,7 @@ from installer.docker_setup import (
     ensure_compose_v2,
     install_docker,
     install_plan_for,
+    prune_docker_artifacts,
     run_docker_command,
     start_docker_service,
 )
@@ -702,6 +703,11 @@ def uninstall(
     yes: bool = typer.Option(False, "--yes"),
     purge_artifacts: bool = typer.Option(
         False, "--purge-artifacts", help="Also delete backups/ and exports/"
+    ),
+    prune_docker: bool = typer.Option(
+        False, "--prune-docker",
+        help="Also run `docker system prune -a` after teardown - reclaims disk space "
+        "but affects the whole Docker host, not just vulcan's own containers"
     )
 ):
     """
@@ -728,6 +734,13 @@ def uninstall(
             if purge_artifacts
             else " Your media library, backups/, and exports/ are left untouched."
         )
+        + (
+            " Afterward, `docker system prune -a` will also run - removing stopped "
+            "containers, unused networks, dangling images, and build cache for the "
+            "whole Docker host, not just vulcan's stack."
+            if prune_docker
+            else ""
+        )
     )
 
     if not yes and not typer.confirm("Continue?"):
@@ -736,15 +749,24 @@ def uninstall(
 
     result = None
 
-    with progress_panel(
-        "Uninstall Stack", ["Uninstall stack"], console=console
-    ) as _panel:
+    phases = ["Uninstall stack"]
+    if prune_docker:
+        phases.append("Prune Docker artifacts")
+
+    with progress_panel("Uninstall Stack", phases, console=console) as _panel:
+
         result = uninstall_stack(
             str(STACK_DIR / "docker-compose.yml"),
             str(STACK_DIR / ".env"),
             purge_artifacts=purge_artifacts
         )
-        _panel.finish(result["success"])
+
+        if not result["success"] or not prune_docker:
+            _panel.finish(result["success"])
+        else:
+            _panel.advance()
+            result = prune_docker_artifacts()
+            _panel.finish(result["success"])
 
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")

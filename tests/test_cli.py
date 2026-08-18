@@ -3042,6 +3042,80 @@ def test_uninstall_purge_artifacts_threaded_through(tmp_path):
     assert mock_uninstall.call_args.kwargs["purge_artifacts"] is True
 
 
+def test_uninstall_prune_docker_not_called_by_default(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ), patch("installer.cli.prune_docker_artifacts") as mock_prune:
+
+        result = runner.invoke(app, ["uninstall", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    mock_prune.assert_not_called()
+
+
+def test_uninstall_prune_docker_flag_calls_prune_docker_artifacts(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.prune_docker_artifacts",
+        return_value={"success": True, "error": None}
+    ) as mock_prune:
+
+        result = runner.invoke(
+            app, ["uninstall", "--non-interactive", "--yes", "--prune-docker"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack removed" in result.output
+    mock_prune.assert_called_once_with()
+
+
+def test_uninstall_prune_docker_failure_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.prune_docker_artifacts",
+        return_value={"success": False, "error": "docker system prune -a failed: boom"}
+    ):
+
+        result = runner.invoke(
+            app, ["uninstall", "--non-interactive", "--yes", "--prune-docker"]
+        )
+
+    assert result.exit_code == 1
+    assert "docker system prune -a failed" in result.output
+
+
+def test_uninstall_prune_docker_skipped_when_uninstall_stack_fails(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.uninstall_stack",
+        return_value={"success": False, "error": "Failed to stop the running stack."}
+    ), patch("installer.cli.prune_docker_artifacts") as mock_prune:
+
+        result = runner.invoke(
+            app, ["uninstall", "--non-interactive", "--yes", "--prune-docker"]
+        )
+
+    assert result.exit_code == 1
+    mock_prune.assert_not_called()
+
+
 def test_services_unknown_key_rejected_before_detection():
 
     with patch("installer.cli.detect_system") as mock_detect:

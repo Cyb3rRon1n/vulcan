@@ -18,7 +18,7 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 
 `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
 
-`vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`.
+`vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`. Pass `--prune-docker` to also run `docker system prune -a` afterward and reclaim disk space — this is opt-in and asked separately (its own confirmation, defaulting to No) because it affects the *whole* Docker host's stopped containers, unused networks, dangling images, and build cache, not just vulcan's own.
 
 ## Updating Vulcan itself
 

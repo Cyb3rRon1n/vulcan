@@ -28,6 +28,7 @@ All three originally-planned phases are complete; everything below shipped after
 - [x] **`vulcan uninstall` orphaned-container cleanup** — also tears down containers left running when `stack/` was deleted some other way, not just via `vulcan uninstall` itself; found via a real user bug report, reproduced, fixed
 - [x] **`detect_gpu()` real functional check** — fixed to run a real per-vendor query instead of just checking tool presence; this exact dev machine had been reporting a false `"amd"` for this project's entire history until this fix, found while building the sibling Anvil project
 - [x] **Keyboard-accessible TUI guidance** — `DescendantFocus`-based tooltips reach keyboard-only users, not just mouse-hover; five previously-untooltipped fields also got real tooltip text along the way
+- [x] **`vulcan uninstall --prune-docker`** — opt-in flag to also run `docker system prune -a` after stack teardown, in both the plain CLI and the whiptail menu (own confirmation prompt, defaults to No); clearly scoped as whole-Docker-host, not vulcan-only, since `docker system prune -a` isn't container-scoped
 
 ## Next
 
