@@ -1143,7 +1143,7 @@ def test_render_homepage_services_creates_maintainerr_tile():
     )
 
     groups = _homepage_groups(output)
-    tile = groups["Media Management"]["Maintainerr (library cleanup)"]
+    tile = groups["Media Management"]["Maintainerr"]
 
     assert tile["href"] == "http://localhost:6246"
     assert tile["icon"] == "maintainerr.png"
@@ -2243,7 +2243,7 @@ def test_render_stack_summary_netdata_always_direct_host_link_even_with_traefik_
         host_ip="192.168.1.50"
     )
 
-    assert "Netdata (system resource monitoring): http://192.168.1.50:19999" in output
+    assert "Netdata: http://192.168.1.50:19999" in output
     assert "netdata.media.example.com" not in output
 
 
@@ -3005,7 +3005,7 @@ def test_render_homepage_services_creates_authelia_tile_when_routed():
 
     groups = _homepage_groups(output)
 
-    assert groups["Security"]["Authentication (Authelia)"]["href"] == "https://authelia.media.example.com"
+    assert groups["Security"]["Authelia"]["href"] == "https://authelia.media.example.com"
 
 
 def test_homepage_groups_match_web_facing_services():

@@ -1674,7 +1674,7 @@ def _gather_generation_config(
         if metube is None:
 
             enable_metube = metube_default if non_interactive else typer.confirm(
-                "Enable MeTube (YouTube downloader)?",
+                "Enable MeTube (video downloader - YouTube, Facebook, and hundreds of other sites)?",
                 default=metube_default
             )
 
