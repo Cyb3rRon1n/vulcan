@@ -27,6 +27,20 @@ save each one in the moment than to try to gather them all after the fact.
   <img src="images/screenshots/vaultwarden-signup.svg" alt="Vaultwarden account creation example" style="max-width: 100%; width: 820px;">
 </p>
 
+**Browser extension** (so it can save/fill credentials as you go through the
+rest of this walkthrough) - official store listings, confirmed current via
+`bitwarden.com/download`'s own outbound links:
+
+- **Chrome / Brave / Vivaldi**: https://chromewebstore.google.com/detail/bitwarden-free-password-m/nngceckbapebfimnlniiiahkandclblb
+- **Firefox**: https://addons.mozilla.org/en-US/firefox/addon/bitwarden-password-manager/
+- **Edge**: https://microsoftedge.microsoft.com/addons/detail/jbkfoedolllekgbhcbcoahefnbanhhlh
+- **Opera**: https://addons.opera.com/extensions/details/bitwarden-free-password-manager/
+- **Safari**: no standalone extension listing - install the Bitwarden desktop app (Mac App Store, or `bitwarden.com/download`), which bundles the Safari extension and lets you enable it from Safari's own Extensions settings
+
+After installing: Settings → gear icon → Self-hosted → set the Server URL to
+`http://<your-ip>:8222` **before** logging in, then log in with the account
+you just created.
+
 Once you've created every account you need, set `VAULTWARDEN_SIGNUPS_ALLOWED=false`
 in `stack/.env` and restart the container to stop accepting new signups.
 
@@ -81,7 +95,43 @@ through its own setup wizard before it can download anything.
 
 ## 6. Gluetun
 
-If you enabled it: confirm the VPN tunnel actually connected before
+If you enabled it, `stack/.env` has three placeholder values that need your
+real VPN credentials before Gluetun can connect at all -
+`VPN_SERVICE_PROVIDER`, `VPN_TYPE` (defaults to `wireguard`), and
+`WIREGUARD_PRIVATE_KEY`. A fourth, `WIREGUARD_ADDRESSES`, is only required
+by some providers (noted below) - leave it blank otherwise.
+
+These two work with just `WIREGUARD_PRIVATE_KEY` (no `WIREGUARD_ADDRESSES`
+needed):
+
+- **ProtonVPN** - `VPN_SERVICE_PROVIDER=protonvpn`. Generate a config at
+  [account.proton.me/u/0/vpn/WireGuard](https://account.proton.me/u/0/vpn/WireGuard)
+  and copy the `PrivateKey` value shown - it works for all ProtonVPN
+  servers, not just the one you generated it for.
+- **NordVPN** - `VPN_SERVICE_PROVIDER=nordvpn`. Get your WireGuard private
+  key from [my.nordaccount.com](https://my.nordaccount.com/dashboard/nordvpn/manual-configuration/service-credentials/)
+  (NordVPN's manual/service credentials, not your regular account
+  login).
+
+These two also need `WIREGUARD_ADDRESSES` set (the IPv4 address from your
+generated config's `Address` line, e.g. `10.64.222.21/32`):
+
+- **Mullvad** - `VPN_SERVICE_PROVIDER=mullvad`. Generate a config at
+  [mullvad.net/en/account/wireguard-config](https://mullvad.net/en/account/wireguard-config),
+  download it, and pull `PrivateKey` and `Address` from the file - not the
+  "Wireguard Key" shown on the Devices page, that's a different value.
+- **Surfshark** - `VPN_SERVICE_PROVIDER=surfshark`. In your account:
+  VPN → Manual Setup → Desktop or mobile → WireGuard → "I don't have a
+  keypair" → generate one, then download the config for the `Address` value.
+
+Other providers Gluetun supports (OpenVPN-only ones, or ones needing extra
+env vars this stack doesn't wire up yet): see
+[gluetun-wiki's provider list](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) -
+each page has the exact env vars and where to get them.
+
+Once `stack/.env` is filled in, restart the stack (`sudo vulcan update`, or
+`docker compose -f stack/docker-compose.yml up -d --force-recreate gluetun`
+for just this container) and confirm the tunnel actually connected before
 trusting qBittorrent's traffic -
 
 ```

@@ -2400,6 +2400,23 @@ def test_render_env_accepts_preserved_vpn_values():
     assert "changeme" not in output
 
 
+def test_render_env_wireguard_addresses_defaults_empty():
+
+    output = render_env(make_config("medium", {"gluetun"}))
+
+    assert "WIREGUARD_ADDRESSES=\n" in output
+
+
+def test_render_env_accepts_preserved_wireguard_addresses():
+
+    output = render_env(
+        make_config("medium", {"gluetun"}),
+        wireguard_addresses="10.64.222.21/32"
+    )
+
+    assert "WIREGUARD_ADDRESSES=10.64.222.21/32" in output
+
+
 def test_write_stack_preserves_real_vpn_credentials_on_regenerate(tmp_path):
 
     media_path = tmp_path / "media-root"

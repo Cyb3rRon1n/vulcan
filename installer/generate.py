@@ -382,6 +382,7 @@ def render_env(
     vpn_service_provider: str = "changeme",
     vpn_type: str = "wireguard",
     wireguard_private_key: str = "changeme",
+    wireguard_addresses: str = "",
     tailscale_authkey: str = "changeme",
     cloudflare_dns_api_token: str = "changeme",
     cloudflare_acme_email: str = "changeme@example.com",
@@ -411,6 +412,7 @@ def render_env(
         vpn_service_provider=vpn_service_provider,
         vpn_type=vpn_type,
         wireguard_private_key=wireguard_private_key,
+        wireguard_addresses=wireguard_addresses,
         tailscale_enabled="tailscale" in enabled,
         tailscale_authkey=tailscale_authkey,
         cloudflare_dns_enabled=config.cloudflare_dns,
@@ -893,6 +895,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         vpn_service_provider=_preserved_vpn_value(output_dir, "VPN_SERVICE_PROVIDER", "changeme"),
         vpn_type=_preserved_vpn_value(output_dir, "VPN_TYPE", "wireguard"),
         wireguard_private_key=_preserved_vpn_value(output_dir, "WIREGUARD_PRIVATE_KEY", "changeme"),
+        wireguard_addresses=_preserved_vpn_value(output_dir, "WIREGUARD_ADDRESSES", ""),
         tailscale_authkey=_preserved_vpn_value(output_dir, "TS_AUTHKEY", "changeme"),
         cloudflare_dns_api_token=_preserved_vpn_value(output_dir, "CF_DNS_API_TOKEN", "changeme"),
         cloudflare_acme_email=_preserved_vpn_value(
