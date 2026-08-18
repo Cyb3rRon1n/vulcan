@@ -50,7 +50,7 @@ _LIGHT_SERVICES = [
     # "media agent" request (unwatched/unwanted library cleanup),
     # complementary to Decluttarr's download-queue cleanup, not a
     # duplicate of it.
-    ServiceDefinition("maintainerr", "Maintainerr (library cleanup)", optional=True),
+    ServiceDefinition("maintainerr", "Maintainerr", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
     # A direct owner request for a second dashboard option alongside
     # Homepage, not a replacement - a real prior-CasaOS-setup preference
@@ -63,8 +63,8 @@ _LIGHT_SERVICES = [
     # for the same "automated downloader" role their old CasaOS-hosted
     # Windows VM served, done container-native instead. Output lands in
     # the media library so Jellyfin can just scan it directly.
-    ServiceDefinition("metube", "MeTube (YouTube downloader)", optional=True),
-    ServiceDefinition("downtify", "Downtify (Spotify downloader)", optional=True),
+    ServiceDefinition("metube", "MeTube", optional=True),
+    ServiceDefinition("downtify", "Downtify", optional=True),
     # Tier-agnostic like the others above, but deliberately not
     # default-anything the way Gluetun is - real, meaningfully deeper
     # host access than any other service here (SYS_PTRACE/SYS_ADMIN,
@@ -73,14 +73,14 @@ _LIGHT_SERVICES = [
     # temperature monitoring. A genuine security tradeoff named in the
     # CLI/TUI prompt and write_stack()'s own warning, not defaulted
     # quietly either way.
-    ServiceDefinition("netdata", "Netdata (system resource monitoring)", optional=True),
+    ServiceDefinition("netdata", "Netdata", optional=True),
     # Tier-agnostic like the others above. A direct user request for a
     # self-hosted password manager to hold the growing pile of
     # per-service credentials this stack generates. Not routed through
     # Authelia even when enabled - see the compose template's own
     # comment on the vaultwarden block for why (same native-app-login
     # conflict as Jellyfin).
-    ServiceDefinition("vaultwarden", "Vaultwarden (password manager)", optional=True),
+    ServiceDefinition("vaultwarden", "Vaultwarden", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
@@ -92,8 +92,8 @@ _MEDIUM_SERVICES = _LIGHT_SERVICES + [
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("lidarr", "Lidarr", optional=True),
     ServiceDefinition("readarr", "Readarr", optional=True),
-    ServiceDefinition("traefik", "Reverse proxy (Traefik)", optional=True),
-    ServiceDefinition("authelia", "Authentication (Authelia)", optional=True),
+    ServiceDefinition("traefik", "Traefik", optional=True),
+    ServiceDefinition("authelia", "Authelia", optional=True),
     # Custom-mode only, same placement as Authelia/Traefik - genuinely
     # useful only once Traefik is routing real traffic (it blocks
     # malicious IPs at the edge, before they ever reach a login page).

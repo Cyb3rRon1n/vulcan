@@ -138,7 +138,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
-    "metube": "Download YouTube videos straight into your library",
+    "metube": "Download videos from YouTube, Facebook, and hundreds of other sites straight into your library",
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "vaultwarden": "Password manager for every service login this stack creates",

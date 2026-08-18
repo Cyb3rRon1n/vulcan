@@ -595,7 +595,7 @@ _guided_setup_quick_toggles() {
             "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
             "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
             "homepage"    "Homepage dashboard"                     "$(_default_on homepage on)" \
-            "metube"      "MeTube - YouTube downloader"             "$(_default_on metube off)" \
+            "metube"      "MeTube - video downloader"               "$(_default_on metube off)" \
             "downtify"    "Downtify - Spotify downloader"           "$(_default_on downtify off)" \
             "netdata"     "Netdata - system monitoring"             "$(_default_on netdata off)" \
             "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
@@ -689,7 +689,7 @@ _guided_setup_customize_services() {
         "maintainerr" "Maintainerr (library cleanup)"                "$(_svc_on maintainerr)" \
         "homepage"    "Homepage/Homarr dashboard"                    "$(_svc_on homepage)" \
         "dashy"       "Dashy dashboard"                              "$(_svc_on dashy)" \
-        "metube"      "MeTube (YouTube downloader)"                  "$(_svc_on metube)" \
+        "metube"      "MeTube (video downloader)"                    "$(_svc_on metube)" \
         "downtify"    "Downtify (Spotify downloader)"                "$(_svc_on downtify)" \
         "netdata"     "Netdata (system monitoring)"                  "$(_svc_on netdata)" \
         "vaultwarden" "Vaultwarden (password manager)"                "$(_svc_on vaultwarden)" \
