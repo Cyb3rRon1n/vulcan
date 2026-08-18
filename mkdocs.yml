@@ -1,5 +1,5 @@
 site_name: Vulcan
-site_description: An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab.
+site_description: An intelligent media stack forge - inspects your system and builds a tailored, self-hosted media homelab.
 repo_url: https://github.com/Cyb3rRon1n/vulcan
 repo_name: Cyb3rRon1n/vulcan
 edit_uri: edit/main/docs/

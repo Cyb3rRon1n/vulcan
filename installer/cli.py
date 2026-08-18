@@ -74,7 +74,7 @@ from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_descriptio
 
 app = typer.Typer(
     name="vulcan",
-    help="An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
+    help="An intelligent media stack forge - inspects your system and builds a tailored, self-hosted media homelab."
 )
 
 # A real sub-app, not a flat vulcan-storage-report command - storage

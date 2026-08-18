@@ -2,11 +2,11 @@
 
 **An intelligent media stack forge.**
 
-Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light / Medium / Heavy), and generates a ready-to-run Jellyfin + `*arr` Docker Compose media stack — scoped to what your machine can actually handle, not a one-size-fits-all stack that either starves a small machine or wastes a big one. Tier decisions are deterministic, fixed rules over detected CPU/RAM/disk/GPU — no LLM in the decision path.
+Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light / Medium / Heavy), and generates a ready-to-run, self-hosted media homelab as a Docker Compose stack — scoped to what your machine can actually handle, not a one-size-fits-all stack that either starves a small machine or wastes a big one. Tier decisions are deterministic, fixed rules over detected CPU/RAM/disk/GPU — no LLM in the decision path.
 
 ## The 5 W's
 
-- **What** — A hardware-aware installer that detects your machine, recommends a sized Jellyfin + `*arr` media stack, and generates it as a ready-to-run Docker Compose project — plus the full lifecycle after that (update, backup, restore, uninstall).
+- **What** — A hardware-aware installer that detects your machine, recommends a sized self-hosted media homelab stack, and generates it as a ready-to-run Docker Compose project — plus the full lifecycle after that (update, backup, restore, uninstall).
 - **Who it's for** — Homelab and self-hosted folks who want a media server + download automation stack without hand-tuning resource limits or manually wiring a dozen services together.
 - **When** — Actively developed; changes ship continuously, not on a fixed release cadence. See the [Roadmap](roadmap.md) for what's shipped versus still open.
 - **Where it runs** — Any Linux host with Docker (Ubuntu, Debian, Raspbian, Fedora, and Arch all get an automatic Docker install) and Python 3.11+.

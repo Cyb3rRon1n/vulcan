@@ -7,7 +7,7 @@ homepage = "https://github.com/Cyb3rRon1n/vulcan"
 repository = "https://github.com/Cyb3rRon1n/vulcan"
 name = "vulcan-forge"
 version = "0.1.0"
-description = "An intelligent media stack forge - inspects your system and builds a tailored Jellyfin + *arr homelab."
+description = "An intelligent media stack forge - inspects your system and builds a tailored, self-hosted media homelab."
 readme = "README.md"
 requires-python = ">=3.11"
 
@@ -19,9 +19,9 @@ license = {file = "LICENSE"}
 
 keywords = [
 "homelab",
-"jellyfin",
-"arr-stack",
+"media-homelab",
 "docker",
+"docker-compose",
 "self-hosted",
 "media-server"
 ]
