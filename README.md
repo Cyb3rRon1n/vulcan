@@ -11,26 +11,19 @@
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
 </p>
 
-<p align="center"><strong>An intelligent media stack forge.
 <p align="center">
   <a href="https://github.com/Cyb3rRon1n/vulcan/actions/workflows/ci.yml">
-    <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-forge-banner.svg" 
-         alt="Vulcan - Self-Hosted Media Stack Forge"
+    <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/images/banner.svg"
+         alt="Vulcan - Deploy a self-hosted media homelab, sized to your hardware"
          style="max-width: 100%; height: auto;">
   </a>
-</p></strong></p>
+</p>
 
 <p align="center">
-  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="walkthrough.md">Walkthrough</a>
+  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/walkthrough.md">Walkthrough</a>
+</p>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Cyb3rRon1n/vulcan/main/docs/assets/vulcan-favicon.svg" 
-       alt="Vulcan Logo" 
-       width="32" height="32" 
-       style="vertical-align: middle; margin-left: 0.5rem;">
-</p></p>
-
-Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
+**Deploy a self-hosted media homelab, sized to your hardware.** Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
 
 **Sudo required:** `./install` bootstraps a local virtual environment on first run, then re-execs itself with `sudo` to get Docker running if needed. Run `./install` as a non-root user with `sudo` available.
 

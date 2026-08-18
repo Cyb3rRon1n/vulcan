@@ -9,7 +9,7 @@
 
   <rect x="0" y="46" width="900" height="514" fill="#000000"/>
 
-  <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Vulcan - Media Stack Forge</text>
+  <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Vulcan - Media Homelab Deploy</text>
 
   <rect x="150" y="96" width="600" height="410" fill="#00a8a8" stroke="#5fd6d6" stroke-width="2"/>
 

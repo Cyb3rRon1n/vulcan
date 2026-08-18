@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <style>
-    .anvil { fill: #2f7a8c; }
-    .spark { fill: #c23b3b; }
+    .anvil { fill: #3a3f47; }
+    .spark { fill: #e8833a; }
     @media (prefers-color-scheme: dark) {
-      .anvil { fill: #5cd6d6; }
-      .spark { fill: #e0645a; }
+      .anvil { fill: #c7ced6; }
     }
   </style>
   <rect class="anvil" x="10" y="34" width="44" height="8" rx="2"/>
