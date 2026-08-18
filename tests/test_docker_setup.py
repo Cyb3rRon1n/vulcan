@@ -8,9 +8,29 @@ from installer.docker_setup import (
     ensure_compose_v2,
     install_docker,
     install_plan_for,
+    prune_docker_artifacts,
     run_docker_command,
     start_docker_service,
 )
+
+
+def test_prune_docker_artifacts_forces_no_confirmation_prompt():
+    """
+    Regression lock: plain `docker system prune -a` (no -f) blocks on
+    its own "Are you sure? [y/N]" - confirmed live, hanging indefinitely
+    with zero images reclaimed, since the CLI's own prior confirm()
+    already covers this and nothing ever answers Docker's prompt.
+    """
+
+    with patch(
+        "installer.docker_setup.run_privileged",
+        return_value={"success": True, "error": None}
+    ) as mock_run:
+
+        result = prune_docker_artifacts()
+
+    assert result == {"success": True, "error": None}
+    mock_run.assert_called_once_with(["docker", "system", "prune", "-af"])
 
 
 def test_install_plan_for_docker_script_distros():

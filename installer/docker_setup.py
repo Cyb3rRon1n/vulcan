@@ -33,11 +33,24 @@ def prune_docker_artifacts() -> dict:
     conflicts or other issues. Does NOT remove named volumes (use
     `--volumes` with caution - that would delete user data).
 
+    -f/--force is required, not optional: without it, `docker system
+    prune -a` prints its own "Are you sure? [y/N]" and blocks on
+    stdin - real, reproduced live: the CLI's `uninstall --prune-docker`
+    already confirms with the user before calling this (typer.confirm
+    ("Continue?")), so Docker's own confirmation is always redundant.
+    Worse under the Rich Live progress panel specifically: run_privileged()
+    routes through run_streaming() there, which reads output line-by-line -
+    Docker's prompt has no trailing newline, so it never reaches the log
+    pane at all. The result looked like a silent, permanent stall at
+    "Prune Docker artifacts" (confirmed: still blocked 10+ seconds in,
+    zero images actually reclaimed) rather than an unseen, unanswerable
+    question.
+
     Returns a result dict consistent with this project's pattern:
     {"success": bool, "error": str | None}.
     """
 
-    result = run_privileged(["docker", "system", "prune", "-a"])
+    result = run_privileged(["docker", "system", "prune", "-af"])
 
     if result["success"]:
         return {"success": True, "error": None}
