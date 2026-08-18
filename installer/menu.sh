@@ -60,6 +60,18 @@ disabledentry=gray,cyan
 compactbutton=cyan,black
 '
 
+# whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
+# "<Yes>"/"<No>" text with no focused-state color of their own (there's
+# no actcompactbutton in newt's colorset list, only actbutton/actcheckbox/
+# actlistbox/etc. for other widgets) - so no matter what button/actbutton
+# above are set to, Tab/arrow-key focus between Yes and No was never
+# visible. --fullbuttons renders real boxed buttons that DO use
+# button/actbutton, restoring a visible focus indicator. Shadowing the
+# `whiptail` binary here applies it to every call in this script.
+whiptail() {
+    command whiptail --fullbuttons "$@"
+}
+
 # --- Structured logging (Security Onion pattern) --------------------
 #
 # Every setup step is logged to $SETUP_LOG with timestamps and levels.
