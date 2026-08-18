@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/walkthrough.md">Walkthrough</a> · <a href="https://cyb3rron1n.github.io/">Sibling Projects</a>
+  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/walkthrough.md">Walkthrough</a> · <a href="https://cyb3rron1n.github.io/">Sibling Projects</a> · <a href="docs/images/favicon.svg">Favicon</a>
 </p>
 
 **Deploy a self-hosted media homelab, sized to your hardware.** Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
