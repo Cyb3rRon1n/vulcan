@@ -38,6 +38,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     # Confirmed live: ~47MB idle via `docker stats` against a real
     # started container - genuinely light, same bucket as Homepage.
     "dashy": "light",
+    "cloudflared": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

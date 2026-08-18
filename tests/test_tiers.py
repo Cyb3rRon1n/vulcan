@@ -104,7 +104,7 @@ def test_heavy_services_include_all_medium_services_plus_additions():
     assert medium_keys.issubset(heavy_keys)
     assert heavy_keys - medium_keys == {
         "lidarr", "readarr", "traefik", "authelia", "crowdsec", "tailscale", "uptime-kuma",
-        "watchtower"
+        "watchtower", "cloudflared"
     }
 
 
@@ -156,7 +156,7 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 27
+    assert len(all_keys) == 28
     assert len(ALL_SERVICES) == len(all_keys)
 
 
