@@ -240,9 +240,27 @@ native-app login of its own, so Authelia protects all of those cleanly.
 - **Traefik + a domain + Cloudflare DNS**, if enabled, is what makes
   `jellyfin.yourdomain.com` (or any other `*.yourdomain.com`) work from
   anywhere - a phone on cellular data, a smart TV app, a browser at a
-  friend's house. Real Let's Encrypt certificates need a real Cloudflare
-  API token filled into `stack/.env` first (Vulcan reminds you after
-  generating if that's still missing).
+  friend's house. Three things Vulcan doesn't do for you:
+
+  1. **Get a scoped Cloudflare API token.** [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens/)
+     → Create Token → "Edit zone DNS" template → restrict it to your one
+     domain → Create Token, then copy it (shown once) into `stack/.env`'s
+     `CF_DNS_API_TOKEN`. This is what lets Traefik prove domain ownership
+     to Let's Encrypt without opening any port for the challenge itself.
+  2. **Add a DNS record for each subdomain you're routing** (Jellyfin,
+     Jellyseerr, whatever else was in your `--services` list) - Cloudflare
+     dashboard → your domain → DNS → Add record → type `A` → name
+     `jellyfin` (etc.) → content = this host's public IP.
+  3. **Decide proxy status per record** - this is the actual "hide my
+     public IP" switch, not a DNS server choice: orange cloud (Proxied)
+     routes through Cloudflare's edge, so your real IP never appears in a
+     public DNS lookup; grey cloud (DNS only) publishes it directly.
+     Either way, ports 80/443 still need to reach this host from your
+     router (port forward, or your ISP already routes them) - Cloudflare's
+     proxy hides *who* traffic came from publicly, it doesn't tunnel
+     traffic in without a real path to the host (that would need a
+     Cloudflare Tunnel, a separate `cloudflared` setup Vulcan doesn't
+     generate).
 
 Both can be enabled together - Tailscale for your own admin access
 (Homepage, Traefik's dashboard, anything you'd rather keep off the public
