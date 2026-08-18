@@ -24,22 +24,32 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # cyan-panel / near-black-background / red-selection palette this
 # project's TUI used before, not a pixel-perfect port - that isn't
 # possible in whiptail.
+# button/checkbox/listbox all used black,cyan for BOTH their focused and
+# unfocused state - identical to window's own black,cyan background, so an
+# unfocused Yes/No button (or an unselected list row) was visually
+# indistinguishable from empty dialog space, and red-on-white for the
+# focused state renders too close to that same background on some terminal
+# color profiles (reported: couldn't tell which of Yes/No was highlighted,
+# even with Tab/arrow keys). Every interactive element below now has its
+# own visible box (cyan,black) at rest and a yellow background - the one
+# color that reliably shows up against black, cyan, and window alike -
+# when focused.
 export NEWT_COLORS='
 root=white,black
 border=cyan,black
 window=black,cyan
 shadow=black,black
 title=black,cyan
-button=black,cyan
-actbutton=white,red
-checkbox=black,cyan
-actcheckbox=white,red
+button=cyan,black
+actbutton=black,yellow
+checkbox=cyan,black
+actcheckbox=black,yellow
 entry=black,cyan
 label=white,black
-listbox=black,cyan
-actlistbox=white,red
-sellistbox=black,cyan
-actsellistbox=white,red
+listbox=cyan,black
+actlistbox=black,yellow
+sellistbox=cyan,black
+actsellistbox=black,yellow
 textbox=black,cyan
 acttextbox=black,cyan
 helpline=white,black
@@ -47,7 +57,7 @@ roottext=white,black
 emptyscale=,black
 fullscale=,red
 disabledentry=gray,cyan
-compactbutton=black,cyan
+compactbutton=cyan,black
 '
 
 # --- Structured logging (Security Onion pattern) --------------------
