@@ -20,44 +20,44 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex) - this is the closest real mapping to the
-# cyan-panel / near-black-background / red-selection palette this
-# project's TUI used before, not a pixel-perfect port - that isn't
-# possible in whiptail.
-# button/checkbox/listbox all used black,cyan for BOTH their focused and
-# unfocused state - identical to window's own black,cyan background, so an
+# arbitrary hex) - "red" is the closest named match to Vulcan's real
+# brand accent, "ember" (#ff5f1f in docs/images/logo.svg and the
+# website), so the installer now reads as the same project as its own
+# README/site instead of an arbitrary whiptail-safe cyan.
+# button/checkbox/listbox all used black,red for BOTH their focused and
+# unfocused state - identical to window's own black,red background, so an
 # unfocused Yes/No button (or an unselected list row) was visually
 # indistinguishable from empty dialog space, and red-on-white for the
 # focused state renders too close to that same background on some terminal
 # color profiles (reported: couldn't tell which of Yes/No was highlighted,
 # even with Tab/arrow keys). Every interactive element below now has its
-# own visible box (cyan,black) at rest and a yellow background - the one
-# color that reliably shows up against black, cyan, and window alike -
+# own visible box (red,black) at rest and a yellow background - the one
+# color that reliably shows up against black, red, and window alike -
 # when focused.
 export NEWT_COLORS='
 root=white,black
-border=cyan,black
-window=black,cyan
+border=red,black
+window=black,red
 shadow=black,black
-title=black,cyan
-button=cyan,black
+title=black,red
+button=red,black
 actbutton=black,yellow
-checkbox=cyan,black
+checkbox=red,black
 actcheckbox=black,yellow
-entry=black,cyan
+entry=black,red
 label=white,black
-listbox=cyan,black
+listbox=red,black
 actlistbox=black,yellow
-sellistbox=cyan,black
+sellistbox=red,black
 actsellistbox=black,yellow
-textbox=black,cyan
-acttextbox=black,cyan
+textbox=black,red
+acttextbox=black,red
 helpline=white,black
 roottext=white,black
 emptyscale=,black
 fullscale=,red
-disabledentry=gray,cyan
-compactbutton=cyan,black
+disabledentry=gray,red
+compactbutton=red,black
 '
 
 # whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
@@ -183,15 +183,16 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
-            --menu "Choose an action:" 20 76 9 \
+            --menu "Choose an action:" 21 76 10 \
             "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)" \
             "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)" \
-            "update-stack"    "3. Update Stack - pull latest images, recreate containers" \
-            "pull-images"     "4. Pull Images - prep for an offline start later" \
-            "backup-stack"    "5. Backup Stack - archive config/compose/env to backups/" \
-            "restore-stack"   "6. Restore Stack - from the most recent backup" \
-            "uninstall-stack" "7. Uninstall Stack - stop and delete stack/ entirely" \
-            "update-self"     "8. Update Vulcan - fast-forward this checkout" \
+            "start-stack"     "3. Start Stack - start an already-generated stack" \
+            "update-stack"    "4. Update Stack - pull latest images, recreate containers" \
+            "pull-images"     "5. Pull Images - prep for an offline start later" \
+            "backup-stack"    "6. Backup Stack - archive config/compose/env to backups/" \
+            "restore-stack"   "7. Restore Stack - from the most recent backup" \
+            "uninstall-stack" "8. Uninstall Stack - stop and delete stack/ entirely" \
+            "update-self"     "9. Update Vulcan - fast-forward this checkout" \
             "exit"            "0. Exit" \
             3>&1 1>&2 2>&3)
         status=$?
@@ -207,6 +208,11 @@ main_menu() {
                 ;;
             storage-setup)
                 storage_setup_flow
+                ;;
+            start-stack)
+                confirm_and_run "Start Stack" \
+                    "This will start stack/docker-compose.yml, reassigning any port already in use." \
+                    "$VULCAN_BIN" start
                 ;;
             update-stack)
                 confirm_and_run "Update Stack" \
