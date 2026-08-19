@@ -26,7 +26,7 @@ from installer.generate import (
     save_state,
     write_stack,
 )
-from installer.tiers import TIERS
+from installer.tiers import ALL_SERVICES, TIERS
 
 
 def make_config(
@@ -930,6 +930,53 @@ def test_render_compose_no_gpu_adds_neither():
     assert "/dev/dri" not in jellyfin_block
     assert "driver: nvidia" not in jellyfin_block
     assert "group_add" not in jellyfin_block
+
+
+# --- security_opt: no-new-privileges hardening ---
+
+
+def test_every_rendered_service_has_no_new_privileges():
+    """
+    Broad hardening pass (ODS-inspired: it applies this across every
+    one of its own services) - no-new-privileges only blocks a process
+    from gaining *new* privileges at exec time (e.g. via a setuid
+    binary), it doesn't touch capabilities a container already has via
+    cap_add/network_mode, so it's safe even for gluetun (NET_ADMIN),
+    tailscale (NET_ADMIN/NET_RAW, host networking), and netdata
+    (SYS_PTRACE/SYS_ADMIN, host networking) - confirmed by rendering
+    every one of them here and parsing the result as real YAML, not
+    just grepping the template.
+    """
+
+    all_keys = {s.key for s in ALL_SERVICES}
+    config = make_config("heavy", custom_services=all_keys, gpu_vendor="nvidia", domain="example.com")
+
+    output = render_compose(config)
+    data = yaml.safe_load(output)
+
+    assert set(data["services"].keys()) == all_keys
+
+    for name, service in data["services"].items():
+        assert "no-new-privileges:true" in service.get("security_opt", []), (
+            f"{name} is missing no-new-privileges"
+        )
+
+
+def test_netdata_keeps_apparmor_unconfined_alongside_no_new_privileges():
+    """
+    Regression lock: netdata already had its own security_opt entry
+    (apparmor:unconfined, needed for its deep host-monitoring access) -
+    the hardening pass must extend that list, not silently clobber it
+    with a second security_opt: key (which real YAML would just let
+    the second one win, silently dropping the first).
+    """
+
+    output = render_compose(make_config("heavy", {"netdata"}))
+    data = yaml.safe_load(output)
+
+    assert data["services"]["netdata"]["security_opt"] == [
+        "apparmor:unconfined", "no-new-privileges:true"
+    ]
 
 
 def test_render_env_contains_core_values():

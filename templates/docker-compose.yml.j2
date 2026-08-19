@@ -43,6 +43,8 @@ services:
       - "{{ render_gid }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -84,6 +86,8 @@ services:
       - "traefik.http.routers.radarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -118,6 +122,8 @@ services:
       - "traefik.http.routers.sonarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -151,6 +157,8 @@ services:
       - "traefik.http.routers.prowlarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -191,6 +199,8 @@ services:
 {% endif %}
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -225,6 +235,8 @@ services:
       - "traefik.http.routers.sabnzbd.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -257,6 +269,8 @@ services:
       - "traefik.http.routers.metube.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -287,6 +301,8 @@ services:
       - "traefik.http.routers.downtify.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -337,6 +353,8 @@ services:
       - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -355,6 +373,8 @@ services:
       - RECYCLARR_CREATE_CONFIG=true
     volumes:
       - ./config/recyclarr:/config
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -372,6 +392,8 @@ services:
       - PGID=${PGID}
     volumes:
       - ./config/decluttarr/config.yaml:/app/config/config.yaml
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -405,6 +427,8 @@ services:
       - "traefik.http.routers.maintainerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -436,6 +460,8 @@ services:
       - "traefik.http.routers.jellyseerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -470,6 +496,8 @@ services:
       - "traefik.http.routers.bazarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -486,6 +514,8 @@ services:
       - LOG_LEVEL=info
     ports:
       - "8191:8191"
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -512,6 +542,8 @@ services:
       # own comment on why the remap key is "qbittorrent", not
       # "gluetun".
       - "{{ ports['qbittorrent'] }}:8080"
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -546,6 +578,8 @@ services:
       - "traefik.http.routers.lidarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -580,6 +614,8 @@ services:
       - "traefik.http.routers.readarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -644,6 +680,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -656,6 +694,8 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -693,6 +733,8 @@ services:
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecmode=stream"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}"
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -728,6 +770,8 @@ services:
       - "traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true"
       - "traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name"
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -751,6 +795,8 @@ services:
       - NET_ADMIN
       - NET_RAW
     network_mode: host
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -769,6 +815,7 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+      - no-new-privileges:true
     volumes:
       - ./config/netdata/config:/etc/netdata
       - ./config/netdata/lib:/var/lib/netdata
@@ -814,6 +861,8 @@ services:
       - "traefik.http.routers.homepage.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -843,6 +892,8 @@ services:
       - "traefik.http.routers.dashy.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -872,6 +923,8 @@ services:
       - "traefik.http.routers.uptime-kuma.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -895,6 +948,8 @@ services:
       - DOCKER_API_VERSION=1.41
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
