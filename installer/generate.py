@@ -210,7 +210,7 @@ def _detect_port_conflicts() -> dict[str, int] | None:
     used_ports = set(_HOMEPAGE_PORTS.values())
 
     for service, port in sorted(conflicts.items(), key=lambda item: list(_HOMEPAGE_PORTS.keys()).index(item[0])):
-        new_port = _find_next_available_port(port, used_ports)
+        new_port = find_next_available_port(port, used_ports)
         if new_port is not None:
             overrides[service] = new_port
             used_ports.add(new_port)
@@ -218,8 +218,14 @@ def _detect_port_conflicts() -> dict[str, int] | None:
     return overrides if overrides else None
 
 
-def _find_next_available_port(excluded_port: int, used_ports: set[int]) -> int | None:
-    """Find the next available port starting from excluded_port + 1, skipping any already in use."""
+def find_next_available_port(excluded_port: int, used_ports: set[int]) -> int | None:
+    """
+    Find the next available port starting from excluded_port + 1,
+    skipping any already in use. No leading underscore (unlike most of
+    this module's helpers) because cli.py needs it directly for live
+    conflict resolution against another host process, not just this
+    module's own self-contained default-table dedup.
+    """
 
     port = excluded_port + 1
     max_port = 65535

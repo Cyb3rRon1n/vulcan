@@ -525,19 +525,22 @@ setup() {
     # before the maintenance items, and every item is numbered.
     [[ "$output" == *"1. Guided Setup"* ]]
     [[ "$output" == *"2. Media Storage Setup"* ]]
-    [[ "$output" == *"3. Update Stack"* ]]
-    [[ "$output" == *"4. Pull Images"* ]]
-    [[ "$output" == *"5. Backup Stack"* ]]
-    [[ "$output" == *"6. Restore Stack"* ]]
-    [[ "$output" == *"7. Uninstall Stack"* ]]
-    [[ "$output" == *"8. Update Vulcan"* ]]
+    [[ "$output" == *"3. Start Stack"* ]]
+    [[ "$output" == *"4. Update Stack"* ]]
+    [[ "$output" == *"5. Pull Images"* ]]
+    [[ "$output" == *"6. Backup Stack"* ]]
+    [[ "$output" == *"7. Restore Stack"* ]]
+    [[ "$output" == *"8. Uninstall Stack"* ]]
+    [[ "$output" == *"9. Update Vulcan"* ]]
     [[ "$output" == *"0. Exit"* ]]
 
     first_guided=$(echo "$output" | grep -b -o "1. Guided Setup" | cut -d: -f1)
     first_storage=$(echo "$output" | grep -b -o "2. Media Storage Setup" | cut -d: -f1)
-    first_update=$(echo "$output" | grep -b -o "3. Update Stack" | cut -d: -f1)
+    first_start=$(echo "$output" | grep -b -o "3. Start Stack" | cut -d: -f1)
+    first_update=$(echo "$output" | grep -b -o "4. Update Stack" | cut -d: -f1)
     [ "$first_guided" -lt "$first_storage" ]
-    [ "$first_storage" -lt "$first_update" ]
+    [ "$first_storage" -lt "$first_start" ]
+    [ "$first_start" -lt "$first_update" ]
 }
 
 @test "guided-setup defaults Media Library path to the provisioned storage mount" {
