@@ -725,6 +725,55 @@ setup() {
     [ "$first_start" -lt "$first_update" ]
 }
 
+@test "guided-setup Setup Complete screen includes 'vulcan install-summary' output" {
+
+    fake_vulcan() {
+        case "$*" in
+            detect)
+                echo "STORAGE_MOUNT=''"
+                echo "PREVIOUS_TIER=''"
+                echo "PREVIOUS_ENABLED_OPTIONAL=''"
+                echo "RECOMMENDED_TIER='medium'"
+                echo "CPU_CORES_LOGICAL='8'"
+                echo "RAM_TOTAL_GB='32.0'"
+                echo "DISK_FREE_GB='900.0'"
+                echo "RECOMMENDED_TIER_EXPLANATION='test'"
+                echo "DEFAULT_PUID='1000'"
+                echo "DEFAULT_PGID='1000'"
+                echo "DEFAULT_TIMEZONE='UTC'"
+                echo "DOCKER_INSTALLED='true'"
+                echo "DOCKER_RUNNING='true'"
+                echo "DOCKER_COMPOSE_V2='true'"
+                ;;
+            install-summary)
+                echo "EXAMPLE_INSTALL_SUMMARY_LINE"
+                ;;
+            *)
+                return 0
+                ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Customize the full service list"*) return 1 ;;
+            *) echo "$*" >&1; return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN=fake_vulcan
+        guided_setup
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"EXAMPLE_INSTALL_SUMMARY_LINE"* ]]
+}
+
 @test "guided-setup defaults Media Library path to the provisioned storage mount" {
 
     # Full guided_setup run: VULCAN_BIN is stubbed with a fake detect

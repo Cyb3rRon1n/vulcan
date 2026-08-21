@@ -99,6 +99,21 @@ class RunPanel:
         self._index = min(self._index + 1, len(self._phases))
         self._live.update(self._render())
 
+    def note(self, text: str) -> None:
+        """
+        Detail that's only worth showing when there's no live panel to
+        clutter - detected hardware, "Docker is ready.", a Review
+        block, etc. A no-op here on purpose: that detail is real and
+        genuinely useful (see this module's own docstring on why the
+        panel exists at all), but whiptail's Guided Setup already has
+        its own screens for confirming these same choices, and this
+        panel's log pane is reserved for real subprocess output, not a
+        second copy of console prose scrolling above it. The call sites
+        that use this route the same detail into "Setup Complete"
+        instead (installer/cli.py's install-summary command) - moved,
+        not deleted.
+        """
+
     def finish(self, success: bool, summary: str | None = None) -> None:
         """Set the final Done./Failed. state and (optionally) a summary line."""
 
@@ -155,7 +170,17 @@ class RunPanel:
 
 
 class _NoOpPanel:
-    """Inert stand-in when VULCAN_PROGRESS is unset - byte-identical output."""
+    """
+    Inert stand-in when VULCAN_PROGRESS is unset - byte-identical output.
+    note() is the one method that isn't a no-op: with no real panel to
+    suppress detail into, it prints immediately via the stored console -
+    exactly what a bare console.print() call would have done, so a
+    call site can use panel.note(...) unconditionally without caring
+    whether a real panel is active.
+    """
+
+    def __init__(self, console: Console | None = None):
+        self._console = console
 
     def __enter__(self):
         return self
@@ -165,6 +190,10 @@ class _NoOpPanel:
 
     def advance(self, label: str | None = None) -> None:
         pass
+
+    def note(self, text: str) -> None:
+        if self._console is not None:
+            self._console.print(text)
 
     def finish(self, success: bool, summary: str | None = None) -> None:
         pass
@@ -183,4 +212,4 @@ def progress_panel(title: str, phases: list[str], console: Console | None = None
     if os.environ.get("VULCAN_PROGRESS") == "1" and os.isatty(1):
         return RunPanel(title, phases, console=console)
 
-    return _NoOpPanel()
+    return _NoOpPanel(console)

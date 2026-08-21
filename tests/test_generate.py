@@ -2653,6 +2653,50 @@ def test_write_stack_writes_state_file(tmp_path):
     assert state["tier"] == "light"
 
 
+def test_write_stack_persists_warnings_into_state_file(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        gpu_vendor="nvidia",
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+    state = load_previous_state(tmp_path / "stack")
+
+    assert result["warnings"]
+    assert state["warnings"] == result["warnings"]
+
+
+def test_write_stack_regenerate_clears_stale_warnings(tmp_path):
+
+    nvidia_config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        gpu_vendor="nvidia",
+    )
+    write_stack(nvidia_config, output_dir=tmp_path / "stack")
+
+    no_gpu_config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+    )
+    write_stack(no_gpu_config, output_dir=tmp_path / "stack")
+
+    state = load_previous_state(tmp_path / "stack")
+
+    assert state["warnings"] == []
+
+
 def test_render_authelia_users_database_output_shape():
 
     output = render_authelia_users_database("admin", "admin", "$argon2id$fake$hash")

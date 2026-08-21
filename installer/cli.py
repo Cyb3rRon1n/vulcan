@@ -58,7 +58,7 @@ from installer.post_install import (
     verify_stack_running,
 )
 from installer.preflight import check_ports_available, format_port_conflicts
-from installer.panel import progress_panel
+from installer.panel import RunPanel, _NoOpPanel, progress_panel
 from installer.self_update import update_vulcan_self
 from installer.storage import (
     _raid_level_options,
@@ -225,25 +225,16 @@ def detect_shell():
         print(f"{key}={_shell_quote(str(value))}")
 
 
-@app.command(name="urls")
-def urls_shell():
+def _config_from_previous_state(previous: dict) -> GenerationConfig:
     """
-    Print real per-service access URLs for the currently-generated
-    stack, plain text (one per line) - not eval-able KEY=VALUE like
-    `detect`, since installer/menu.sh only needs to display these in a
-    whiptail msgbox, not read them into shell variables. Reuses
-    render_stack_summary() against a GenerationConfig rebuilt from the
-    same saved state `detect`'s PREVIOUS_* fields already read, so the
-    URL list is never a second, drifting implementation of what the
-    live console output already prints during a real install.
+    Rebuilds a real GenerationConfig from saved state - the shared
+    piece behind `urls`/`install-summary`, both of which need to
+    re-derive real, current stack detail after the fact rather than
+    keeping a second, drifting copy of what a real install already
+    computed once.
     """
 
-    previous = load_previous_state(STACK_DIR)
-
-    if previous is None:
-        return
-
-    config = GenerationConfig(
+    return GenerationConfig(
         tier=TIERS[previous["tier"]],
         media_path=previous["media_path"],
         puid=previous["puid"],
@@ -262,7 +253,66 @@ def urls_shell():
         dashy_private=previous.get("dashy_private", True),
     )
 
+
+@app.command(name="urls")
+def urls_shell():
+    """
+    Print real per-service access URLs for the currently-generated
+    stack, plain text (one per line) - not eval-able KEY=VALUE like
+    `detect`, since installer/menu.sh only needs to display these in a
+    whiptail msgbox, not read them into shell variables. Reuses
+    render_stack_summary() against a GenerationConfig rebuilt from the
+    same saved state `detect`'s PREVIOUS_* fields already read, so the
+    URL list is never a second, drifting implementation of what the
+    live console output already prints during a real install.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        return
+
+    config = _config_from_previous_state(previous)
+
     print(render_stack_summary(config, detect_host_ip()))
+
+
+@app.command(name="install-summary")
+def install_summary_shell():
+    """
+    Plain-text install detail for the currently-generated stack -
+    detected hardware, the chosen tier and what it includes, any
+    warnings from the last real `write_stack()` (persisted into
+    stack/.vulcan-state.json specifically for this), and the numbered
+    setup order. Not eval-able like `detect`; menu.sh's Guided Setup
+    prints this into its "Setup Complete" screen instead of the same
+    detail scrolling by live under a whiptail progress panel (see
+    installer.panel.RunPanel.note()) - moved, not deleted.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        return
+
+    info = detect_system()
+    config = _config_from_previous_state(previous)
+
+    print(
+        f"Detected: {info.cpu_cores_logical} logical cores, {info.ram_total_gb}GB RAM, "
+        f"GPU: {info.gpu_vendor or 'none detected'}, "
+        f"{info.os_pretty_name or info.os_id or 'unknown OS'}"
+    )
+    print(f"Tier: {config.tier.display_name} - {tier_description(config.tier)}")
+
+    for warning in previous.get("warnings", []):
+        print(f"! {warning}")
+
+    setup_order = render_setup_order(config, detect_host_ip())
+
+    if setup_order:
+        print()
+        print(setup_order)
 
 
 @storage_app.command(name="report")
@@ -1191,7 +1241,7 @@ def run_install(
         )
         panel.advance()
 
-        info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline)
+        info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline, panel)
 
         if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
             panel.finish(False)
@@ -1204,13 +1254,13 @@ def run_install(
             info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
             downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
             non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
-            cloudflare_email, auth_username, auth_password
+            cloudflare_email, auth_username, auth_password, panel
         )
         panel.advance()
 
         _generate_and_maybe_start(
             config, non_interactive, yes, start, group_just_added,
-            on_phase=panel.advance
+            on_phase=panel.advance, panel=panel
         )
         panel.finish(True)
 
@@ -1219,14 +1269,16 @@ def _ensure_docker_ready(
     info: SystemInfo,
     non_interactive: bool,
     yes: bool,
-    offline: bool = False
+    offline: bool = False,
+    panel: RunPanel | _NoOpPanel | None = None
 ) -> tuple[SystemInfo, bool]:
 
     group_just_added = False
+    panel = panel if panel is not None else _NoOpPanel(console)
 
     if info.docker_installed and info.docker_running and info.docker_compose_v2:
 
-        console.print("[green]Docker is ready.[/green]")
+        panel.note("[green]Docker is ready.[/green]")
         return info, group_just_added
 
     if not info.docker_installed:
@@ -1494,12 +1546,15 @@ def _gather_generation_config(
     cloudflare_dns: bool = False,
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
-    auth_password: str | None = None
+    auth_password: str | None = None,
+    panel: RunPanel | _NoOpPanel | None = None
 ) -> GenerationConfig:
+
+    panel = panel if panel is not None else _NoOpPanel(console)
 
     if previous is not None:
 
-        console.print(
+        panel.note(
             f"Found an existing [bold]{previous['tier']}[/bold] stack, generated "
             f"{previous['generated_at']}. Using it as defaults - pass flags to override."
         )
@@ -1540,23 +1595,29 @@ def _gather_generation_config(
 
     if description is not None:
 
-        console.print(f"Media storage: {description}")
+        panel.note(f"Media storage: {description}")
 
         if redundancy["redundant"] is False:
-            console.print(
+            panel.note(
                 "[yellow]! No drive-level redundancy - a single drive failure "
                 "would mean data loss.[/yellow]"
             )
 
     recommendation = recommend_tier(info)
 
+    # The full 3-tier comparison only helps someone still choosing - a
+    # real, avoidable wall of text when --tier already decided it (every
+    # non-interactive run, which is what the whiptail menu always uses).
+    # The one-line recommendation stays either way; it's short and still
+    # useful context even when the choice is already made.
     console.print(
         f"Recommended tier: [bold]{recommendation.tier.display_name}[/bold] - "
         f"{recommendation.explanation}"
     )
 
-    for tier_name in ("light", "medium", "heavy"):
-        console.print(f"  {TIERS[tier_name].display_name}: {tier_description(TIERS[tier_name])}")
+    if not non_interactive:
+        for tier_name in ("light", "medium", "heavy"):
+            console.print(f"  {TIERS[tier_name].display_name}: {tier_description(TIERS[tier_name])}")
 
     if tier is not None:
 
@@ -2162,40 +2223,43 @@ def _generate_and_maybe_start(
     yes: bool,
     start: bool | None,
     group_just_added: bool,
-    on_phase=None
+    on_phase=None,
+    panel: RunPanel | _NoOpPanel | None = None
 ) -> dict:
 
-    console.print("\n[bold]Review[/bold]")
-    console.print(f"  Tier: {config.tier.display_name}")
-    console.print(f"  Media path: {config.media_path}")
-    console.print(f"  PUID/PGID: {config.puid}/{config.pgid}")
-    console.print(f"  Timezone: {config.timezone}")
-    console.print(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
-    console.print(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
-    console.print(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
-    console.print(f"  MeTube: {'enabled' if 'metube' in config.enabled_optional else 'disabled'}")
-    console.print(f"  Downtify: {'enabled' if 'downtify' in config.enabled_optional else 'disabled'}")
-    console.print(f"  Netdata: {'enabled' if 'netdata' in config.enabled_optional else 'disabled'}")
-    console.print(f"  Vaultwarden: {'enabled' if 'vaultwarden' in config.enabled_optional else 'disabled'}")
+    panel = panel if panel is not None else _NoOpPanel(console)
+
+    panel.note("\n[bold]Review[/bold]")
+    panel.note(f"  Tier: {config.tier.display_name}")
+    panel.note(f"  Media path: {config.media_path}")
+    panel.note(f"  PUID/PGID: {config.puid}/{config.pgid}")
+    panel.note(f"  Timezone: {config.timezone}")
+    panel.note(f"  Gluetun VPN: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  SABnzbd: {'enabled' if 'sabnzbd' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Recyclarr: {'enabled' if 'recyclarr' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  MeTube: {'enabled' if 'metube' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Downtify: {'enabled' if 'downtify' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Netdata: {'enabled' if 'netdata' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Vaultwarden: {'enabled' if 'vaultwarden' in config.enabled_optional else 'disabled'}")
     if config.homepage_private:
-        console.print("  Homepage: private (not publicly routed)")
-    console.print(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
+        panel.note("  Homepage: private (not publicly routed)")
+    panel.note(f"  Homepage: {'enabled' if 'homepage' in config.enabled_optional else 'disabled'}")
     if config.dashy_private:
-        console.print("  Dashy: private (not publicly routed)")
-    console.print(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
-    console.print(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
+        panel.note("  Dashy: private (not publicly routed)")
+    panel.note(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
-        console.print(f"  Services: {', '.join(sorted(config.custom_services))}")
+        panel.note(f"  Services: {', '.join(sorted(config.custom_services))}")
 
     if config.domain:
-        console.print(f"  Domain: {config.domain}")
+        panel.note(f"  Domain: {config.domain}")
 
     if config.cloudflare_dns:
-        console.print(f"  Cloudflare DNS (real Let's Encrypt certs): enabled ({config.cloudflare_email})")
+        panel.note(f"  Cloudflare DNS (real Let's Encrypt certs): enabled ({config.cloudflare_email})")
 
     if config.auth_username:
-        console.print(f"  Authelia admin username: {config.auth_username}")
+        panel.note(f"  Authelia admin username: {config.auth_username}")
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 
@@ -2215,13 +2279,18 @@ def _generate_and_maybe_start(
         console.print(f"[red]Failed to write the stack: {error}[/red]")
         raise typer.Exit(code=1)
 
-    console.print(f"[green]Stack written to {result['compose_path']}[/green]")
+    panel.note(f"[green]Stack written to {result['compose_path']}[/green]")
 
     if on_phase is not None:
         on_phase("Generate stack")
 
+    # Real, actionable detail (a missing NVIDIA toolkit, a port that
+    # got reassigned, ...) - not deleted, just moved: write_stack()
+    # persists these into stack/.vulcan-state.json now specifically so
+    # `vulcan install-summary` can surface them in "Setup Complete"
+    # instead of them scrolling by here under a live panel.
     for warning in result["warnings"]:
-        console.print(f"[yellow]! {warning}[/yellow]")
+        panel.note(f"[yellow]! {warning}[/yellow]")
 
     if start is None:
         do_start = False if non_interactive else typer.confirm("Start the stack now?", default=True)
@@ -2268,17 +2337,17 @@ def _generate_and_maybe_start(
                 console.print("[red]Check `docker compose logs` for the failing service(s).[/red]")
                 raise typer.Exit(code=1)
 
-            console.print("[green]Stack is up:[/green]")
+            panel.note("[green]Stack is up:[/green]")
 
             summary = render_stack_summary(config, detect_host_ip())
 
             if summary:
-                console.print(summary)
+                panel.note(summary)
 
             setup_order = render_setup_order(config, detect_host_ip())
 
             if setup_order:
-                console.print(f"\n{setup_order}")
+                panel.note(f"\n{setup_order}")
 
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
@@ -2286,7 +2355,7 @@ def _generate_and_maybe_start(
 
     else:
 
-        console.print(
+        panel.note(
             "Run this when you're ready:\n"
             f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d\n\n"
             f"Once it's up, a suggested setup order for every service you enabled is here: "
