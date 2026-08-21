@@ -525,6 +525,8 @@ def test_non_interactive_heavy_with_gpu_detected_auto_enables(tmp_path):
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
     ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
 
@@ -1283,6 +1285,8 @@ def test_interactive_full_run_with_prompts(tmp_path):
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 600.0, "disk_path_checked": media_path}
     ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack, patch(
         "installer.cli.run_docker_command"
@@ -1428,6 +1432,8 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
     ), patch(
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 2000.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
@@ -2546,6 +2552,150 @@ def test_storage_apply_success_prints_device_tree():
     assert "sdb 4T" in result.output
 
 
+def _fake_teardown_plan(is_raid: bool = False) -> dict:
+
+    return {
+        "mount_point": "/mnt/media",
+        "target_device": "/dev/md0" if is_raid else "/dev/sdb",
+        "member_devices": ["/dev/sdb", "/dev/sdc"] if is_raid else [],
+        "is_raid": is_raid,
+        "commands": [["umount", "/mnt/media"]],
+        "fstab_line": "/dev/sdb /mnt/media ext4 defaults 0 2",
+        "error": None,
+    }
+
+
+def test_storage_teardown_plan_error_exits_1():
+
+    fake_plan = _fake_teardown_plan()
+    fake_plan["error"] = "Nothing is mounted at /mnt/media - nothing to tear down."
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ) as mock_describe, patch("installer.cli.apply_storage_teardown") as mock_apply:
+
+        result = runner.invoke(app, ["storage", "teardown"])
+
+    assert result.exit_code == 1
+    assert "a real rendered plan" in result.output
+    mock_describe.assert_called_once()
+    mock_apply.assert_not_called()
+
+
+def test_storage_teardown_interactive_typed_confirmation_mismatch_aborts():
+
+    fake_plan = _fake_teardown_plan()
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_teardown") as mock_apply:
+
+        result = runner.invoke(app, ["storage", "teardown"], input="/mnt/wrong\n")
+
+    assert result.exit_code == 1
+    assert "didn't match" in result.output
+    mock_apply.assert_not_called()
+
+
+def test_storage_teardown_interactive_typed_confirmation_runs():
+
+    fake_plan = _fake_teardown_plan()
+    apply_result = {"success": True, "ran": ["umount /mnt/media"], "skipped": []}
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_teardown", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(app, ["storage", "teardown"], input="/mnt/media\n")
+
+    assert result.exit_code == 0
+    mock_apply.assert_called_once()
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is True
+
+
+def test_storage_teardown_non_interactive_requires_yes():
+
+    with patch("installer.cli.plan_storage_teardown", return_value=_fake_teardown_plan()):
+
+        result = runner.invoke(app, ["storage", "teardown", "--non-interactive"])
+
+    assert result.exit_code == 1
+    assert "--yes" in result.output
+
+
+def test_storage_teardown_non_interactive_requires_confirm_wipe_even_with_yes():
+
+    with patch("installer.cli.plan_storage_teardown", return_value=_fake_teardown_plan()), patch(
+        "installer.cli.apply_storage_teardown"
+    ) as mock_apply:
+
+        result = runner.invoke(
+            app, ["storage", "teardown", "--non-interactive", "--yes"]
+        )
+
+    assert result.exit_code == 1
+    assert "--confirm-wipe" in result.output
+    mock_apply.assert_not_called()
+
+
+def test_storage_teardown_non_interactive_with_confirm_wipe_runs():
+
+    fake_plan = _fake_teardown_plan()
+    apply_result = {"success": True, "ran": ["umount /mnt/media"], "skipped": []}
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_teardown", return_value=apply_result) as mock_apply:
+
+        result = runner.invoke(
+            app,
+            ["storage", "teardown", "--non-interactive", "--yes", "--confirm-wipe"]
+        )
+
+    assert result.exit_code == 0
+    assert mock_apply.call_args.kwargs["confirm_wipe"] is True
+
+
+def test_storage_teardown_success_prints_ran_and_skipped():
+
+    fake_plan = _fake_teardown_plan(is_raid=True)
+    apply_result = {
+        "success": True,
+        "ran": ["umount /mnt/media", "mdadm --stop /dev/md0"],
+        "skipped": ["/dev/sdb is already unmounted"],
+    }
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_teardown", return_value=apply_result):
+
+        result = runner.invoke(app, ["storage", "teardown"], input="/mnt/media\n")
+
+    assert result.exit_code == 0
+    assert "mdadm --stop /dev/md0" in result.output
+    assert "already unmounted" in result.output
+
+
+def test_storage_teardown_failure_exits_1():
+
+    fake_plan = _fake_teardown_plan()
+    apply_result = {
+        "success": False,
+        "error": "Failed running umount /mnt/media: exit code 1",
+        "ran": [],
+        "skipped": [],
+    }
+
+    with patch("installer.cli.plan_storage_teardown", return_value=fake_plan), patch(
+        "installer.cli.describe_storage_teardown", return_value="a real rendered plan"
+    ), patch("installer.cli.apply_storage_teardown", return_value=apply_result):
+
+        result = runner.invoke(app, ["storage", "teardown"], input="/mnt/media\n")
+
+    assert result.exit_code == 1
+    assert "Failed running umount" in result.output
+
+
 def test_offer_storage_setup_skips_when_no_blank_devices():
 
     with patch("installer.cli.list_blank_unprotected_devices", return_value=[]):
@@ -3478,6 +3628,8 @@ def test_non_interactive_homepage_private_defaults_true_on_fresh_install(tmp_pat
     ), patch(
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:

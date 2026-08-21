@@ -63,13 +63,16 @@ from installer.self_update import update_vulcan_self
 from installer.storage import (
     _raid_level_options,
     apply_storage_layout,
+    apply_storage_teardown,
     describe_raid_option,
     describe_storage_plan,
+    describe_storage_teardown,
     device_tree_text,
     identify_protected_devices,
     list_blank_unprotected_devices,
     list_block_devices,
     plan_storage_layout,
+    plan_storage_teardown,
 )
 from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
 
@@ -80,11 +83,11 @@ app = typer.Typer(
 )
 
 # A real sub-app, not a flat vulcan-storage-report command - storage
-# provisioning is a deliberately separate, more advanced namespace
-# from every other lifecycle command above (report/plan today, a real
-# apply as a later, more heavily-gated follow-up - see ROADMAP.md).
+# provisioning is a deliberately separate, more advanced namespace from
+# every other lifecycle command above (report/plan/apply, and their
+# teardown counterpart, all more heavily-gated than the rest of the CLI).
 storage_app = typer.Typer(
-    help="Detect real storage on this machine and plan (never execute) how to provision it."
+    help="Detect, provision, and tear down real storage on this machine."
 )
 app.add_typer(storage_app, name="storage")
 
@@ -449,6 +452,84 @@ def storage_apply(
 
     if tree:
         console.print(tree)
+
+
+@storage_app.command(name="teardown")
+def storage_teardown(
+    mount_point: str = typer.Option("/mnt/media", "--mount-point"),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    confirm_wipe: bool = typer.Option(
+        False, "--confirm-wipe",
+        help="Deliberately erase the storage mounted at --mount-point and its "
+        "member device(s) - required in non-interactive mode. Unlike `storage "
+        "apply`'s --confirm-wipe (only needed when a target device already has "
+        "data), this is always required: a teardown is destructive by definition."
+    )
+):
+    """
+    Reverse whatever `vulcan storage apply` provisioned at --mount-point:
+    unmount, stop the RAID array and zero every member's superblock (if
+    it's a RAID array), wipe the array/device and each member, and remove
+    the /etc/fstab line - so the member device(s) show up as blank again
+    for a future `vulcan storage apply`. There is no undo.
+    """
+
+    plan = plan_storage_teardown(mount_point)
+
+    console.print(describe_storage_teardown(plan))
+
+    if plan["error"]:
+        raise typer.Exit(code=1)
+
+    if non_interactive:
+
+        if not yes:
+            console.print("[red]--yes is required alongside --non-interactive.[/red]")
+            raise typer.Exit(code=1)
+
+        if not confirm_wipe:
+            console.print(
+                "[red]--confirm-wipe is required - a teardown is always "
+                "destructive.[/red]"
+            )
+            raise typer.Exit(code=1)
+
+    else:
+
+        typed = typer.prompt(
+            f"Type the mount point to confirm ({mount_point})",
+            hide_input=False,
+        )
+
+        if typed.strip() != mount_point:
+            console.print("[red]Confirmation didn't match - nothing was executed.[/red]")
+            raise typer.Exit(code=1)
+
+        confirm_wipe = True
+
+    result = None
+
+    with progress_panel(
+        "Media Storage Teardown", ["Tear down storage"], console=console
+    ) as panel:
+        result = apply_storage_teardown(plan, confirm_wipe=confirm_wipe)
+        panel.advance()
+
+    for command in result.get("ran", []):
+        console.print(f"[green]ran:[/green] {command}")
+
+    for note in result.get("skipped", []):
+        console.print(f"[cyan]skipped:[/cyan] {note}")
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[green]Storage torn down: {mount_point} is no longer provisioned. "
+        "The underlying device(s) are blank again.[/green]"
+    )
 
 
 @app.command()

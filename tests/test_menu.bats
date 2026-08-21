@@ -256,20 +256,39 @@ setup() {
 
 @test "main_menu exits cleanly (status 0) when Exit is chosen" {
 
+    # main_menu() now calls refresh_detect on every redraw (see the
+    # "Reset Media Storage" conditional item) - a bare $VULCAN_BIN
+    # detect needs *something* real to run against here.
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+            echo "STORAGE_MOUNT=''"
+        fi
+    }
+    export -f fake_vulcan
+
     whiptail() { echo -n "exit" >&3; return 0; }
     export -f whiptail
 
-    run bash -c "source '$MENU_SH'; main_menu"
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
 
     [ "$status" -eq 0 ]
 }
 
 @test "main_menu exits cleanly (status 0) on Cancel/ESC" {
 
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+            echo "STORAGE_MOUNT=''"
+        fi
+    }
+    export -f fake_vulcan
+
     whiptail() { return 1; }
     export -f whiptail
 
-    run bash -c "source '$MENU_SH'; main_menu"
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
 
     [ "$status" -eq 0 ]
 }
@@ -306,7 +325,11 @@ setup() {
 
     fake_vulcan() {
         case "$*" in
-            detect) echo "STACK_EXISTS='true'" ;;
+            detect)
+                echo "STACK_EXISTS='true'"
+                echo "BLANK_STORAGE_DEVICES=''"
+                echo "STORAGE_MOUNT=''"
+                ;;
             *) return 0 ;;
         esac
     }
@@ -504,7 +527,166 @@ setup() {
     [[ "$output" != *"--raid-level"* ]]
 }
 
+@test "storage teardown reports nothing to do when nothing is provisioned" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "STORAGE_MOUNT=''"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() { return 0; }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_teardown_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"storage teardown"* ]]
+}
+
+@test "storage teardown mismatched typed confirmation runs nothing" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "STORAGE_MOUNT='/mnt/media'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Type the mount point to confirm"*) echo -n "/mnt/wrong" >&3; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_teardown_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"storage teardown"* ]]
+}
+
+@test "storage teardown matched typed confirmation shells out to 'vulcan storage teardown'" {
+
+    vulcan_stub() {
+        if [ "$1" = "detect" ]; then
+            echo "STORAGE_MOUNT='/mnt/media'"
+        else
+            echo "vulcan $*"
+        fi
+    }
+    export -f vulcan_stub
+
+    whiptail() {
+        case "$*" in
+            *"Type the mount point to confirm"*) echo -n "/mnt/media" >&3; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN='vulcan_stub'
+        storage_teardown_flow <<< ''
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"vulcan storage teardown --mount-point /mnt/media --non-interactive --yes --confirm-wipe"* ]]
+}
+
+@test "main_menu shows Reset Media Storage only when nothing blank remains and something is mounted" {
+
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+            echo "STORAGE_MOUNT='/mnt/media'"
+        fi
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        echo "$*" >&1
+        echo -n "exit" >&3
+        return 0
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"R. Reset Media Storage"* ]]
+}
+
+@test "main_menu hides Reset Media Storage when blank devices are still available" {
+
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES='/dev/sdb'"
+            echo "STORAGE_MOUNT=''"
+        fi
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        echo "$*" >&1
+        echo -n "exit" >&3
+        return 0
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Reset Media Storage"* ]]
+}
+
+@test "main_menu hides Reset Media Storage when nothing is mounted at all" {
+
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+            echo "STORAGE_MOUNT=''"
+        fi
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        echo "$*" >&1
+        echo -n "exit" >&3
+        return 0
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Reset Media Storage"* ]]
+}
+
 @test "main_menu is numbered with install-path items first" {
+
+    fake_vulcan() {
+        if [ "$1" = "detect" ]; then
+            echo "BLANK_STORAGE_DEVICES=''"
+            echo "STORAGE_MOUNT=''"
+        fi
+    }
+    export -f fake_vulcan
 
     whiptail() {
         # `echo >&1` (not >&2): main_menu swaps fds via 3>&1 1>&2 2>&3,
@@ -517,7 +699,7 @@ setup() {
     }
     export -f whiptail
 
-    run bash -c "source '$MENU_SH'; main_menu"
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
 
     [ "$status" -eq 0 ]
     # Full rendered menu text (dialog args joined with spaces), asserting

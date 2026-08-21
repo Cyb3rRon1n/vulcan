@@ -19,7 +19,7 @@ python -m installer --plain    # equivalent, for running from source
 ruff check .
 
 # Tests
-python -m pytest tests/        # see README's Known Issues for 3 env-state tests to deselect
+python -m pytest tests/
 python -m pytest tests/test_generate.py -v
 ```
 
