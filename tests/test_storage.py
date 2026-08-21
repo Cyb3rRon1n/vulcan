@@ -1,17 +1,20 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from installer.storage import (
     _raid_level_options,
     _raid_usable_drive_equivalents,
     apply_storage_layout,
+    apply_storage_teardown,
     describe_raid_option,
     describe_storage_plan,
+    describe_storage_teardown,
     device_tree_text,
     identify_protected_devices,
     list_blank_unprotected_devices,
     list_block_devices,
     plan_storage_layout,
+    plan_storage_teardown,
 )
 
 FAKE_LSBLK_OUTPUT = {
@@ -737,3 +740,341 @@ def test_list_blank_unprotected_devices_lsblk_failure_returns_empty():
         devices = list_blank_unprotected_devices()
 
     assert devices == []
+
+
+# --- Storage teardown -------------------------------------------------
+
+def test_mdadm_export_field_parses_md_device_lines():
+
+    from installer.storage import _mdadm_export_field
+
+    export_output = (
+        "MD_LEVEL=raid1\n"
+        "MD_DEVICES=2\n"
+        "MD_DEVICE_dev0_DEV=/dev/sdb\n"
+        "MD_DEVICE_dev0_ROLE=0\n"
+        "MD_DEVICE_dev1_DEV=/dev/sdc\n"
+        "MD_DEVICE_dev1_ROLE=1\n"
+    )
+
+    with patch(
+        "installer.storage.subprocess.run",
+        return_value=MagicMock(returncode=0, stdout=export_output)
+    ):
+
+        members = _mdadm_export_field("/dev/md0")
+
+    assert members == ["/dev/sdb", "/dev/sdc"]
+
+
+def test_mdadm_export_field_returns_empty_on_failure():
+
+    from installer.storage import _mdadm_export_field
+
+    with patch(
+        "installer.storage.subprocess.run",
+        return_value=MagicMock(returncode=1, stdout="")
+    ):
+
+        assert _mdadm_export_field("/dev/md0") == []
+
+
+def test_fstab_line_for_mount_point_finds_real_line():
+
+    from installer.storage import _fstab_line_for_mount_point
+
+    fstab = (
+        "# comment\n"
+        "UUID=abc / ext4 defaults 0 1\n"
+        "/dev/sdb /mnt/media ext4 defaults 0 2\n"
+    )
+
+    with patch("builtins.open", mock_open(read_data=fstab)):
+        line = _fstab_line_for_mount_point("/mnt/media")
+
+    assert line == "/dev/sdb /mnt/media ext4 defaults 0 2"
+
+
+def test_fstab_line_for_mount_point_returns_none_when_absent():
+
+    from installer.storage import _fstab_line_for_mount_point
+
+    fstab = "UUID=abc / ext4 defaults 0 1\n"
+
+    with patch("builtins.open", mock_open(read_data=fstab)):
+        assert _fstab_line_for_mount_point("/mnt/media") is None
+
+
+def test_plan_storage_teardown_nothing_mounted_returns_error():
+
+    with patch("installer.storage._findmnt_source", return_value=None):
+
+        plan = plan_storage_teardown("/mnt/media")
+
+    assert plan["error"] is not None
+    assert "Nothing is mounted" in plan["error"]
+    assert plan["commands"] == []
+
+
+def test_plan_storage_teardown_refuses_protected_device():
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/sda"), \
+         patch("installer.storage.identify_protected_devices", return_value={"/dev/sda"}):
+
+        plan = plan_storage_teardown("/")
+
+    assert plan["error"] is not None
+    assert "backing / or /boot" in plan["error"]
+    assert plan["commands"] == []
+
+
+def test_plan_storage_teardown_single_device_no_raid():
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/sdb"), \
+         patch("installer.storage.identify_protected_devices", return_value=set()), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch(
+             "installer.storage._fstab_line_for_mount_point",
+             return_value="/dev/sdb /mnt/media ext4 defaults 0 2"
+         ):
+
+        plan = plan_storage_teardown("/mnt/media")
+
+    assert plan["error"] is None
+    assert plan["is_raid"] is False
+    assert plan["member_devices"] == []
+    assert plan["commands"] == [
+        ["umount", "/mnt/media"],
+        ["wipefs", "-a", "/dev/sdb"],
+        ["sh", "-c",
+         "grep -vF '/dev/sdb /mnt/media ext4 defaults 0 2' /etc/fstab "
+         "> /etc/fstab.vulcan-tmp && mv /etc/fstab.vulcan-tmp /etc/fstab"],
+    ]
+
+
+def test_plan_storage_teardown_raid_array_includes_members():
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/md0"), \
+         patch("installer.storage.identify_protected_devices", return_value=set()), \
+         patch("installer.storage._md_devices", return_value={"md0"}), \
+         patch(
+             "installer.storage._mdadm_export_field",
+             return_value=["/dev/sdb", "/dev/sdc"]
+         ), \
+         patch("installer.storage._fstab_line_for_mount_point", return_value=None):
+
+        plan = plan_storage_teardown("/mnt/media")
+
+    assert plan["error"] is None
+    assert plan["is_raid"] is True
+    assert plan["member_devices"] == ["/dev/sdb", "/dev/sdc"]
+    assert plan["commands"] == [
+        ["umount", "/mnt/media"],
+        ["mdadm", "--stop", "/dev/md0"],
+        ["mdadm", "--zero-superblock", "/dev/sdb"],
+        ["mdadm", "--zero-superblock", "/dev/sdc"],
+        ["wipefs", "-a", "/dev/md0"],
+        ["wipefs", "-a", "/dev/sdb"],
+        ["wipefs", "-a", "/dev/sdc"],
+    ]
+
+
+def test_plan_storage_teardown_no_fstab_line_skips_removal_command():
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/sdb"), \
+         patch("installer.storage.identify_protected_devices", return_value=set()), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch("installer.storage._fstab_line_for_mount_point", return_value=None):
+
+        plan = plan_storage_teardown("/mnt/media")
+
+    assert plan["fstab_line"] is None
+    assert not any(c[0] == "sh" for c in plan["commands"])
+
+
+def test_describe_storage_teardown_reports_error_without_commands():
+
+    plan = {"error": "Nothing is mounted at /mnt/media - nothing to tear down."}
+
+    output = describe_storage_teardown(plan)
+
+    assert "Can't plan this teardown" in output
+
+
+def test_describe_storage_teardown_lists_members_commands_and_warning():
+
+    plan = {
+        "mount_point": "/mnt/media",
+        "target_device": "/dev/md0",
+        "member_devices": ["/dev/sdb", "/dev/sdc"],
+        "is_raid": True,
+        "commands": [["umount", "/mnt/media"], ["wipefs", "-a", "/dev/md0"]],
+        "fstab_line": None,
+        "error": None,
+    }
+
+    output = describe_storage_teardown(plan)
+
+    assert "/dev/md0" in output
+    assert "/dev/sdb" in output
+    assert "/dev/sdc" in output
+    assert "nothing has been executed" in output
+    assert "no undo" in output
+
+
+def _teardown_plan(
+    target: str = "/dev/sdb",
+    mount: str = "/mnt/media",
+    members: list[str] | None = None,
+    is_raid: bool = False,
+    fstab_line: str | None = "/dev/sdb /mnt/media ext4 defaults 0 2",
+) -> dict:
+
+    members = members or []
+    commands: list[list[str]] = [["umount", mount]]
+
+    if is_raid:
+        commands.append(["mdadm", "--stop", target])
+        for member in members:
+            commands.append(["mdadm", "--zero-superblock", member])
+
+    commands.append(["wipefs", "-a", target])
+
+    for member in members:
+        commands.append(["wipefs", "-a", member])
+
+    if fstab_line:
+        commands.append(
+            ["sh", "-c",
+             f"grep -vF '{fstab_line}' /etc/fstab > /etc/fstab.vulcan-tmp "
+             "&& mv /etc/fstab.vulcan-tmp /etc/fstab"]
+        )
+
+    return {
+        "mount_point": mount,
+        "target_device": target,
+        "member_devices": members,
+        "is_raid": is_raid,
+        "commands": commands,
+        "fstab_line": fstab_line,
+        "error": None,
+    }
+
+
+def test_apply_storage_teardown_refuses_plan_with_error():
+
+    result = apply_storage_teardown({"error": "nothing mounted"}, confirm_wipe=True)
+
+    assert result["success"] is False
+    assert result["error"] == "nothing mounted"
+
+
+def test_apply_storage_teardown_refuses_without_confirm_wipe():
+
+    recorder = _PrivilegedRecorder()
+
+    with patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(_teardown_plan())
+
+    assert result["success"] is False
+    assert "--confirm-wipe" in result["error"]
+    assert recorder.calls == []
+
+
+def test_apply_storage_teardown_single_device_runs_full_sequence():
+
+    recorder = _PrivilegedRecorder()
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/sdb"), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(_teardown_plan(), confirm_wipe=True)
+
+    assert result["success"] is True
+    assert recorder.calls == [
+        ["umount", "/mnt/media"],
+        ["wipefs", "-a", "/dev/sdb"],
+        ["sh", "-c",
+         "grep -vF '/dev/sdb /mnt/media ext4 defaults 0 2' /etc/fstab "
+         "> /etc/fstab.vulcan-tmp && mv /etc/fstab.vulcan-tmp /etc/fstab"],
+    ]
+
+
+def test_apply_storage_teardown_raid_runs_full_sequence():
+
+    recorder = _PrivilegedRecorder()
+
+    plan = _teardown_plan(
+        target="/dev/md0", members=["/dev/sdb", "/dev/sdc"],
+        is_raid=True, fstab_line=None
+    )
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/md0"), \
+         patch("installer.storage._md_devices", return_value={"md0"}), \
+         patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(plan, confirm_wipe=True)
+
+    assert result["success"] is True
+    assert recorder.calls == [
+        ["umount", "/mnt/media"],
+        ["mdadm", "--stop", "/dev/md0"],
+        ["mdadm", "--zero-superblock", "/dev/sdb"],
+        ["mdadm", "--zero-superblock", "/dev/sdc"],
+        ["wipefs", "-a", "/dev/md0"],
+        ["wipefs", "-a", "/dev/sdb"],
+        ["wipefs", "-a", "/dev/sdc"],
+    ]
+
+
+def test_apply_storage_teardown_skips_umount_when_already_unmounted():
+
+    recorder = _PrivilegedRecorder()
+
+    with patch("installer.storage._findmnt_source", return_value=None), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(_teardown_plan(), confirm_wipe=True)
+
+    assert result["success"] is True
+    assert not any(call[0] == "umount" for call in recorder.calls)
+    assert any("already unmounted" in s for s in result["skipped"])
+
+
+def test_apply_storage_teardown_skips_mdadm_stop_when_already_stopped():
+
+    recorder = _PrivilegedRecorder()
+
+    plan = _teardown_plan(
+        target="/dev/md0", members=["/dev/sdb"], is_raid=True, fstab_line=None
+    )
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/md0"), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(plan, confirm_wipe=True)
+
+    assert result["success"] is True
+    assert not any(call[:2] == ["mdadm", "--stop"] for call in recorder.calls)
+    assert any("already stopped" in s for s in result["skipped"])
+    # --zero-superblock still runs even though --stop was skipped.
+    assert ["mdadm", "--zero-superblock", "/dev/sdb"] in recorder.calls
+
+
+def test_apply_storage_teardown_stops_at_first_failed_command():
+
+    recorder = _PrivilegedRecorder(fail_prefix="wipefs")
+
+    with patch("installer.storage._findmnt_source", return_value="/dev/sdb"), \
+         patch("installer.storage._md_devices", return_value=set()), \
+         patch("installer.storage.run_privileged", side_effect=recorder):
+
+        result = apply_storage_teardown(_teardown_plan(), confirm_wipe=True)
+
+    assert result["success"] is False
+    assert "wipefs" in result["error"]
+    assert not any(call[0] == "sh" for call in recorder.calls)

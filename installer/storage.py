@@ -15,6 +15,7 @@ it - confirmed directly with the owner before writing any of this.
 
 import json
 import os
+import shlex
 import subprocess
 
 from installer.shell import run_privileged
@@ -769,6 +770,292 @@ def apply_storage_layout(plan: dict, confirm_wipe: bool = False) -> dict:
         "success": True,
         "error": None,
         "already_provisioned": False,
+        "ran": ran,
+        "skipped": skipped,
+    }
+
+
+def _mdadm_export_field(array_path: str) -> list[str]:
+    """
+    Real member device paths for a live md array, via mdadm's own
+    --export mode (MD_DEVICE_devN_DEV=/dev/sdX lines) - the officially
+    documented machine-parseable interface, not scraped from --detail's
+    human table formatting which varies by mdadm version. Empty list
+    when the array doesn't exist or mdadm can't be run.
+    """
+
+    try:
+
+        result = subprocess.run(
+            ["mdadm", "--detail", "--export", array_path],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+    except (subprocess.SubprocessError, OSError):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    members = []
+
+    for line in result.stdout.splitlines():
+
+        key, _, value = line.partition("=")
+
+        if key.startswith("MD_DEVICE_") and key.endswith("_DEV"):
+            members.append(value)
+
+    return sorted(members)
+
+
+def _fstab_line_for_mount_point(mount_point: str) -> str | None:
+    """
+    The real, currently-present /etc/fstab line for mount_point (its
+    second whitespace-separated field), or None when there isn't one.
+    plan_storage_teardown() uses the real line text rather than
+    reconstructing it, so removal matches whatever's actually on disk -
+    including a line a user hand-edited after Vulcan wrote it.
+    """
+
+    try:
+
+        with open("/etc/fstab", encoding="utf-8") as handle:
+            lines = handle.readlines()
+
+    except OSError:
+        return None
+
+    for line in lines:
+
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        fields = stripped.split()
+
+        if len(fields) >= 2 and fields[1] == mount_point:
+            return line.rstrip("\n")
+
+    return None
+
+
+def plan_storage_teardown(mount_point: str) -> dict:
+    """
+    Pure - computes the real command sequence that would reverse
+    whatever plan_storage_layout()/apply_storage_layout() provisioned
+    at mount_point: unmount, stop the RAID array and zero every
+    member's superblock (if it's a RAID array), wipefs the array and
+    each member, then remove the real /etc/fstab line - so
+    list_blank_unprotected_devices() sees the member device(s) as blank
+    again afterward. Never runs anything - apply_storage_teardown() is
+    the execution half, same split as plan_storage_layout()/
+    apply_storage_layout(). The one real reversal Vulcan's storage
+    module already makes of "never touch storage itself" (see this
+    module's own top docstring) already covers provisioning; this is
+    the same reversal applied to un-provisioning, not a new precedent.
+    """
+
+    target_device = _findmnt_source(mount_point)
+
+    if target_device is None:
+
+        return {
+            "mount_point": mount_point,
+            "target_device": None,
+            "member_devices": [],
+            "is_raid": False,
+            "commands": [],
+            "fstab_line": None,
+            "error": f"Nothing is mounted at {mount_point} - nothing to tear down.",
+        }
+
+    protected = identify_protected_devices()
+
+    if target_device in protected:
+
+        return {
+            "mount_point": mount_point,
+            "target_device": target_device,
+            "member_devices": [],
+            "is_raid": False,
+            "commands": [],
+            "fstab_line": None,
+            "error": (
+                f"Refusing to plan a teardown of {target_device} - "
+                "it's backing / or /boot."
+            ),
+        }
+
+    is_raid = target_device.split("/")[-1] in _md_devices()
+    member_devices = _mdadm_export_field(target_device) if is_raid else []
+
+    commands: list[list[str]] = [["umount", mount_point]]
+
+    if is_raid:
+
+        commands.append(["mdadm", "--stop", target_device])
+
+        for member in member_devices:
+            commands.append(["mdadm", "--zero-superblock", member])
+
+    commands.append(["wipefs", "-a", target_device])
+
+    for member in member_devices:
+        commands.append(["wipefs", "-a", member])
+
+    fstab_line = _fstab_line_for_mount_point(mount_point)
+
+    if fstab_line:
+        commands.append(
+            ["sh", "-c",
+             f"grep -vF {shlex.quote(fstab_line)} /etc/fstab > /etc/fstab.vulcan-tmp "
+             "&& mv /etc/fstab.vulcan-tmp /etc/fstab"]
+        )
+
+    return {
+        "mount_point": mount_point,
+        "target_device": target_device,
+        "member_devices": member_devices,
+        "is_raid": is_raid,
+        "commands": commands,
+        "fstab_line": fstab_line,
+        "error": None,
+    }
+
+
+def describe_storage_teardown(plan: dict) -> str:
+    """
+    The one shared human-readable renderer for a teardown plan - same
+    role describe_storage_plan() plays for a provisioning plan, so the
+    CLI and whiptail menu never drift from each other on what a
+    teardown is actually about to do.
+    """
+
+    if plan.get("error"):
+        return f"Can't plan this teardown: {plan['error']}"
+
+    lines = [f"Currently mounted: {plan['target_device']} at {plan['mount_point']}"]
+
+    if plan["is_raid"]:
+        lines.append(f"RAID array with {len(plan['member_devices'])} member(s):")
+        lines.extend(f"  {member}" for member in plan["member_devices"])
+
+    lines.append("")
+    lines.append("Commands that WOULD run (nothing has been executed):")
+
+    for i, command in enumerate(plan["commands"], start=1):
+        lines.append(f"  {i}. {' '.join(command)}")
+
+    lines.append("")
+    lines.append(
+        "This permanently destroys every filesystem/RAID signature on "
+        f"{plan['target_device']}"
+        + (" and its member devices" if plan["is_raid"] else "")
+        + " - there is no undo."
+    )
+
+    return "\n".join(lines)
+
+
+def apply_storage_teardown(plan: dict, confirm_wipe: bool = False) -> dict:
+    """
+    Executes a plan from plan_storage_teardown() - the real umount/
+    mdadm/wipefs/fstab run that reverses whatever plan_storage_layout()/
+    apply_storage_layout() provisioned. Mirrors apply_storage_layout()'s
+    own safety/idempotency model, just in reverse.
+
+    Safety gates, all engine-side (never just a front-end warning):
+      - a plan that already carries an error is refused outright;
+      - real execution only happens with confirm_wipe=True - the CLI's
+        own typed-confirmation flow is what sets this, never a silent
+        default, the identical gate apply_storage_layout() already uses
+        for its own destructive path.
+
+    Idempotency, checked against real state (not against whether the
+    plan was generated fresh) so a re-run after a partial/failed first
+    attempt resumes instead of erroring out:
+      - mount_point already unmounted -> the umount step is skipped;
+      - the md array is already stopped (not in /proc/mdstat) -> the
+        mdadm --stop step is skipped - --zero-superblock and wipefs -a
+        are both real no-ops against an already-wiped device, so they
+        always run rather than needing their own skip check.
+    """
+
+    if plan.get("error"):
+        return {
+            "success": False,
+            "error": plan["error"],
+            "ran": [],
+            "skipped": [],
+        }
+
+    if not plan.get("commands"):
+        return {
+            "success": False,
+            "error": "Nothing to execute for this plan.",
+            "ran": [],
+            "skipped": [],
+        }
+
+    if not confirm_wipe:
+
+        return {
+            "success": False,
+            "error": (
+                "Refusing to tear down storage without explicit confirmation. "
+                "Re-run with --confirm-wipe to deliberately erase "
+                f"{plan['target_device']}"
+                + (" and its member device(s)." if plan["is_raid"] else ".")
+            ),
+            "ran": [],
+            "skipped": [],
+        }
+
+    mount_point = plan["mount_point"]
+    target_device = plan["target_device"]
+
+    already_unmounted = _findmnt_source(mount_point) is None
+    array_already_stopped = target_device.split("/")[-1] not in _md_devices()
+
+    commands_to_run: list[list[str]] = []
+    skipped: list[str] = []
+
+    for command in plan["commands"]:
+
+        if command[0] == "umount" and already_unmounted:
+            skipped.append(f"{mount_point} is already unmounted")
+            continue
+
+        if command[0] == "mdadm" and command[1] == "--stop" and array_already_stopped:
+            skipped.append(f"{target_device} is already stopped")
+            continue
+
+        commands_to_run.append(command)
+
+    ran: list[str] = []
+
+    for command in commands_to_run:
+
+        result = run_privileged(command)
+
+        if not result["success"]:
+
+            return {
+                "success": False,
+                "error": f"Failed running {' '.join(command)}: {result['error']}",
+                "ran": ran,
+                "skipped": skipped,
+            }
+
+        ran.append(" ".join(command))
+
+    return {
+        "success": True,
+        "error": None,
         "ran": ran,
         "skipped": skipped,
     }

@@ -189,18 +189,42 @@ confirm_and_run() {
 main_menu() {
     while true; do
 
+        # Refreshed every redraw (not just on entry) so a conditional
+        # item below - "Reset Media Storage" - reflects real current
+        # state right after an action taken from this same menu (e.g.
+        # provisioning or tearing down storage) changes it, not just
+        # whatever was true when main_menu() was first entered.
+        refresh_detect
+
+        # "Reset Media Storage" is the one deliberate exception to this
+        # menu's own "every item always shown" rule (see the docstring
+        # below) - agreed directly with the owner (2026-08-17): it's a
+        # narrow, destructive, rarely-applicable action (only relevant
+        # once storage has actually been provisioned and nothing blank
+        # is left to offer instead), and a static menu label can't carry
+        # the same "doesn't apply yet" explanation Media Storage Setup's
+        # own internal msgbox gives for its equivalent empty state.
+        menu_items=(
+            "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)"
+            "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)"
+            "start-stack"     "3. Start Stack - start an already-generated stack"
+            "update-stack"    "4. Update Stack - pull latest images, recreate containers"
+            "pull-images"     "5. Pull Images - prep for an offline start later"
+            "backup-stack"    "6. Backup Stack - archive config/compose/env to backups/"
+            "restore-stack"   "7. Restore Stack - from the most recent backup"
+            "uninstall-stack" "8. Uninstall Stack - stop and delete stack/ entirely"
+            "update-self"     "9. Update Vulcan - fast-forward this checkout"
+        )
+
+        if [ -z "$BLANK_STORAGE_DEVICES" ] && [ -n "$STORAGE_MOUNT" ]; then
+            menu_items+=("reset-storage" "R. Reset Media Storage - tear down provisioned storage at $STORAGE_MOUNT")
+        fi
+
+        menu_items+=("exit" "0. Exit")
+
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
-            --menu "Choose an action:" 21 92 10 \
-            "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)" \
-            "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)" \
-            "start-stack"     "3. Start Stack - start an already-generated stack" \
-            "update-stack"    "4. Update Stack - pull latest images, recreate containers" \
-            "pull-images"     "5. Pull Images - prep for an offline start later" \
-            "backup-stack"    "6. Backup Stack - archive config/compose/env to backups/" \
-            "restore-stack"   "7. Restore Stack - from the most recent backup" \
-            "uninstall-stack" "8. Uninstall Stack - stop and delete stack/ entirely" \
-            "update-self"     "9. Update Vulcan - fast-forward this checkout" \
-            "exit"            "0. Exit" \
+            --menu "Choose an action:" 22 92 11 \
+            "${menu_items[@]}" \
             3>&1 1>&2 2>&3)
         status=$?
 
@@ -215,6 +239,9 @@ main_menu() {
                 ;;
             storage-setup)
                 storage_setup_flow
+                ;;
+            reset-storage)
+                storage_teardown_flow
                 ;;
             start-stack)
                 confirm_and_run "Start Stack" \
@@ -349,6 +376,44 @@ storage_setup_flow() {
     confirm_and_run "Media Storage Setup" \
         "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT as $level_summary. Continue?" \
         "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}"
+}
+
+# --- Media Storage Teardown ------------------------------------------
+#
+# The whiptail front end for `vulcan storage teardown`: reverses
+# whatever Media Storage Setup provisioned at $STORAGE_MOUNT. Two real
+# confirmation steps, not one - a typed mount-point match (equal to
+# Media Storage Setup's own typed-device-list bar) followed by a final
+# yesno via confirm_and_run - deliberately a stronger bar than Media
+# Storage Setup's single yesno, since a teardown is destructive by
+# definition (Media Storage Setup's own bar only gets that strict when
+# a target device already has data). All the real safety gates
+# (protected-device refusal, etc.) live in the CLI/engine, not
+# re-implemented here.
+storage_teardown_flow() {
+
+    refresh_detect
+
+    if [ -z "$STORAGE_MOUNT" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Reset Media Storage" \
+            --msgbox "Nothing is currently provisioned - there's nothing to tear down." 10 76
+        return 0
+    fi
+
+    TYPED_MOUNT=$(whiptail --backtitle "$BACKTITLE" --title "Reset Media Storage" \
+        --inputbox "This permanently unmounts and wipes every filesystem/RAID signature on the storage at $STORAGE_MOUNT - there is no undo.\n\nType the mount point to confirm:" \
+        12 92 \
+        3>&1 1>&2 2>&3) || return 0
+
+    if [ "$TYPED_MOUNT" != "$STORAGE_MOUNT" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Reset Media Storage" \
+            --msgbox "Confirmation didn't match - nothing was executed." 10 76
+        return 0
+    fi
+
+    confirm_and_run "Reset Media Storage" \
+        "Final confirmation: tear down the storage mounted at $STORAGE_MOUNT?" \
+        "$VULCAN_BIN" storage teardown --mount-point "$STORAGE_MOUNT" --non-interactive --yes --confirm-wipe
 }
 
 # --- Restore --------------------------------------------------------
