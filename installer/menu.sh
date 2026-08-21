@@ -34,6 +34,13 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # own visible box (red,black) at rest and a yellow background - the one
 # color that reliably shows up against black, red, and window alike -
 # when focused.
+#
+# `label` (the class newt uses to render a dialog's own body text - the
+# msgbox/yesno/inputbox prompt itself, not a widget) was left at its
+# unrelated white,black default instead of matching `window`'s black,red -
+# every dialog's actual message text sat in its own mismatched black
+# rectangle instead of the surrounding red window (reported: "text is
+# black highlighted"). Matched to `window` below.
 export NEWT_COLORS='
 root=white,black
 border=red,black
@@ -45,7 +52,7 @@ actbutton=black,yellow
 checkbox=red,black
 actcheckbox=black,yellow
 entry=black,red
-label=white,black
+label=black,red
 listbox=red,black
 actlistbox=black,yellow
 sellistbox=red,black
@@ -125,7 +132,7 @@ confirm_and_run() {
     shift 2
 
     if ! whiptail --backtitle "$BACKTITLE" --title "$title" \
-        --yesno "$confirm_text" 14 76; then
+        --yesno "$confirm_text" 14 92; then
         return 130
     fi
 
@@ -183,7 +190,7 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
-            --menu "Choose an action:" 21 76 10 \
+            --menu "Choose an action:" 21 92 10 \
             "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)" \
             "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)" \
             "start-stack"     "3. Start Stack - start an already-generated stack" \
@@ -261,14 +268,14 @@ storage_setup_flow() {
 
     if [ -z "$BLANK_STORAGE_DEVICES" ]; then
         whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-            --msgbox "No blank, unprotected storage devices found. A blank device is one with no filesystem and no partition table, and not backing / or /boot." 12 76
+            --msgbox "No blank, unprotected storage devices found. A blank device is one with no filesystem and no partition table, and not backing / or /boot." 12 92
         return 0
     fi
 
     local default_mount_point="/mnt/media"
 
     MEDIA_MOUNT_POINT=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-        --inputbox "Mount point for the media storage volume" 10 70 "$default_mount_point" \
+        --inputbox "Mount point for the media storage volume" 10 84 "$default_mount_point" \
         3>&1 1>&2 2>&3) || return 0
     [ -z "$MEDIA_MOUNT_POINT" ] && return 0
 
@@ -288,7 +295,7 @@ storage_setup_flow() {
     done
 
     CHOSEN_DEVICES=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-        --checklist "Select which blank device(s) to provision as media storage:" 16 76 6 \
+        --checklist "Select which blank device(s) to provision as media storage:" 16 92 6 \
         "${checklist_args[@]}" \
         3>&1 1>&2 2>&3) || return 0
 
@@ -320,7 +327,7 @@ storage_setup_flow() {
     if [ "$device_count" -ge 4 ]; then
 
         RAID_LEVEL=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-            --radiolist "Choose a RAID level for these $device_count devices:" 14 76 3 \
+            --radiolist "Choose a RAID level for these $device_count devices:" 14 92 3 \
             "5"  "RAID5 - ~$((device_count - 1)) of $device_count drives usable, survives 1 drive failure (recommended)" "ON" \
             "6"  "RAID6 - ~$((device_count - 2)) of $device_count drives usable, survives 2 drive failures" "OFF" \
             "10" "RAID10 - ~$((device_count / 2)) of $device_count drives usable, survives 1 drive per pair" "OFF" \
@@ -355,7 +362,7 @@ restore_stack_flow() {
     local start_flag="--no-start"
 
     if whiptail --backtitle "$BACKTITLE" --title "Restore Stack" \
-        --yesno "Start the restored stack immediately after restoring?" 10 70; then
+        --yesno "Start the restored stack immediately after restoring?" 10 84; then
         start_flag="--start"
     fi
 
@@ -372,12 +379,12 @@ uninstall_flow() {
     local prune_flags=()
 
     if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
-        --yesno "Also delete backups/ and exports/? (default: No - leave your backup archives in place)" 10 70 --defaultno; then
+        --yesno "Also delete backups/ and exports/? (default: No - leave your backup archives in place)" 10 84 --defaultno; then
         purge_flags=(--purge-artifacts)
     fi
 
     if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
-        --yesno "Also run 'docker system prune -a' afterward? Reclaims disk space, but affects the whole Docker host, not just vulcan's containers. (default: No)" 10 70 --defaultno; then
+        --yesno "Also run 'docker system prune -a' afterward? Reclaims disk space, but affects the whole Docker host, not just vulcan's containers. (default: No)" 10 84 --defaultno; then
         prune_flags=(--prune-docker)
     fi
 
@@ -398,7 +405,7 @@ guided_setup() {
 
     # --- Welcome screen (Security Onion pattern) ---
     if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
-        "Welcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" 20 76; then
+        "Welcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" 20 92; then
         return 0
     fi
     log_title "Starting Guided Setup"
@@ -413,7 +420,7 @@ guided_setup() {
     if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
         log_info "Docker not fully ready, showing warning"
         whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." 12 76
+            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." 12 92
     fi
 
     log_title "Phase 2: Configuration"
@@ -435,7 +442,7 @@ guided_setup() {
     fi
 
     MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
-        --inputbox "Where should your media library live?" 10 70 "$default_media_path" \
+        --inputbox "Where should your media library live?" 10 84 "$default_media_path" \
         3>&1 1>&2 2>&3) || return
     [ -z "$MEDIA_PATH" ] && return
 
@@ -449,7 +456,7 @@ guided_setup() {
 
     TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
         --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
-        18 76 3 \
+        18 92 3 \
         "light"  "Light - low-resource baseline" "$light_on" \
         "medium" "Medium - the common case" "$medium_on" \
         "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
@@ -459,7 +466,7 @@ guided_setup() {
 
     if whiptail --backtitle "$BACKTITLE" --title "Services" \
         --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
-        14 76 --defaultno; then
+        14 92 --defaultno; then
         customize=true
     fi
 
@@ -474,20 +481,20 @@ guided_setup() {
     fi
 
     PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" 10 70 "$default_puid_value" \
+        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" 10 84 "$default_puid_value" \
         3>&1 1>&2 2>&3) || return
 
     PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PGID - group ID the containers run as" 10 70 "$default_pgid_value" \
+        --inputbox "PGID - group ID the containers run as" 10 84 "$default_pgid_value" \
         3>&1 1>&2 2>&3) || return
 
     TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
-        --inputbox "IANA timezone name (e.g. America/New_York)" 10 70 "$default_tz_value" \
+        --inputbox "IANA timezone name (e.g. America/New_York)" 10 84 "$default_tz_value" \
         3>&1 1>&2 2>&3) || return
 
     START_FLAG="--no-start"
     if whiptail --backtitle "$BACKTITLE" --title "Start Now" \
-        --yesno "Start the stack now, right after generating it?" 10 70; then
+        --yesno "Start the stack now, right after generating it?" 10 84; then
         START_FLAG="--start"
     fi
 
@@ -519,7 +526,7 @@ guided_setup() {
     summary+="\nPress TAB to select yes or no."
 
     if ! whiptail --backtitle "$BACKTITLE" --title "Review Settings" \
-        --yesno "$summary" 20 76 --scrolltext; then
+        --yesno "$summary" 20 92 --scrolltext; then
         return 0
     fi
 
@@ -556,10 +563,10 @@ guided_setup() {
             complete_msg+="\n\n${landing_note}\nFull walkthrough: https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrough.md"
 
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
-                --msgbox "$complete_msg" 26 76 --scrolltext
+                --msgbox "$complete_msg" 26 92 --scrolltext
         else
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
-                "Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 76
+                "Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 92
         fi
     else
         log_error "Guided setup failed (exit $rc)"
@@ -590,13 +597,13 @@ _guided_setup_quick_toggles() {
 
     if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
         --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy)\n\nChoose No to pick individually instead." \
-        12 76 --defaultno; then
+        12 92 --defaultno; then
 
         SELECTED=("${all_optional_keys[@]}")
     else
 
         CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Optional Services" \
-            --checklist "Choose optional services to enable:" 20 78 9 \
+            --checklist "Choose optional services to enable:" 20 96 9 \
             "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun on)" \
             "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
             "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
@@ -637,7 +644,7 @@ _guided_setup_quick_toggles() {
 
     if [ "$TIER" = "heavy" ] && [ -n "$GPU_VENDOR" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
-            --yesno "Enable GPU passthrough for Jellyfin hardware transcoding? Detected: $GPU_VENDOR" 10 70; then
+            --yesno "Enable GPU passthrough for Jellyfin hardware transcoding? Detected: $GPU_VENDOR" 10 84; then
             TOGGLE_FLAGS+=(--gpu)
         else
             TOGGLE_FLAGS+=(--no-gpu)
@@ -677,7 +684,7 @@ _guided_setup_customize_services() {
     }
 
     CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services" \
-        --checklist "Choose exactly which services to include:" 22 78 14 \
+        --checklist "Choose exactly which services to include:" 22 96 14 \
         "jellyfin"    "Jellyfin (media server)"                     "$(_svc_on jellyfin)" \
         "radarr"      "Radarr (movies)"                             "$(_svc_on radarr)" \
         "sonarr"      "Sonarr (TV)"                                 "$(_svc_on sonarr)" \
@@ -733,7 +740,7 @@ _guided_setup_customize_services() {
 
         DOMAIN=$(whiptail --backtitle "$BACKTITLE" --title "Domain Routing" \
             --inputbox "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip - Traefik uses a self-signed cert either way)" \
-            10 76 "$PREVIOUS_DOMAIN" \
+            10 92 "$PREVIOUS_DOMAIN" \
             3>&1 1>&2 2>&3) || DOMAIN=""
 
         if [ -n "$DOMAIN" ]; then
@@ -741,10 +748,10 @@ _guided_setup_customize_services() {
             DOMAIN_FLAGS+=(--domain "$DOMAIN")
 
             if whiptail --backtitle "$BACKTITLE" --title "Cloudflare DNS" \
-                --yesno "Is this domain's DNS managed by Cloudflare? (real Let's Encrypt certs via DNS-01, instead of Traefik's self-signed default)" 10 76; then
+                --yesno "Is this domain's DNS managed by Cloudflare? (real Let's Encrypt certs via DNS-01, instead of Traefik's self-signed default)" 10 92; then
 
                 CF_EMAIL=$(whiptail --backtitle "$BACKTITLE" --title "Cloudflare DNS" \
-                    --inputbox "Contact email for Let's Encrypt" 10 70 "$PREVIOUS_CLOUDFLARE_EMAIL" \
+                    --inputbox "Contact email for Let's Encrypt" 10 84 "$PREVIOUS_CLOUDFLARE_EMAIL" \
                     3>&1 1>&2 2>&3) || CF_EMAIL=""
 
                 DOMAIN_FLAGS+=(--cloudflare-dns --cloudflare-email "$CF_EMAIL")
@@ -755,13 +762,13 @@ _guided_setup_customize_services() {
     if [[ ",$joined," == *",authelia,"* ]]; then
 
         AUTH_USER=$(whiptail --backtitle "$BACKTITLE" --title "Authelia" \
-            --inputbox "Authelia admin username" 10 60 "admin" \
+            --inputbox "Authelia admin username" 10 72 "admin" \
             3>&1 1>&2 2>&3) || AUTH_USER=""
 
         if [ -n "$AUTH_USER" ]; then
 
             AUTH_PASS=$(whiptail --backtitle "$BACKTITLE" --title "Authelia" \
-                --passwordbox "Authelia admin password (won't be shown again)" 10 60 \
+                --passwordbox "Authelia admin password (won't be shown again)" 10 72 \
                 3>&1 1>&2 2>&3) || AUTH_PASS=""
 
             if [ -n "$AUTH_PASS" ]; then
@@ -814,7 +821,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     [ -f "$SETUP_LOG" ] && mv "$SETUP_LOG" "$SETUP_LOG.$(date +%Y%m%d%H%M%S)" 2>/dev/null
 
     # Trap unhandled errors - show the failed screen before exiting.
-    trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 76 2>/dev/null; exit 1' ERR
+    trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 92 2>/dev/null; exit 1' ERR
 
     # First run (no stack yet) skips the Main Menu entirely and drops
     # straight into Guided Setup, matching Security Onion's so-setup -
