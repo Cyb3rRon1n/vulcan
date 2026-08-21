@@ -607,6 +607,18 @@ guided_setup() {
     if [ "$rc" -eq 0 ]; then
         log_info "Guided setup completed successfully"
 
+        # Real user feedback (2026-08-17): the live console output during
+        # the run (detected hardware, itemized tier descriptions, per-
+        # service warnings, the numbered setup order) scrolled by under
+        # the live progress panel and was preferred less than this final
+        # screen - so run_install() now suppresses that detail while the
+        # panel is active (installer.panel.RunPanel.note()) and it's
+        # surfaced here instead, via `vulcan install-summary` re-deriving
+        # it from the just-written stack/.vulcan-state.json. Moved, not
+        # dropped - see ROADMAP.md's "Guided Setup output redesign".
+        local summary
+        summary=$("$VULCAN_BIN" install-summary 2>/dev/null)
+
         # --- Setup Complete (Security Onion pattern) ---
         if [ "$START_FLAG" = "--start" ]; then
 
@@ -616,22 +628,16 @@ guided_setup() {
             local complete_msg="Vulcan setup is complete!\n\nYour stack is running."
             [ -n "$urls" ] && complete_msg+="\n\nService URLs:\n$urls"
             complete_msg+="\n\nTo manage your stack:\n  docker compose -f stack/docker-compose.yml ps\n  docker compose -f stack/docker-compose.yml down"
-
-            local landing_note="Not sure where to start? "
-            if echo "$urls" | grep -q "Homepage"; then
-                landing_note+="Open Homepage above - it links out to everything you enabled."
-            elif echo "$urls" | grep -q "Dashy"; then
-                landing_note+="Open Dashy above - it links out to everything you enabled."
-            else
-                landing_note+="Jump straight to a service above, or the full walkthrough for setup order and details."
-            fi
-            complete_msg+="\n\n${landing_note}\nFull walkthrough: https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrough.md"
+            [ -n "$summary" ] && complete_msg+="\n\n$summary"
 
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
-                --msgbox "$complete_msg" 26 92 --scrolltext
+                --msgbox "$complete_msg" 30 92 --scrolltext
         else
-            whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
-                "Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 92
+            local complete_msg="Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d"
+            [ -n "$summary" ] && complete_msg+="\n\n$summary"
+
+            whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
+                --msgbox "$complete_msg" 30 92 --scrolltext
         fi
     else
         log_error "Guided setup failed (exit $rc)"

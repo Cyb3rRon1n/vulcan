@@ -128,6 +128,61 @@ def test_urls_shell_prints_nothing_with_no_previous_state(tmp_path):
     assert result.output.strip() == ""
 
 
+def test_install_summary_prints_hardware_tier_warnings_and_setup_order(tmp_path):
+
+    state_with_warnings = {**PREVIOUS_STATE, "warnings": ["! example warning text"]}
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=state_with_warnings
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="nvidia")
+    ), patch(
+        "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ):
+
+        result = runner.invoke(app, ["install-summary"])
+
+    assert result.exit_code == 0, result.output
+    assert "GPU: nvidia" in result.output
+    assert "Tier: Medium" in result.output
+    assert "! example warning text" in result.output
+    assert "Suggested setup order" in result.output
+
+
+def test_install_summary_prints_nothing_with_no_previous_state(tmp_path):
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=None
+    ):
+
+        result = runner.invoke(app, ["install-summary"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == ""
+
+
+def test_install_summary_omits_warnings_section_when_state_predates_the_field(tmp_path):
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=PREVIOUS_STATE
+    ), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ):
+
+        result = runner.invoke(app, ["install-summary"])
+
+    assert result.exit_code == 0, result.output
+    assert "!" not in result.output
+
+
 def test_detect_shell_output_no_previous_state_leaves_previous_fields_blank(tmp_path):
 
     info = make_system_info()
@@ -1510,9 +1565,38 @@ def test_non_interactive_medium_with_explicit_vpn_flag(tmp_path):
     assert "fill in your VPN credentials" in result.output
 
 
-def test_prints_all_three_tier_compositions(tmp_path):
+def test_prints_all_three_tier_compositions_when_interactively_choosing(tmp_path):
 
     media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--media-path", media_path, "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"],
+            input="\n\nn\n\n\nn\n\n\n\n\n\ny\nn\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Light:" in result.output
+    assert "Medium:" in result.output
+    assert "Heavy:" in result.output
+    assert "Jellyfin" in result.output
+    assert "Uptime Kuma" in result.output
+
+
+def test_omits_tier_compositions_in_non_interactive_mode():
+
+    media_path = "/tmp/does-not-need-to-exist"
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1532,11 +1616,13 @@ def test_prints_all_three_tier_compositions(tmp_path):
         )
 
     assert result.exit_code == 0, result.output
-    assert "Light:" in result.output
-    assert "Medium:" in result.output
-    assert "Heavy:" in result.output
-    assert "Jellyfin" in result.output
-    assert "Uptime Kuma" in result.output
+    assert "Recommended tier:" in result.output
+    # "Jellyfin" only ever appears inside tier_description()'s per-tier
+    # service list, not the one-line recommendation - a real, unambiguous
+    # signal the 3-tier comparison block itself was suppressed (bare
+    # "Heavy:" false-positives against "Short of Heavy: ...GB free" in
+    # the recommendation's own explanation text).
+    assert "Jellyfin" not in result.output
 
 
 def test_non_interactive_light_with_explicit_sabnzbd_flag(tmp_path):

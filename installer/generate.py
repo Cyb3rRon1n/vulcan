@@ -268,7 +268,9 @@ def enabled_service_keys(config: GenerationConfig) -> set[str]:
     }
 
 
-def save_state(config: GenerationConfig, output_dir: Path) -> None:
+def save_state(
+    config: GenerationConfig, output_dir: Path, warnings: list[str] | None = None
+) -> None:
 
     state = {
         "tier": config.tier.name,
@@ -287,6 +289,13 @@ def save_state(config: GenerationConfig, output_dir: Path) -> None:
         "port_overrides": config.port_overrides,
         "homepage_private": config.homepage_private,
         "dashy_private": config.dashy_private,
+        # Only ever the *last* generate's warnings, not accumulated
+        # across regenerates - `vulcan install-summary` reads this back
+        # to show them once, in "Setup Complete", instead of them
+        # scrolling by live under a whiptail progress panel. Empty list
+        # (not omitted) when write_stack() hasn't finished computing
+        # them yet - see write_stack()'s own second save_state() call.
+        "warnings": warnings if warnings is not None else [],
         "generated_at": datetime.now(dt_timezone.utc).isoformat()
     }
 
@@ -1299,6 +1308,13 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "doesn't install it automatically. Install guide: "
             "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
         )
+
+    # Re-save with the now-fully-computed warnings - the first
+    # save_state() call above ran before this function even knew what
+    # they'd be. Cheap (a small JSON rewrite) and safe to always do,
+    # not just when warnings is non-empty, so a regenerate that fixed
+    # every warning also clears the stale list from a previous run.
+    save_state(config, output_dir, warnings=warnings)
 
     return {
         "success": True,

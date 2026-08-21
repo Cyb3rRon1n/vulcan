@@ -187,6 +187,40 @@ def test_log_keeps_last_twelve_lines():
     panel._live.stop()
 
 
+def test_runpanel_note_is_a_no_op():
+
+    console = _recording_console()
+    panel = RunPanel("Test", ["Phase one"], console=console)
+
+    with panel:
+        panel.note("[bold]Review[/bold]")
+        panel.note("  Tier: Heavy")
+
+    text = console.file.getvalue()
+
+    assert "Review" not in text
+    assert "Tier: Heavy" not in text
+
+
+def test_noop_panel_note_prints_via_its_stored_console():
+
+    console = _recording_console()
+    panel = _NoOpPanel(console)
+
+    panel.note("[bold]Review[/bold]")
+
+    text = console.file.getvalue()
+
+    assert "Review" in text
+
+
+def test_noop_panel_note_is_safe_with_no_console():
+
+    panel = _NoOpPanel()
+
+    panel.note("this must not raise")
+
+
 def test_exit_with_raised_body_shows_failed():
 
     console = _recording_console()
