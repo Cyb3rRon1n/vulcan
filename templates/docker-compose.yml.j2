@@ -43,6 +43,24 @@ services:
       - "{{ render_gid }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -86,6 +104,24 @@ services:
       - "traefik.http.routers.radarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -122,6 +158,24 @@ services:
       - "traefik.http.routers.sonarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -157,6 +211,24 @@ services:
       - "traefik.http.routers.prowlarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -199,6 +271,24 @@ services:
 {% endif %}
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -235,6 +325,24 @@ services:
       - "traefik.http.routers.sabnzbd.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -496,6 +604,24 @@ services:
       - "traefik.http.routers.bazarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -578,6 +704,24 @@ services:
       - "traefik.http.routers.lidarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -614,6 +758,24 @@ services:
       - "traefik.http.routers.readarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - see ROADMAP.md's cap_drop
+    # entry. Same 5 capabilities across all 9 linuxserver.io images in
+    # this stack: CHOWN/DAC_OVERRIDE/FOWNER for the s6-overlay init's
+    # ownership fixup on /config et al., SETGID/SETUID for the actual
+    # root -> PUID/PGID drop. Without these five, s6-overlay fails
+    # loudly (s6-applyuidgid: fatal: unable to set supplementary group
+    # list) rather than silently degrading, so a future linuxserver.io
+    # base-image change breaking this would be immediately visible on
+    # container start, not a silent security regression.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
