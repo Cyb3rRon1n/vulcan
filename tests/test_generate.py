@@ -979,56 +979,112 @@ def test_netdata_keeps_apparmor_unconfined_alongside_no_new_privileges():
     ]
 
 
-# --- cap_drop: ALL on the 9 linuxserver.io images ---
+# --- cap_drop: ALL on all 28 services ---
+#
+# ROADMAP.md's cap_drop entry: deliberately not attempted alongside the
+# no-new-privileges pass above, since a blanket drop risks breaking a
+# linuxserver.io image's s6-overlay root -> PUID/PGID handoff (or another
+# image's own root-level init step), and doing it safely needed real
+# container starts to verify, not a guess. Every one of the 28 services was
+# tested for real: `docker run --cap-drop=ALL` against the real image
+# first, then capabilities iterated back in one at a time until clean
+# (checked via docker logs for permission/capability errors, not just
+# "did it stay running"). Three shapes emerged:
 
-LINUXSERVER_SERVICES = {
+# The 9 linuxserver.io s6-overlay images, plus 4 other PUID/PGID-style
+# images that turned out to need the identical set: an ownership fixup
+# (CHOWN/DAC_OVERRIDE/FOWNER) and a root -> PUID/PGID privilege drop
+# (SETGID/SETUID).
+FIVE_CAP_SERVICES = {
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
     "sabnzbd", "bazarr", "lidarr", "readarr",
+    "metube", "authelia", "homepage", "uptime-kuma",
+}
+FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+
+# Plain Go/Node/Python entrypoints that started and ran cleanly with zero
+# added capabilities - no privilege-drop or ownership-fixup step to
+# support, verified against the real image with no cap_add at all.
+ZERO_CAP_SERVICES = {
+    "downtify", "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
+    "jellyseerr", "flaresolverr", "traefik", "cloudflared", "crowdsec",
+    "dashy", "watchtower",
 }
 
+# Special-cased services whose real, single-purpose cap_add already existed
+# before this pass (VPN tunneling, host mesh networking, host process/cgroup
+# monitoring) - each verified under cap_drop: ALL with that existing set,
+# not researched from a blank slate.
+SPECIAL_CAP_SERVICES = {
+    "gluetun": ["NET_ADMIN"],
+    "tailscale": ["NET_ADMIN", "NET_RAW"],
+    # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH
+    # directly ("should run with...") - without it they degrade silently
+    # rather than crash, so adding it is a real functionality gain over the
+    # pre-existing SYS_PTRACE/SYS_ADMIN alone, not just noise suppression.
+    "netdata": [
+        "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID",
+        "SYS_PTRACE", "SYS_ADMIN",
+    ],
+}
 
-def test_linuxserver_services_drop_all_and_add_back_the_verified_minimal_set():
-    """
-    ROADMAP.md's cap_drop entry: deliberately not attempted alongside the
-    no-new-privileges pass above, since a blanket drop risks breaking a
-    linuxserver.io image's s6-overlay root -> PUID/PGID handoff, and doing
-    it safely needed real container starts to verify, not a guess.
-    Verified empirically (docker run --cap-drop=ALL against all 9 real
-    images, then iterating capabilities back in one at a time) - all 9
-    converged on the identical 5-capability set, so this asserts that
-    exact set rather than "some non-empty cap_add", to lock the real
-    finding, not just the presence of hardening.
-    """
-    config = make_config("heavy", custom_services=LINUXSERVER_SERVICES)
+ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
+
+
+def test_five_cap_services_drop_all_and_add_back_the_verified_minimal_set():
+    config = make_config("heavy", custom_services=FIVE_CAP_SERVICES)
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == LINUXSERVER_SERVICES
+    assert set(data["services"].keys()) == FIVE_CAP_SERVICES
 
     for name, service in data["services"].items():
         assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
-        assert service.get("cap_add") == [
-            "CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID",
-        ], f"{name} has an unexpected cap_add set"
+        assert service.get("cap_add") == FIVE_CAP_SET, f"{name} has an unexpected cap_add set"
 
 
-def test_non_linuxserver_services_are_not_given_cap_drop():
-    """
-    Regression lock: the verified minimal set is specific to linuxserver.io's
-    s6-overlay init - it was never tested against, and must not be silently
-    applied to, the other 19 services (plain Go/Node/Python entrypoints,
-    gluetun's own NET_ADMIN cap_add, etc.), which is a separate, still-open
-    research question per ROADMAP.md.
-    """
-    non_linuxserver = {s.key for s in ALL_SERVICES} - LINUXSERVER_SERVICES
-    config = make_config("heavy", custom_services=non_linuxserver, gpu_vendor="nvidia", domain="example.com")
+def test_zero_cap_services_drop_all_with_no_cap_add():
+    config = make_config("heavy", custom_services=ZERO_CAP_SERVICES, domain="example.com")
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == non_linuxserver
+    assert set(data["services"].keys()) == ZERO_CAP_SERVICES
 
     for name, service in data["services"].items():
-        assert "cap_drop" not in service, f"{name} unexpectedly has cap_drop"
+        assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
+        assert "cap_add" not in service, f"{name} unexpectedly has a cap_add"
+
+
+def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
+    config = make_config("heavy", custom_services=set(SPECIAL_CAP_SERVICES))
+    output = render_compose(config)
+    data = yaml.safe_load(output)
+
+    assert set(data["services"].keys()) == set(SPECIAL_CAP_SERVICES)
+
+    for name, expected_caps in SPECIAL_CAP_SERVICES.items():
+        service = data["services"][name]
+        assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
+        assert service.get("cap_add") == expected_caps, f"{name} has an unexpected cap_add set"
+
+
+def test_every_service_has_cap_drop_all():
+    """
+    Regression lock, all 28 services: this pass covers every service known
+    to ALL_SERVICES, not a subset - a future service added without a
+    cap_drop entry should fail here rather than silently ship unhardened.
+    """
+    assert ALL_CAPPED_SERVICES == {s.key for s in ALL_SERVICES}
+
+    all_keys = {s.key for s in ALL_SERVICES}
+    config = make_config("heavy", custom_services=all_keys, gpu_vendor="nvidia", domain="example.com")
+    output = render_compose(config)
+    data = yaml.safe_load(output)
+
+    assert set(data["services"].keys()) == all_keys
+
+    for name, service in data["services"].items():
+        assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
 
 
 def test_render_env_contains_core_values():
