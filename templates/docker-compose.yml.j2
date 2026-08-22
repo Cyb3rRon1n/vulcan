@@ -377,6 +377,19 @@ services:
       - "traefik.http.routers.metube.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - same 5-capability pattern as
+    # the linuxserver.io images: CHOWN/DAC_OVERRIDE/FOWNER for an
+    # ownership fixup on first boot, SETGID/SETUID for a root -> PUID/
+    # PGID privilege drop. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -409,6 +422,12 @@ services:
       - "traefik.http.routers.downtify.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -461,6 +480,12 @@ services:
       - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -481,6 +506,12 @@ services:
       - RECYCLARR_CREATE_CONFIG=true
     volumes:
       - ./config/recyclarr:/config
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -500,6 +531,12 @@ services:
       - PGID=${PGID}
     volumes:
       - ./config/decluttarr/config.yaml:/app/config/config.yaml
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -535,6 +572,12 @@ services:
       - "traefik.http.routers.maintainerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -568,6 +611,12 @@ services:
       - "traefik.http.routers.jellyseerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -640,6 +689,12 @@ services:
       - LOG_LEVEL=info
     ports:
       - "8191:8191"
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -653,6 +708,11 @@ services:
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, keeping this service's existing cap_add) - sufficient as-is,
+    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
     environment:
@@ -842,6 +902,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -856,6 +922,12 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -895,6 +967,12 @@ services:
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecmode=stream"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}"
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -932,6 +1010,19 @@ services:
       - "traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true"
       - "traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name"
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - same 5-capability pattern as
+    # the linuxserver.io images: CHOWN/DAC_OVERRIDE/FOWNER for an
+    # ownership fixup on first boot, SETGID/SETUID for a root -> PUID/
+    # PGID privilege drop. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -953,6 +1044,11 @@ services:
     volumes:
       - ./config/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, keeping this service's existing cap_add) - sufficient as-is,
+    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -972,7 +1068,31 @@ services:
     container_name: netdata
     pid: host
     network_mode: host
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - extends the pre-existing
+    # SYS_PTRACE/SYS_ADMIN (host process/cgroup monitoring) with the
+    # same ownership-fixup set every other PUID/PGID-style image in this
+    # file needed, plus DAC_READ_SEARCH, which netdata's own
+    # apps.plugin/debugfs.plugin log wanting directly ("should run with
+    # CAP_DAC_READ_SEARCH") - without it they degrade silently rather
+    # than crash, so this is a real functionality gain, not just noise
+    # suppression. A real, honest limit found in the longer full-28-service
+    # verification run (ROADMAP.md): apps.plugin's own internal per-process
+    # UID-cycling still logs repeated "setresuid(0, 0, 0) failed" even with
+    # SETUID granted - the core daemon and every other collector run
+    # cleanly and the container reports healthy, but apps.plugin's own
+    # per-process resource attribution stays degraded under this hardening.
+    # Not chased further - the alternative is granting broader privilege
+    # than this pass's own goal. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
       - SYS_PTRACE
       - SYS_ADMIN
     security_opt:
@@ -1023,6 +1143,19 @@ services:
       - "traefik.http.routers.homepage.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - same 5-capability pattern as
+    # the linuxserver.io images: CHOWN/DAC_OVERRIDE/FOWNER for an
+    # ownership fixup on first boot, SETGID/SETUID for a root -> PUID/
+    # PGID privilege drop. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1054,6 +1187,12 @@ services:
       - "traefik.http.routers.dashy.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1085,6 +1224,19 @@ services:
       - "traefik.http.routers.uptime-kuma.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - same 5-capability pattern as
+    # the linuxserver.io images: CHOWN/DAC_OVERRIDE/FOWNER for an
+    # ownership fixup on first boot, SETGID/SETUID for a root -> PUID/
+    # PGID privilege drop. See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1110,6 +1262,12 @@ services:
       - DOCKER_API_VERSION=1.41
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - starts and runs cleanly with zero added capabilities, no
+    # privilege-drop or ownership-fixup step to support. See
+    # ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
