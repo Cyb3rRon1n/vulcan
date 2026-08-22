@@ -979,6 +979,58 @@ def test_netdata_keeps_apparmor_unconfined_alongside_no_new_privileges():
     ]
 
 
+# --- cap_drop: ALL on the 9 linuxserver.io images ---
+
+LINUXSERVER_SERVICES = {
+    "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
+    "sabnzbd", "bazarr", "lidarr", "readarr",
+}
+
+
+def test_linuxserver_services_drop_all_and_add_back_the_verified_minimal_set():
+    """
+    ROADMAP.md's cap_drop entry: deliberately not attempted alongside the
+    no-new-privileges pass above, since a blanket drop risks breaking a
+    linuxserver.io image's s6-overlay root -> PUID/PGID handoff, and doing
+    it safely needed real container starts to verify, not a guess.
+    Verified empirically (docker run --cap-drop=ALL against all 9 real
+    images, then iterating capabilities back in one at a time) - all 9
+    converged on the identical 5-capability set, so this asserts that
+    exact set rather than "some non-empty cap_add", to lock the real
+    finding, not just the presence of hardening.
+    """
+    config = make_config("heavy", custom_services=LINUXSERVER_SERVICES)
+    output = render_compose(config)
+    data = yaml.safe_load(output)
+
+    assert set(data["services"].keys()) == LINUXSERVER_SERVICES
+
+    for name, service in data["services"].items():
+        assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
+        assert service.get("cap_add") == [
+            "CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID",
+        ], f"{name} has an unexpected cap_add set"
+
+
+def test_non_linuxserver_services_are_not_given_cap_drop():
+    """
+    Regression lock: the verified minimal set is specific to linuxserver.io's
+    s6-overlay init - it was never tested against, and must not be silently
+    applied to, the other 19 services (plain Go/Node/Python entrypoints,
+    gluetun's own NET_ADMIN cap_add, etc.), which is a separate, still-open
+    research question per ROADMAP.md.
+    """
+    non_linuxserver = {s.key for s in ALL_SERVICES} - LINUXSERVER_SERVICES
+    config = make_config("heavy", custom_services=non_linuxserver, gpu_vendor="nvidia", domain="example.com")
+    output = render_compose(config)
+    data = yaml.safe_load(output)
+
+    assert set(data["services"].keys()) == non_linuxserver
+
+    for name, service in data["services"].items():
+        assert "cap_drop" not in service, f"{name} unexpectedly has cap_drop"
+
+
 def test_render_env_contains_core_values():
 
     output = render_env(make_config("light"))
