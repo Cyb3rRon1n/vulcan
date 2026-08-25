@@ -14,6 +14,14 @@ authentication_backend:
 
 access_control:
   default_policy: 'one_factor'
+{% if domain and admin_only_services %}
+  rules:
+{% for service in admin_only_services %}
+    - domain: '{{ service }}.{{ domain }}'
+      policy: 'one_factor'
+      subject: ['group:admin']
+{% endfor %}
+{% endif %}
 
 session:
   cookies:

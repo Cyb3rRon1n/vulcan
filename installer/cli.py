@@ -36,6 +36,7 @@ from installer.generate import (
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
+    enabled_service_keys,
     find_next_available_port,
     load_previous_state,
     render_setup_order,
@@ -1113,6 +1114,16 @@ def main(
         None, "--auth-password",
         help="Authelia admin password - only used if authelia is enabled and not already configured"
     ),
+    auth_users: str | None = typer.Option(
+        None, "--auth-users",
+        help="Additional Authelia users as comma-separated username:password:group entries "
+        "(e.g. 'friend:pass123:media,guest:pass456:media') - only used if authelia is enabled"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="Generate the stack without starting it and print a full walkthrough - "
+        "implies --no-start --non-interactive --yes"
+    ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
     offline: bool = typer.Option(
         False, "--offline",
@@ -1121,6 +1132,11 @@ def main(
 ):
     if ctx.invoked_subcommand is not None:
         return
+
+    if dry_run:
+        non_interactive = True
+        yes = True
+        start = False
 
     if not non_interactive and not plain:
 
@@ -1153,7 +1169,9 @@ def main(
         cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password=auth_password,
-        offline=offline
+        auth_users_raw=auth_users,
+        offline=offline,
+        dry_run=dry_run
     )
 
 
@@ -1184,7 +1202,9 @@ def run_install(
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None,
-    offline: bool = False
+    auth_users_raw: str | None = None,
+    offline: bool = False,
+    dry_run: bool = False
 ):
 
     if non_interactive and not yes:
@@ -1254,7 +1274,7 @@ def run_install(
             info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
             downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
             non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
-            cloudflare_email, auth_username, auth_password, panel
+            cloudflare_email, auth_username, auth_password, auth_users_raw, panel
         )
         panel.advance()
 
@@ -1547,6 +1567,7 @@ def _gather_generation_config(
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None,
+    auth_users_raw: str | None = None,
     panel: RunPanel | _NoOpPanel | None = None
 ) -> GenerationConfig:
 
@@ -1750,6 +1771,7 @@ def _gather_generation_config(
 
     auth_username_value = None
     auth_password_hash_value = None
+    auth_users_value = []
 
     if custom_services_selected is not None and "authelia" in custom_services_selected:
 
@@ -1786,6 +1808,45 @@ def _gather_generation_config(
 
             auth_username_value = chosen_username
             auth_password_hash_value = hash_result["hash"]
+
+            if auth_users_raw:
+
+                for entry in auth_users_raw.split(","):
+                    entry = entry.strip()
+                    if not entry:
+                        continue
+
+                    parts = entry.split(":")
+                    if len(parts) != 3:
+                        console.print(
+                            f"[red]Invalid --auth-users entry '{entry}': "
+                            "expected username:password:group[/red]"
+                        )
+                        raise typer.Exit(code=1)
+
+                    user_username, user_password, user_group = parts
+
+                    if user_group not in ("admin", "media"):
+                        console.print(
+                            f"[red]Invalid group '{user_group}' for user "
+                            f"'{user_username}': must be 'admin' or 'media'[/red]"
+                        )
+                        raise typer.Exit(code=1)
+
+                    user_hash_result = hash_authelia_password(user_password)
+
+                    if not user_hash_result["success"]:
+                        console.print(
+                            f"[red]Failed to hash password for user "
+                            f"'{user_username}': {user_hash_result['error']}[/red]"
+                        )
+                        raise typer.Exit(code=1)
+
+                    auth_users_value.append({
+                        "username": user_username,
+                        "password_hash": user_hash_result["hash"],
+                        "groups": [user_group]
+                    })
 
     enabled_optional = set()
 
@@ -2103,6 +2164,7 @@ def _gather_generation_config(
         cloudflare_email=cloudflare_email_value,
         auth_username=auth_username_value,
         auth_password_hash=auth_password_hash_value,
+        auth_users=auth_users_value,
         port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {},
         homepage_private=homepage_private_value,
         dashy_private=dashy_private_value
@@ -2261,6 +2323,10 @@ def _generate_and_maybe_start(
     if config.auth_username:
         panel.note(f"  Authelia admin username: {config.auth_username}")
 
+    if config.auth_users:
+        for user in config.auth_users:
+            panel.note(f"  Authelia user: {user['username']} (group: {', '.join(user['groups'])})")
+
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 
     confirm_text = (
@@ -2355,12 +2421,38 @@ def _generate_and_maybe_start(
 
     else:
 
+        panel.note("[bold]Stack generated (not started):[/bold]")
+
+        summary = render_stack_summary(config, detect_host_ip())
+
+        if summary:
+            panel.note(summary)
+
+        setup_order = render_setup_order(config, detect_host_ip())
+
+        if setup_order:
+            panel.note(f"\n{setup_order}")
+
         panel.note(
-            "Run this when you're ready:\n"
-            f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d\n\n"
-            f"Once it's up, a suggested setup order for every service you enabled is here: "
-            f"{WALKTHROUGH_URL}"
+            "\nRun this when you're ready:\n"
+            f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d"
         )
+
+        if config.auth_users:
+            panel.note(
+                f"\nAuthelia users configured: admin ('{config.auth_username}') + "
+                f"{len(config.auth_users)} additional user(s). Admin has full access; "
+                "additional users can only reach Jellyfin and Jellyseerr."
+            )
+
+        if "cloudflared" in enabled_service_keys(config):
+            panel.note(
+                "\nCloudflare Tunnel: fill in TUNNEL_TOKEN in "
+                f"{result['env_path']} before starting. Create a tunnel at "
+                "Zero Trust dashboard > Networks > Tunnels > Create a tunnel > "
+                "Docker tab, then add a Public Hostname pointing at "
+                "http://traefik:8081."
+            )
 
     return result
 

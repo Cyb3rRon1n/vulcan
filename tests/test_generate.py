@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from installer.generate import (
+    ADMIN_ONLY_SERVICES,
     TEMPLATES_DIR,
     WALKTHROUGH_URL,
     WEB_FACING_SERVICES,
@@ -39,6 +40,7 @@ def make_config(
     cloudflare_email: str | None = None,
     auth_username: str | None = None,
     auth_password_hash: str | None = None,
+    auth_users: list[dict] | None = None,
     port_overrides: dict[str, int] | None = None,
     homepage_private: bool = False,
     dashy_private: bool = False
@@ -58,6 +60,7 @@ def make_config(
         cloudflare_email=cloudflare_email,
         auth_username=auth_username,
         auth_password_hash=auth_password_hash,
+        auth_users=auth_users or [],
         port_overrides=port_overrides or {},
         homepage_private=homepage_private,
         dashy_private=dashy_private
@@ -2813,7 +2816,7 @@ def test_render_authelia_users_database_output_shape():
     assert parsed["users"]["admin"]["password"] == "$argon2id$fake$hash"
     assert parsed["users"]["admin"]["displayname"] == "admin"
     assert parsed["users"]["admin"]["disabled"] is False
-    assert parsed["users"]["admin"]["groups"] == ["admins"]
+    assert parsed["users"]["admin"]["groups"] == ["admin"]
 
 
 def test_render_authelia_configuration_uses_domain_for_session_cookie():
@@ -2829,7 +2832,11 @@ def test_render_authelia_configuration_uses_domain_for_session_cookie():
     assert cookie["authelia_url"] == "https://authelia.media.example.com"
     assert "default_redirection_url" not in cookie
     assert parsed["access_control"]["default_policy"] == "one_factor"
-    assert "rules" not in parsed["access_control"]
+    # RBAC: traefik is in ADMIN_ONLY_SERVICES, so a rule is generated
+    rules = parsed["access_control"].get("rules", [])
+    traefik_rules = [r for r in rules if "traefik." in r.get("domain", "")]
+    assert len(traefik_rules) == 1
+    assert traefik_rules[0]["subject"] == ["group:admin"]
     assert "jwt_secret" not in parsed.get("identity_validation", {}).get("reset_password", {})
     assert "secret" not in parsed["session"]
     assert "encryption_key" not in parsed["storage"]
@@ -2947,6 +2954,77 @@ def test_render_authelia_configuration_redirects_to_homepage_when_enabled():
     parsed = yaml.safe_load(output)
 
     assert parsed["session"]["cookies"][0]["default_redirection_url"] == "https://homepage.media.example.com"
+
+
+def test_render_authelia_configuration_rbac_rules_for_admin_only_services():
+
+    output = render_authelia_configuration(
+        make_config(
+            "heavy",
+            custom_services={"authelia", "traefik", "radarr", "sonarr", "prowlarr",
+                              "jellyfin", "jellyseerr"},
+            domain="media.example.com"
+        ),
+        host_ip="192.168.1.100"
+    )
+    parsed = yaml.safe_load(output)
+
+    rules = parsed["access_control"].get("rules", [])
+    rule_domains = {r["domain"] for r in rules}
+
+    # Admin-only services should have deny rules
+    for svc in ("radarr", "sonarr", "prowlarr", "traefik"):
+        assert f"{svc}.media.example.com" in rule_domains
+
+    # Media services should NOT have rules (fall through to default_policy)
+    for svc in ("jellyfin", "jellyseerr"):
+        assert f"{svc}.media.example.com" not in rule_domains
+
+    # All rules should require admin group
+    for rule in rules:
+        assert rule["subject"] == ["group:admin"]
+
+
+def test_render_authelia_configuration_no_rules_without_domain():
+
+    output = render_authelia_configuration(
+        make_config(
+            "heavy",
+            custom_services={"authelia", "traefik", "radarr"},
+            domain=None
+        ),
+        host_ip="192.168.1.100"
+    )
+    parsed = yaml.safe_load(output)
+
+    assert "rules" not in parsed["access_control"]
+
+
+def test_render_authelia_users_database_multiple_users():
+
+    additional = [
+        {"username": "friend", "password_hash": "$argon2id$fake$hash2", "groups": ["media"]},
+        {"username": "guest", "password_hash": "$argon2id$fake$hash3", "groups": ["media"]},
+    ]
+    output = render_authelia_users_database(
+        "admin", "Admin User", "$argon2id$fake$hash1",
+        additional_users=additional
+    )
+    parsed = yaml.safe_load(output)
+
+    assert len(parsed["users"]) == 3
+    assert parsed["users"]["admin"]["groups"] == ["admin"]
+    assert parsed["users"]["friend"]["groups"] == ["media"]
+    assert parsed["users"]["guest"]["groups"] == ["media"]
+
+
+def test_render_authelia_users_database_admin_only():
+
+    output = render_authelia_users_database("admin", "admin", "$argon2id$fake$hash")
+    parsed = yaml.safe_load(output)
+
+    assert len(parsed["users"]) == 1
+    assert parsed["users"]["admin"]["groups"] == ["admin"]
 
 
 def test_write_stack_creates_authelia_files_on_first_generate(tmp_path):

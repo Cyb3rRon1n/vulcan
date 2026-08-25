@@ -56,9 +56,22 @@ you set the username/password yourself when Vulcan asked. Save that login
 in Vaultwarden now.
 
 Authelia protects every other Traefik-routed service in this stack with a
-real login and brute-force lockout - you shouldn't need to touch its own
-configuration again unless you want to add more user accounts
-(`stack/config/authelia/users_database.yml`).
+real login and brute-force lockout. If you added users with `--auth-users`,
+the admin user (you) has full access to everything; users in the `media`
+group can only reach Jellyfin and Jellyseerr — management services like
+Radarr, Sonarr, and the Traefik dashboard are blocked for them.
+
+Jellyfin and Jellyseerr are deliberately excluded from Authelia's own login
+(see "A note on Authelia" below) — their native apps can't complete a
+browser-redirect flow, so their own login is the real protection layer for
+those two services.
+
+You can add more users later by either:
+
+- Re-running with `--auth-users "username:password:group,..."` (this never
+  overwrites the admin account), or
+- Editing `stack/config/authelia/users_database.yml` directly (same YAML
+  format, restart the Authelia container to apply).
 
 ## 3. Prowlarr
 
