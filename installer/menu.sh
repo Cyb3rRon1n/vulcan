@@ -20,38 +20,32 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex). Dark terminal aesthetic: white text on black window
-# background, ember/red (#ff5f1f) as the border and unfocused-button
-# accent, yellow for all focused/active states (the one color that
-# reliably shows up against both black and red). The old `window=black,red`
-# scheme rendered black text on a red background — hard to read and only
-# filled a small rectangle of the screen. Every interactive element now
-# has its own visible box (white,black) at rest and a yellow background
-# when focused.
+# arbitrary hex). Red window background (Vulcan's brand ember) with
+# black border, white text, and yellow for all focused/active states.
 export NEWT_COLORS='
 root=white,black
-border=red,black
-window=white,black
+border=black,black
+window=white,red
 shadow=black,black
-title=yellow,black
-button=white,red
+title=yellow,red
+button=white,black
 actbutton=black,yellow
-checkbox=white,black
+checkbox=white,red
 actcheckbox=black,yellow
-entry=white,black
-label=white,black
-listbox=white,black
+entry=white,red
+label=white,red
+listbox=white,red
 actlistbox=black,yellow
-sellistbox=white,black
+sellistbox=white,red
 actsellistbox=black,yellow
-textbox=white,black
-acttextbox=white,black
+textbox=white,red
+acttextbox=white,red
 helpline=white,black
 roottext=white,black
 emptyscale=,black
 fullscale=,red
-disabledentry=gray,black
-compactbutton=white,red
+disabledentry=gray,red
+compactbutton=white,black
 '
 
 # whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
