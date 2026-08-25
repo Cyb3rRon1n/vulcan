@@ -20,8 +20,8 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex). Red window background (Vulcan's brand ember) with
-# black border, white text, and yellow for all focused/active states.
+# arbitrary hex). Vulcan brand: red window background, black border
+# (clean line), white text for readability, yellow for focused states.
 export NEWT_COLORS='
 root=white,black
 border=black,black
@@ -489,7 +489,7 @@ guided_setup() {
 
     # --- Welcome screen (Security Onion pattern) ---
     if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
-        "Welcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
+        "\n\n\n\nWelcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
         return 0
     fi
     log_title "Starting Guided Setup"
