@@ -35,6 +35,23 @@ Needs a real Tunnel token (`TUNNEL_TOKEN` in `stack/.env`) from the Zero Trust d
 !!! warning "Not yet run against a real tunnel"
     This is a real, tested compose/env change (`stack/docker-compose.yml` generation, `.env` credential handling), but has never been verified end-to-end against a live Cloudflare account and domain — the same real-infrastructure-verification gap the [Roadmap](roadmap.md) tracks project-wide. If something doesn't match what's documented here, that's the likely reason.
 
+### Cloudflare Access (Zero Trust) setup for family
+
+With a Cloudflare Tunnel running, you can protect every service behind Cloudflare Access (Zero Trust) so no one on the internet can reach them — not even your Traefik-routed ports — until they authenticate through your Cloudflare team's identity provider. This is the recommended way to give family members remote access: no VPN apps on their phones, no port-forwarding from your router, and every login logged in your Zero Trust dashboard.
+
+**What to do in Cloudflare (after your tunnel is running):**
+
+1. Go to **Zero Trust Dashboard > Access > Applications > Add an application**
+2. Choose **Self-hosted**, name it (e.g. `Jellyfin`)
+3. Set the application domain to the service's subdomain (e.g. `jellyfin.yourdomain.com`)
+4. Under **Policy**, add a rule: Emails → your family member's email address (or any `@yourfamilydomain.com` pattern)
+5. Repeat for each service you want family to reach (Jellyseerr, Jellyfin are typical; Radarr/Sonarr you probably only want yourself accessing)
+
+Family members will see a Cloudflare login page before reaching the actual app — the same zero-trust principle you see at your employer. No VPN apps needed, no phones need configuration, and every access is logged.
+
+!!! note "Traefik's own login vs Cloudflare Access"
+    These are complementary, not alternatives. Cloudflare Access authenticates at the edge (before traffic ever reaches your server). Traefik/Authelia authenticates at the server level. For family access to Jellyfin/Jellyseerr, Cloudflare Access alone is sufficient — you can skip Authelia's own login for those specific services if the UX of two login screens back-to-back is too much.
+
 ## Private remote access (Tailscale)
 
 Add `tailscale` to your custom selection for access to every host-published port in your stack from anywhere, with zero public exposure and no port-forwarding — a real alternative to Traefik+domain routing when you'd rather not expose anything to the public internet at all, or a complement to it for services you'd rather keep private. Needs a real auth key (`TS_AUTHKEY` in `stack/.env`, generated at [login.tailscale.com/admin/settings/keys](https://login.tailscale.com/admin/settings/keys)) before it connects. Runs with host networking, so once it's authenticated, every service's existing host-published port (Jellyfin at `:8096`, Radarr at `:7878`, etc.) is reachable from any device on your tailnet at this host's Tailscale address — no per-service setup needed.
@@ -42,6 +59,29 @@ Add `tailscale` to your custom selection for access to every host-published port
 ## Auth (Authelia)
 
 Add `authelia` alongside `traefik` in a custom selection to put a real login in front of every routed service — no LDAP, Postgres, or Redis required, and no external identity provider. You'll be prompted for an admin username/password (once — a regenerate never re-asks if it's already configured), and Vulcan handles hashing it and generating the random secrets Authelia needs itself. Without Traefik+`--domain` also active, Authelia has nothing to protect and its own login portal isn't reachable — Vulcan warns outright rather than pretending it did something.
+
+### RBAC (admin vs. media-only users)
+
+When `--domain` is active, Authelia enforces role-based access control: the admin user (the one you created during install) has full access to every service, while additional users in the `media` group can only reach Jellyfin and Jellyseerr — Radarr, Sonarr, Traefik dashboard, Uptime Kuma, and every other management service are blocked.
+
+Vulcan doesn't create management accounts on every service individually (each service has its own auth model); Authelia's RBAC is the single layer that decides who sees what. The admin group (`group:admin`) can reach everything; the media group (`group:media`) is scoped to exactly Jellyfin + Jellyseerr.
+
+!!! note "Why Jellyfin and Jellyseerr are outside Authelia"
+    Jellyfin's native apps (mobile, TV, smart-TV) can't complete a browser-redirect login flow, so Jellyfin and Jellyseerr are deliberately excluded from Authelia's forwardAuth middleware — their own login is the real protection layer. RBAC only governs the management services that *are* routed through Authelia.
+
+### Multi-user setup
+
+Pass `--auth-users` to add additional Authelia users at install time:
+
+```bash
+./install --plain --tier heavy --services traefik,authelia,cloudflared,jellyfin,jellyseerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --auth-users 'friend:friendpass:media' --non-interactive --yes
+```
+
+Format: `username:password:group` (comma-separated for multiple users). The `group` is either `admin` (full access to all services) or `media` (Jellyfin + Jellyseerr only). Passwords are hashed automatically — you never see plaintext storage of them.
+
+To add users after install, either re-run with `--auth-users` or edit `stack/config/authelia/users_database.yml` directly — both are identical YAML, and a re-run never overwrites the admin account.
+
+See also: [Cloudflare Access](#cloudflare-access-zero-trust-setup) for giving family members zero-trust remote access without VPN apps.
 
 ## Intrusion protection (CrowdSec)
 

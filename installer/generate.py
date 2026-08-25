@@ -69,6 +69,19 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "dashy",
 })
 
+# Services that require admin-group membership when Authelia RBAC is active.
+# Jellyfin and Jellyseerr are deliberately excluded: Jellyfin because
+# forward-auth breaks native apps (jellyfin/jellyfin#16956), Jellyseerr
+# because it's the media request UI that non-admin users need to access.
+# Authelia itself is always accessible for login. Vaultwarden is excluded
+# for the same native-app reason as Jellyfin.
+ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
+    "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
+    "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
+    "homepage", "dashy", "metube", "downtify", "uptime-kuma",
+    "netdata", "vaultwarden", "decluttarr", "recyclarr",
+})
+
 # Homepage tile groups - grouping/ordering is presentation-specific and
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
@@ -159,6 +172,7 @@ class GenerationConfig:
     domain: str | None = None
     auth_username: str | None = None
     auth_password_hash: str | None = None
+    auth_users: list[dict] = field(default_factory=list)
     cloudflare_dns: bool = False
     cloudflare_email: str | None = None
     port_overrides: dict[str, int] = field(default_factory=dict)
@@ -632,24 +646,48 @@ def render_dashy_config(config: GenerationConfig, host_ip: str | None) -> str:
     }, sort_keys=False)
 
 
-def render_authelia_users_database(username: str, displayname: str, password_hash: str) -> str:
+def render_authelia_users_database(
+    username: str, displayname: str, password_hash: str,
+    additional_users: list[dict] | None = None
+) -> str:
 
-    return yaml.safe_dump({
-        "users": {
-            username: {
-                "disabled": False,
-                "displayname": displayname,
-                "password": password_hash,
-                "email": f"{username}@localhost",
-                "groups": ["admins"]
-            }
+    users = {
+        username: {
+            "disabled": False,
+            "displayname": displayname,
+            "password": password_hash,
+            "email": f"{username}@localhost",
+            "groups": ["admin"]
         }
-    }, sort_keys=False)
+    }
+
+    for user in (additional_users or []):
+        users[user["username"]] = {
+            "disabled": False,
+            "displayname": user.get("displayname", user["username"]),
+            "password": user["password_hash"],
+            "email": f"{user['username']}@localhost",
+            "groups": user.get("groups", ["media"])
+        }
+
+    return yaml.safe_dump({"users": users}, sort_keys=False)
 
 
 def render_authelia_configuration(config: GenerationConfig, host_ip: str | None) -> str:
 
     template = _jinja_env().get_template("authelia-configuration.yml.j2")
+
+    cookie_domain = config.domain or host_ip or "127.0.0.1"
+
+    enabled = enabled_service_keys(config)
+    admin_only = sorted(ADMIN_ONLY_SERVICES & enabled) if config.domain else []
+
+    return template.render(
+        domain=config.domain,
+        cookie_domain=cookie_domain,
+        homepage_enabled="homepage" in enabled,
+        admin_only_services=admin_only
+    )
 
     # Authelia's own config validator fatally rejects a session cookie
     # domain that isn't a real domain (needs a period) or a real IP address -
@@ -1062,9 +1100,21 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         warnings.append(
             "Cloudflare Tunnel requires a real Tunnel token in stack/.env (TUNNEL_TOKEN) - "
             "create one at the Zero Trust dashboard's Networks > Tunnels > Create a tunnel > "
-            "Docker tab, then add a Public Hostname there pointing at this host's internal "
-            "tunnel entrypoint (http://traefik:8081). See the walkthrough for the full steps."
+            "Docker tab, then add a Public Hostname pointing at http://traefik:8081."
         )
+
+        if config.domain and "authelia" in enabled_service_keys(config):
+
+            warnings.append(
+                f"After the tunnel is working, lock down admin endpoints in Zero Trust: "
+                f"Access > Applications > Add an application for each management subdomain "
+                f"(e.g. radarr.{config.domain}, homepage.{config.domain}) with an email OTP "
+                f"or Google policy. Do NOT protect jellyfin.{config.domain} or "
+                f"jellyseerr.{config.domain} - native Jellyfin apps can't complete the "
+                f"browser redirect, and Jellyseerr uses Jellyfin's own auth. For family "
+                f"access, create a second, hard-to-guess Jellyfin subdomain (e.g. "
+                f"jellyfin-abc123.{config.domain}) with no Cloudflare Access policy."
+            )
 
     if "traefik" in enabled_service_keys(config) and config.domain and "authelia" not in enabled_service_keys(config):
 
@@ -1090,7 +1140,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
             users_database_path.write_text(
                 render_authelia_users_database(
-                    config.auth_username, config.auth_username, config.auth_password_hash
+                    config.auth_username, config.auth_username, config.auth_password_hash,
+                    additional_users=config.auth_users
                 )
             )
 
@@ -1103,6 +1154,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "so nothing is actually protected and the login portal isn't reachable - "
                 "Authelia will start but do nothing useful until Traefik and a domain are "
                 "also enabled."
+            )
+
+        if config.auth_users and routed:
+
+            warnings.append(
+                f"Authelia RBAC is active: admin user '{config.auth_username}' has full access "
+                f"to all services. {len(config.auth_users)} additional user(s) restricted to "
+                "Jellyfin and Jellyseerr only. Add more users by re-running with --auth-users "
+                "or by editing stack/config/authelia/users_database.yml directly."
             )
 
     if "crowdsec" in enabled_service_keys(config):
@@ -1271,6 +1331,19 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "Jellyfin's own login is the standard workaround; consider enabling Jellyfin's "
             "own built-in two-factor authentication (Dashboard > My Profile) for real "
             "protection on this one exposed service."
+        )
+
+    if (
+        "jellyseerr" in enabled_service_keys(config)
+        and "jellyfin" in enabled_service_keys(config)
+    ):
+
+        warnings.append(
+            "Jellyseerr uses Jellyfin for login - any Jellyfin user can sign in with their "
+            "Jellyfin credentials (Settings > General > Enable Jellyfin Sign-In). Set default "
+            "new-user permissions to REQUEST only (Settings > Users > Default Permissions) so "
+            "family can request movies/shows but can't manage libraries or settings. You can "
+            "also set global request limits (e.g. 3 movies/week) in the same page."
         )
 
     if "readarr" in enabled_service_keys(config):
