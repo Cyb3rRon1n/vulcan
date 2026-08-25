@@ -35,6 +35,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("sonarr", "Sonarr"),
     ServiceDefinition("prowlarr", "Prowlarr"),
     ServiceDefinition("qbittorrent", "qBittorrent"),
+    ServiceDefinition("filebrowser", "FileBrowser (file manager)"),
     # Tier-agnostic, not Medium+-only - qBittorrent is present starting
     # here too, and Gluetun is what actually keeps its torrent traffic
     # from exposing a real IP to the swarm. Moved up from
@@ -113,6 +114,7 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     # entrypoint to Traefik is plain HTTP - Cloudflare's edge already
     # terminated public TLS by the time traffic reaches it).
     ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True),
+    ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
 ]

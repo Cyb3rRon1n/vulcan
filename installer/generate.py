@@ -66,7 +66,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
-    "dashy",
+    "dashy", "filebrowser",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -79,7 +79,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
     "homepage", "dashy", "metube", "downtify", "uptime-kuma",
-    "netdata", "vaultwarden", "decluttarr", "recyclarr",
+    "netdata", "vaultwarden", "decluttarr", "recyclarr", "filebrowser",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -99,7 +99,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     # `ports:` mapping Vulcan controls). Still gets a real tile -
     # _service_href() special-cases its link to a direct host-port URL
     # unconditionally, regardless of Traefik/domain state.
-    "System": ["netdata"],
+    "System": ["netdata", "filebrowser"],
     "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik"],
 }
@@ -123,6 +123,8 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "downtify": 8000,
     "vaultwarden": 8222,
     "dashy": 4000,
+    "filebrowser": 8082,
+    "pihole": 8053,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -155,6 +157,8 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "vaultwarden": "Password manager for every service login this stack creates",
+    "filebrowser": "Web-based file manager for browsing and managing your media folders",
+    "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
 }
 
 
@@ -419,7 +423,8 @@ def render_env(
     vaultwarden_admin_token: str | None = None,
     vaultwarden_signups_allowed: str = "true",
     crowdsec_bouncer_key: str | None = None,
-    tunnel_token: str = "changeme"
+    tunnel_token: str = "changeme",
+    pihole_webpassword: str | None = None
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -465,7 +470,9 @@ def render_env(
         # real value instead of a "changeme" placeholder.
         crowdsec_bouncer_key=crowdsec_bouncer_key or secrets.token_hex(32),
         cloudflared_enabled="cloudflared" in enabled,
-        tunnel_token=tunnel_token
+        tunnel_token=tunnel_token,
+        pihole_enabled="pihole" in enabled,
+        pihole_webpassword=pihole_webpassword or secrets.token_hex(16)
     )
 
 
@@ -972,7 +979,10 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         crowdsec_bouncer_key=(
             _preserved_vpn_value(output_dir, "CROWDSEC_BOUNCER_KEY", "") or None
         ),
-        tunnel_token=_preserved_vpn_value(output_dir, "TUNNEL_TOKEN", "changeme")
+        tunnel_token=_preserved_vpn_value(output_dir, "TUNNEL_TOKEN", "changeme"),
+        pihole_webpassword=(
+            _preserved_vpn_value(output_dir, "PIHOLE_WEBPASSWORD", "") or None
+        )
     )
 
     compose_path.write_text(render_compose(config, host_ip))
@@ -981,6 +991,9 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     for key in enabled_service_keys(config):
         (output_dir / "config" / key).mkdir(parents=True, exist_ok=True)
+
+    if "pihole" in enabled_service_keys(config):
+        (output_dir / "config" / "pihole" / "unbound").mkdir(parents=True, exist_ok=True)
 
     if config.cloudflare_dns and "traefik" in enabled_service_keys(config):
 
