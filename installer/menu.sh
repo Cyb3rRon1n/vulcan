@@ -31,16 +31,16 @@ shadow=black,black
 title=yellow,red
 button=white,red
 actbutton=black,yellow
-checkbox=white,black
+checkbox=black,red
 actcheckbox=black,yellow
-entry=white,black
-label=white,black
-listbox=white,black
+entry=black,red
+label=black,red
+listbox=black,red
 actlistbox=black,yellow
-sellistbox=white,black
+sellistbox=black,red
 actsellistbox=black,yellow
-textbox=white,black
-acttextbox=white,black
+textbox=black,red
+acttextbox=black,red
 helpline=white,black
 roottext=white,black
 emptyscale=,black
@@ -82,7 +82,7 @@ fi
 _dlg_rows() {
     local total
     total=$(tput lines 2>/dev/null || echo 24)
-    local rows=$(( total * 80 / 100 ))
+    local rows=$(( total * 90 / 100 ))
     [ "$rows" -lt 10 ] && rows=10
     echo "$rows"
 }
@@ -90,7 +90,7 @@ _dlg_rows() {
 _dlg_cols() {
     local total
     total=$(tput cols 2>/dev/null || echo 80)
-    local cols=$(( total * 80 / 100 ))
+    local cols=$(( total * 90 / 100 ))
     [ "$cols" -lt 60 ] && cols=60
     echo "$cols"
 }
@@ -98,7 +98,7 @@ _dlg_cols() {
 _dlg_menu_items() {
     local total
     total=$(tput lines 2>/dev/null || echo 24)
-    local items=$(( total * 55 / 100 ))
+    local items=$(( total * 60 / 100 ))
     [ "$items" -lt 5 ] && items=5
     echo "$items"
 }
