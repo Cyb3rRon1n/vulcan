@@ -2077,15 +2077,12 @@ def _gather_generation_config(
 
     pihole_default = "pihole" in previous["enabled_optional"] if previous else False
 
-    if pihole is None:
-
-        enable_pihole = pihole_default if non_interactive else typer.confirm(
-            "Enable Pi-hole + Unbound (DNS-level ad blocker)?",
-            default=pihole_default
-        )
-
-    else:
+    if pihole is not None:
         enable_pihole = pihole
+    elif non_interactive:
+        enable_pihole = pihole_default
+    else:
+        enable_pihole = False
 
     if enable_pihole:
         enabled_optional.add("pihole")
