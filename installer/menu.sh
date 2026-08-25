@@ -20,32 +20,33 @@ BACKTITLE="Vulcan - Media Stack Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex). Vulcan brand: red window background, black border
-# (clean line), white text for readability, yellow for focused states.
+# arbitrary hex). Vulcan brand: red window background, black-on-red
+# border, white text on black for labels/entries/listboxes, yellow
+# for focused states.
 export NEWT_COLORS='
 root=white,black
-border=black,black
+border=black,red
 window=white,red
 shadow=black,black
 title=yellow,red
-button=white,black
+button=white,red
 actbutton=black,yellow
-checkbox=white,red
+checkbox=white,black
 actcheckbox=black,yellow
-entry=white,red
-label=white,red
-listbox=white,red
+entry=white,black
+label=white,black
+listbox=white,black
 actlistbox=black,yellow
-sellistbox=white,red
+sellistbox=white,black
 actsellistbox=black,yellow
-textbox=white,red
-acttextbox=white,red
+textbox=white,black
+acttextbox=white,black
 helpline=white,black
 roottext=white,black
 emptyscale=,black
 fullscale=,red
 disabledentry=gray,red
-compactbutton=white,black
+compactbutton=white,red
 '
 
 # whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
