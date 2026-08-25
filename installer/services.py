@@ -39,6 +39,8 @@ RESOURCE_PROFILES: dict[str, str] = {
     # started container - genuinely light, same bucket as Homepage.
     "dashy": "light",
     "cloudflared": "light",
+    "filebrowser": "light",
+    "pihole": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

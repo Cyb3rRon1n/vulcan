@@ -1081,6 +1081,10 @@ def main(
         help="Keep Dashy off the public Traefik-routed domain - only used if dashy and "
         "traefik+domain are all enabled"
     ),
+    pihole: bool | None = typer.Option(
+        None, "--pihole/--no-pihole",
+        help="DNS-level ad blocker with recursive DNS resolver (Unbound)"
+    ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     version: bool | None = typer.Option(
         None, "--version/--no-version",
@@ -2067,6 +2071,26 @@ def _gather_generation_config(
         else "dashy" in custom_services_selected
     )
 
+    pihole_default = "pihole" in previous["enabled_optional"] if previous else False
+
+    if pihole is None:
+
+        enable_pihole = pihole_default if non_interactive else typer.confirm(
+            "Enable Pi-hole + Unbound (DNS-level ad blocker)?",
+            default=pihole_default
+        )
+
+    else:
+        enable_pihole = pihole
+
+    if enable_pihole:
+        enabled_optional.add("pihole")
+
+    pihole_enabled = (
+        "pihole" in enabled_optional if custom_services_selected is None
+        else "pihole" in custom_services_selected
+    )
+
     # Same reasoning and same opt-out-by-default question as Homepage's
     # own homepage_private above, asked independently - enabling both
     # dashboards doesn't mean they share one privacy decision.
@@ -2309,6 +2333,7 @@ def _generate_and_maybe_start(
     if config.dashy_private:
         panel.note("  Dashy: private (not publicly routed)")
     panel.note(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Pi-hole: {'enabled' if 'pihole' in config.enabled_optional else 'disabled'}")
     panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:

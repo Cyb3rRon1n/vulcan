@@ -684,10 +684,10 @@ _guided_setup_quick_toggles() {
         fi
     }
 
-    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy)
+    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole)
 
     if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
-        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy)\n\nChoose No to pick individually instead." \
+        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole)\n\nChoose No to pick individually instead." \
         "$DLG_ROWS" "$DLG_COLS" --defaultno; then
 
         SELECTED=("${all_optional_keys[@]}")
@@ -704,6 +704,7 @@ _guided_setup_quick_toggles() {
             "netdata"     "Netdata - system monitoring"             "$(_default_on netdata off)" \
             "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
             "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
+            "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"      "$(_default_on pihole off)" \
             3>&1 1>&2 2>&3) || CHOSEN=""
 
         # whiptail's own --checklist output is a properly double-quoted,
@@ -732,6 +733,7 @@ _guided_setup_quick_toggles() {
     _has netdata     && TOGGLE_FLAGS+=(--netdata)    || TOGGLE_FLAGS+=(--no-netdata)
     _has vaultwarden && TOGGLE_FLAGS+=(--vaultwarden) || TOGGLE_FLAGS+=(--no-vaultwarden)
     _has dashy       && TOGGLE_FLAGS+=(--dashy)      || TOGGLE_FLAGS+=(--no-dashy)
+    _has pihole      && TOGGLE_FLAGS+=(--pihole)     || TOGGLE_FLAGS+=(--no-pihole)
 
     if [ "$TIER" = "heavy" ] && [ -n "$GPU_VENDOR" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
@@ -803,6 +805,7 @@ _guided_setup_customize_services() {
         "tailscale"   "Tailscale (private remote access)"              "$(_svc_on tailscale)" \
         "uptime-kuma" "Uptime Kuma"                                    "$(_svc_on uptime-kuma)" \
         "watchtower"  "Watchtower"                                     "$(_svc_on watchtower)" \
+        "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"              "$(_svc_on pihole)" \
         3>&1 1>&2 2>&3) || CHOSEN=""
 
     # whiptail's own --checklist output is a properly double-quoted,
