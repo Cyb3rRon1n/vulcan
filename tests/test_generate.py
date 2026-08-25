@@ -80,7 +80,7 @@ def test_enabled_service_keys_light_tier():
 
     keys = enabled_service_keys(make_config("light"))
 
-    assert keys == {"jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent"}
+    assert keys == {"jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "filebrowser"}
 
 
 def test_enabled_service_keys_medium_without_gluetun():
@@ -89,7 +89,7 @@ def test_enabled_service_keys_medium_without_gluetun():
 
     assert keys == {
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-        "jellyseerr", "bazarr", "flaresolverr"
+        "jellyseerr", "bazarr", "flaresolverr", "filebrowser"
     }
 
 
@@ -98,7 +98,7 @@ def test_enabled_service_keys_medium_with_gluetun():
     keys = enabled_service_keys(make_config("medium", {"gluetun"}))
 
     assert "gluetun" in keys
-    assert len(keys) == 9
+    assert len(keys) == 10
 
 
 def test_enabled_service_keys_light_with_sabnzbd():
@@ -106,7 +106,7 @@ def test_enabled_service_keys_light_with_sabnzbd():
     keys = enabled_service_keys(make_config("light", {"sabnzbd"}))
 
     assert "sabnzbd" in keys
-    assert len(keys) == 6
+    assert len(keys) == 7
 
 
 def test_enabled_service_keys_light_with_recyclarr():
@@ -114,7 +114,7 @@ def test_enabled_service_keys_light_with_recyclarr():
     keys = enabled_service_keys(make_config("light", {"recyclarr"}))
 
     assert "recyclarr" in keys
-    assert len(keys) == 6
+    assert len(keys) == 7
 
 
 def test_enabled_service_keys_custom_services_overrides_tier_entirely():
@@ -129,7 +129,7 @@ def test_enabled_service_keys_custom_services_none_falls_back_to_tier():
 
     keys = enabled_service_keys(make_config("light", custom_services=None))
 
-    assert keys == {"jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent"}
+    assert keys == {"jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "filebrowser"}
 
 
 def test_render_compose_light_only_includes_light_services():
@@ -957,7 +957,7 @@ def test_every_rendered_service_has_no_new_privileges():
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == all_keys
+    assert set(data["services"].keys()) == all_keys | {"unbound"}
 
     for name, service in data["services"].items():
         assert "no-new-privileges:true" in service.get("security_opt", []), (
@@ -1001,7 +1001,7 @@ def test_netdata_keeps_apparmor_unconfined_alongside_no_new_privileges():
 FIVE_CAP_SERVICES = {
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
     "sabnzbd", "bazarr", "lidarr", "readarr",
-    "metube", "authelia", "homepage", "uptime-kuma",
+    "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1021,6 +1021,8 @@ ZERO_CAP_SERVICES = {
 SPECIAL_CAP_SERVICES = {
     "gluetun": ["NET_ADMIN"],
     "tailscale": ["NET_ADMIN", "NET_RAW"],
+    "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
+    "pihole": ["NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
     # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH
     # directly ("should run with...") - without it they degrade silently
     # rather than crash, so adding it is a real functionality gain over the
@@ -1073,7 +1075,7 @@ def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
 
 def test_every_service_has_cap_drop_all():
     """
-    Regression lock, all 28 services: this pass covers every service known
+    Regression lock, all 30 services: this pass covers every service known
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
@@ -1084,7 +1086,7 @@ def test_every_service_has_cap_drop_all():
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == all_keys
+    assert set(data["services"].keys()) == all_keys | {"unbound"}
 
     for name, service in data["services"].items():
         assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
@@ -1534,7 +1536,7 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     result = write_stack(config, output_dir=output_dir)
 
     assert result["success"] is True
-    assert result["warnings"] == []
+    assert any("Jellyseerr" in w for w in result["warnings"])
 
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
@@ -1543,7 +1545,7 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert env_path.read_text() == render_env(config)
 
     for key in ("jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-                "jellyseerr", "bazarr", "flaresolverr"):
+                "jellyseerr", "bazarr", "flaresolverr", "filebrowser"):
         assert (output_dir / "config" / key).is_dir()
 
     assert (media_path / "downloads").is_dir()

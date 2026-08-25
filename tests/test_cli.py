@@ -1622,7 +1622,9 @@ def test_omits_tier_compositions_in_non_interactive_mode():
     # signal the 3-tier comparison block itself was suppressed (bare
     # "Heavy:" false-positives against "Short of Heavy: ...GB free" in
     # the recommendation's own explanation text).
-    assert "Jellyfin" not in result.output
+    assert "  Light:" not in result.output
+    assert "  Medium:" not in result.output
+    assert "  Heavy:" not in result.output
 
 
 def test_non_interactive_light_with_explicit_sabnzbd_flag(tmp_path):
@@ -1963,7 +1965,9 @@ def test_media_path_prompted_when_not_passed(tmp_path):
         return_value={"disk_free_gb": 900.0, "disk_path_checked": prompted_path}
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ) as mock_write_stack:
+    ) as mock_write_stack, patch(
+        "installer.cli.list_blank_unprotected_devices", return_value=[]
+    ):
 
         result = runner.invoke(
             app,
