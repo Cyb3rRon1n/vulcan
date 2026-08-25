@@ -1079,7 +1079,7 @@ def test_every_service_has_cap_drop_all():
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
-    assert ALL_CAPPED_SERVICES == {s.key for s in ALL_SERVICES}
+    assert ALL_CAPPED_SERVICES == {s.key for s in ALL_SERVICES} | {"unbound"}
 
     all_keys = {s.key for s in ALL_SERVICES}
     config = make_config("heavy", custom_services=all_keys, gpu_vendor="nvidia", domain="example.com")
