@@ -742,6 +742,7 @@ def start():
         vaultwarden=None,
         dashy=None,
         dashy_private=None,
+        pihole=None,
         gpu=None,
         puid=None,
         pgid=None,
@@ -1276,7 +1277,7 @@ def run_install(
 
         config = _gather_generation_config(
             info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
-            downtify, netdata, vaultwarden, dashy, dashy_private, gpu, puid, pgid, timezone,
+            downtify, netdata, vaultwarden, dashy, dashy_private, pihole, gpu, puid, pgid, timezone,
             non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
             cloudflare_email, auth_username, auth_password, auth_users_raw, panel
         )
@@ -1559,6 +1560,7 @@ def _gather_generation_config(
     vaultwarden: bool | None,
     dashy: bool | None,
     dashy_private: bool | None,
+    pihole: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
