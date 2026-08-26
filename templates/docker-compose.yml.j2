@@ -587,28 +587,28 @@ services:
           memory: "{{ limits.maintainerr.memory }}"
     restart: unless-stopped
 {% endif %}
-{% if 'jellyseerr' in enabled %}
-  jellyseerr:
-    image: fallenbagel/jellyseerr:latest
-    container_name: jellyseerr
+{% if 'seerr' in enabled %}
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
     environment:
       - TZ=${TZ}
     volumes:
-      - ./config/jellyseerr:/app/config
+      - ./config/seerr:/app/config
     ports:
-      - "{{ ports['jellyseerr'] }}:5055"
+      - "{{ ports['seerr'] }}:5055"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{ domain }}`)"
-      - "traefik.http.routers.jellyseerr.entrypoints=websecure{{ tunnel_entrypoints }}"
-      - "traefik.http.routers.jellyseerr.tls=true"
+      - "traefik.http.routers.seerr.rule=Host(`seerr.{{ domain }}`)"
+      - "traefik.http.routers.seerr.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.seerr.tls=true"
 {% if cloudflare_dns %}
-      - "traefik.http.routers.jellyseerr.tls.certresolver=cloudflare"
+      - "traefik.http.routers.seerr.tls.certresolver=cloudflare"
 {% endif %}
-      - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+      - "traefik.http.services.seerr.loadbalancer.server.port=5055"
 {% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.jellyseerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+      - "traefik.http.routers.seerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
@@ -622,8 +622,50 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "{{ limits.jellyseerr.cpus }}"
-          memory: "{{ limits.jellyseerr.memory }}"
+          cpus: "{{ limits.seerr.cpus }}"
+          memory: "{{ limits.seerr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'sportarr' in enabled %}
+  sportarr:
+    image: sportarr/sportarr:latest
+    container_name: sportarr
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/sportarr:/config
+      - ${MEDIA_PATH}/media:/data/media
+    ports:
+      - "{{ ports['sportarr'] }}:1867"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sportarr.rule=Host(`sportarr.{{ domain }}`)"
+      - "traefik.http.routers.sportarr.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.sportarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.sportarr.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.sportarr.loadbalancer.server.port=1867"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.sportarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.sportarr.cpus }}"
+          memory: "{{ limits.sportarr.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'bazarr' in enabled %}
@@ -1369,5 +1411,40 @@ services:
         limits:
           cpus: "{{ limits.pihole.cpus }}"
           memory: "{{ limits.pihole.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'tracearr' in enabled %}
+  tracearr:
+    image: ghcr.io/connorgallopo/tracearr:supervised
+    container_name: tracearr
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/tracearr:/app/data
+    ports:
+      - "{{ ports['tracearr'] }}:3000"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tracearr.rule=Host(`tracearr.{{ domain }}`)"
+      - "traefik.http.routers.tracearr.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.tracearr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.tracearr.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.tracearr.loadbalancer.server.port=3000"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.tracearr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.tracearr.cpus }}"
+          memory: "{{ limits.tracearr.memory }}"
     restart: unless-stopped
 {% endif %}

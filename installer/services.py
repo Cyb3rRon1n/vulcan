@@ -18,7 +18,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "recyclarr": "light",
     "decluttarr": "light",
     "maintainerr": "light",
-    "jellyseerr": "light",
+    "seerr": "light",
     "bazarr": "light",
     "flaresolverr": "light",
     "gluetun": "light",
@@ -41,6 +41,8 @@ RESOURCE_PROFILES: dict[str, str] = {
     "cloudflared": "light",
     "filebrowser": "light",
     "pihole": "light",
+    "sportarr": "standard",
+    "tracearr": "standard",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {

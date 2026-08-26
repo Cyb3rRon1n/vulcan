@@ -85,7 +85,7 @@ _LIGHT_SERVICES = [
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
-    ServiceDefinition("jellyseerr", "Jellyseerr"),
+    ServiceDefinition("seerr", "Seerr (media requests)"),
     ServiceDefinition("bazarr", "Bazarr"),
     ServiceDefinition("flaresolverr", "FlareSolverr"),
 ]
@@ -115,6 +115,8 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     # terminated public TLS by the time traffic reaches it).
     ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True),
     ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True),
+    ServiceDefinition("sportarr", "Sportarr (sports PVR)", optional=True),
+    ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True),
     ServiceDefinition("uptime-kuma", "Uptime Kuma"),
     ServiceDefinition("watchtower", "Watchtower"),
 ]

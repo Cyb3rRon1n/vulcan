@@ -64,14 +64,14 @@ _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type
 # tests/test_generate.py so the two can't silently drift apart again.
 WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
-    "jellyseerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
+    "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
-# Jellyfin and Jellyseerr are deliberately excluded: Jellyfin because
-# forward-auth breaks native apps (jellyfin/jellyfin#16956), Jellyseerr
+# Jellyfin and Seerr are deliberately excluded: Jellyfin because
+# forward-auth breaks native apps (jellyfin/jellyfin#16956), Seerr
 # because it's the media request UI that non-admin users need to access.
 # Authelia itself is always accessible for login. Vaultwarden is excluded
 # for the same native-app reason as Jellyfin.
@@ -86,22 +86,12 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "jellyseerr"],
-    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
+    "Media": ["jellyfin", "seerr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
-    "Monitoring": ["uptime-kuma"],
-    # netdata is deliberately not in WEB_FACING_SERVICES/routed the
-    # normal way - network_mode: host (see the compose template) means
-    # it has no Docker-network identity for Traefik's provider to
-    # discover, the same real limitation qBittorrent+Gluetun already
-    # has, and its port isn't remappable via port_overrides either
-    # (the image binds 19999 directly on the host, not through a
-    # `ports:` mapping Vulcan controls). Still gets a real tile -
-    # _service_href() special-cases its link to a direct host-port URL
-    # unconditionally, regardless of Traefik/domain state.
-    "System": ["netdata", "filebrowser"],
-    "Security": ["authelia", "vaultwarden"],
-    "Infrastructure": ["traefik"],
+    "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
+    "Security": ["authelia", "crowdsec", "vaultwarden"],
+    "Infrastructure": ["traefik", "filebrowser"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -111,7 +101,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "prowlarr": 9696,
     "qbittorrent": 8080,
     "sabnzbd": 8081,
-    "jellyseerr": 5055,
+    "seerr": 5055,
     "bazarr": 6767,
     "lidarr": 8686,
     "readarr": 8787,
@@ -125,6 +115,8 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "dashy": 4000,
     "filebrowser": 8082,
     "pihole": 8053,
+    "sportarr": 1867,
+    "tracearr": 3002,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -140,7 +132,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
 # in sync" discipline _HOMEPAGE_PORTS already follows.
 _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "jellyfin": "Stream your movies, TV, and music",
-    "jellyseerr": "Request new movies and shows",
+    "seerr": "Request new movies and shows",
     "radarr": "Automatically finds and manages your movie library",
     "sonarr": "Automatically finds and manages your TV library",
     "lidarr": "Automatically finds and manages your music library",
@@ -159,6 +151,8 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
+    "sportarr": "Sports PVR -自动monitors leagues, downloads events, organizes into your media library",
+    "tracearr": "Real-time stream analytics for Jellyfin/Plex/Emby (Tautulli/Jellystat replacement)",
 }
 
 
@@ -790,7 +784,7 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
     sequencing advice, not render_stack_summary()'s flat link list
     reordered. Config order matters here: Prowlarr's indexers before
     the *arr apps that query it, a working download client before
-    anything expects one, Jellyfin's libraries before Jellyseerr can
+    anything expects one, Jellyfin's libraries before Seerr can
     request into them, dashboards last since they've nothing to show
     until everything above them is already running. Steps are numbered
     dynamically (not hardcoded "1./2./3.") so skipping a disabled
@@ -877,10 +871,10 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
             f"authentication (Dashboard > My Profile){authelia_note}."
         )
 
-    if "jellyseerr" in enabled:
+    if "seerr" in enabled:
 
         steps.append(
-            f"Jellyseerr ({_service_href('jellyseerr', config, host_ip)}): connect it to "
+            f"Seerr ({_service_href('seerr', config, host_ip)}): connect it to "
             "Jellyfin and Radarr/Sonarr so requests can actually be fulfilled."
         )
 
@@ -1123,8 +1117,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 f"Access > Applications > Add an application for each management subdomain "
                 f"(e.g. radarr.{config.domain}, homepage.{config.domain}) with an email OTP "
                 f"or Google policy. Do NOT protect jellyfin.{config.domain} or "
-                f"jellyseerr.{config.domain} - native Jellyfin apps can't complete the "
-                f"browser redirect, and Jellyseerr uses Jellyfin's own auth. For family "
+                f"seerr.{config.domain} - native Jellyfin apps can't complete the "
+                f"browser redirect, and Seerr uses Jellyfin's own auth. For family "
                 f"access, create a second, hard-to-guess Jellyfin subdomain (e.g. "
                 f"jellyfin-abc123.{config.domain}) with no Cloudflare Access policy."
             )
@@ -1174,7 +1168,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             warnings.append(
                 f"Authelia RBAC is active: admin user '{config.auth_username}' has full access "
                 f"to all services. {len(config.auth_users)} additional user(s) restricted to "
-                "Jellyfin and Jellyseerr only. Add more users by re-running with --auth-users "
+                "Jellyfin and Seerr only. Add more users by re-running with --auth-users "
                 "or by editing stack/config/authelia/users_database.yml directly."
             )
 
@@ -1347,12 +1341,12 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         )
 
     if (
-        "jellyseerr" in enabled_service_keys(config)
+        "seerr" in enabled_service_keys(config)
         and "jellyfin" in enabled_service_keys(config)
     ):
 
         warnings.append(
-            "Jellyseerr uses Jellyfin for login - any Jellyfin user can sign in with their "
+            "Seerr uses Jellyfin for login - any Jellyfin user can sign in with their "
             "Jellyfin credentials (Settings > General > Enable Jellyfin Sign-In). Set default "
             "new-user permissions to REQUEST only (Settings > Users > Default Permissions) so "
             "family can request movies/shows but can't manage libraries or settings. You can "

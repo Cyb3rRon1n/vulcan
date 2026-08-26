@@ -748,6 +748,8 @@ def start():
         dashy=None,
         dashy_private=None,
         pihole=None,
+        sportarr=None,
+        tracearr=None,
         gpu=None,
         puid=None,
         pgid=None,
@@ -1098,6 +1100,14 @@ def main(
         None, "--pihole/--no-pihole",
         help="DNS-level ad blocker with recursive DNS resolver (Unbound)"
     ),
+    sportarr: bool | None = typer.Option(
+        None, "--sportarr/--no-sportarr",
+        help="Sports PVR - monitors leagues, downloads events"
+    ),
+    tracearr: bool | None = typer.Option(
+        None, "--tracearr/--no-tracearr",
+        help="Real-time stream analytics (Tautulli/Jellystat replacement)"
+    ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     version: bool | None = typer.Option(
         None, "--version/--no-version",
@@ -1290,9 +1300,11 @@ def run_install(
         panel.advance()
 
         config = _gather_generation_config(
-            info, tier, media_path, vpn, sabnzbd, recyclarr, homepage, homepage_private, metube,
-            downtify, netdata, vaultwarden, dashy, dashy_private, pihole, gpu, puid, pgid, timezone,
-            non_interactive, previous, custom_services_from_flag, domain, cloudflare_dns,
+            info, tier, media_path, vpn, sabnzbd, recyclarr, homepage,
+            homepage_private, metube, downtify, netdata, vaultwarden, dashy,
+            dashy_private, pihole, sportarr, tracearr, gpu, puid, pgid,
+            timezone, non_interactive, previous, custom_services_from_flag,
+            domain, cloudflare_dns,
             cloudflare_email, auth_username, auth_password, auth_users_raw, panel
         )
         panel.advance()
@@ -1607,6 +1619,8 @@ def _gather_generation_config(
     dashy: bool | None,
     dashy_private: bool | None,
     pihole: bool | None,
+    sportarr: bool | None,
+    tracearr: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -1744,7 +1758,23 @@ def _gather_generation_config(
             )
             valid_keys = {service.key for service in ALL_SERVICES}
 
-            console.print(f"Available services: {', '.join(sorted(valid_keys))}")
+            _SERVICE_CATEGORIES: dict[str, list[str]] = {
+                "Media": ["jellyfin", "seerr"],
+                "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "decluttarr", "recyclarr", "flaresolverr", "sportarr"],
+                "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
+                "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
+                "Infrastructure": ["traefik", "cloudflared", "tailscale", "pihole", "gluetun"],
+                "Security": ["authelia", "crowdsec", "vaultwarden"],
+                "Dashboards": ["homepage", "dashy"],
+                "System": ["watchtower", "filebrowser"],
+            }
+
+            console.print("[bold]Available services by category:[/bold]")
+            for cat, svcs in _SERVICE_CATEGORIES.items():
+                present = [s for s in svcs if s in valid_keys]
+                if present:
+                    console.print(f"  {cat}: {', '.join(present)}")
+            console.print()
 
             while True:
 
@@ -2143,10 +2173,38 @@ def _gather_generation_config(
     if enable_pihole:
         enabled_optional.add("pihole")
 
+    sportarr_default = "sportarr" in previous["enabled_optional"] if previous else False
+
+    if sportarr is not None:
+        enable_sportarr = sportarr
+    elif non_interactive:
+        enable_sportarr = sportarr_default
+    else:
+        enable_sportarr = False
+
+    if enable_sportarr:
+        enabled_optional.add("sportarr")
+
+    tracearr_default = "tracearr" in previous["enabled_optional"] if previous else False
+
+    if tracearr is not None:
+        enable_tracearr = tracearr
+    elif non_interactive:
+        enable_tracearr = tracearr_default
+    else:
+        enable_tracearr = False
+
+    if enable_tracearr:
+        enabled_optional.add("tracearr")
+
     pihole_enabled = (
         "pihole" in enabled_optional if custom_services_selected is None
         else "pihole" in custom_services_selected
     )
+
+
+
+
 
     # Same reasoning and same opt-out-by-default question as Homepage's
     # own homepage_private above, asked independently - enabling both
@@ -2401,6 +2459,8 @@ def _generate_and_maybe_start(
         panel.note("  Dashy: private (not publicly routed)")
     panel.note(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Pi-hole: {'enabled' if 'pihole' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Sportarr: {'enabled' if 'sportarr' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Tracearr: {'enabled' if 'tracearr' in config.enabled_optional else 'disabled'}")
     panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:
@@ -2541,7 +2601,7 @@ def _generate_and_maybe_start(
             panel.note(
                 f"\nAuthelia users configured: admin ('{config.auth_username}') + "
                 f"{len(config.auth_users)} additional user(s). Admin has full access; "
-                "additional users can only reach Jellyfin and Jellyseerr."
+                "additional users can only reach Jellyfin and Seerr."
             )
 
         if "cloudflared" in enabled_service_keys(config):

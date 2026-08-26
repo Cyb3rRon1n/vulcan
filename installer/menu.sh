@@ -684,10 +684,10 @@ _guided_setup_quick_toggles() {
         fi
     }
 
-    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole)
+    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole sportarr tracearr)
 
     if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
-        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole)\n\nChoose No to pick individually instead." \
+        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole, Sportarr, Tracearr)\n\nChoose No to pick individually instead." \
         "$DLG_ROWS" "$DLG_COLS" --defaultno; then
 
         SELECTED=("${all_optional_keys[@]}")
@@ -705,6 +705,8 @@ _guided_setup_quick_toggles() {
             "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
             "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
             "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"      "$(_default_on pihole off)" \
+            "sportarr"    "Sportarr - sports PVR"                   "$(_default_on sportarr off)" \
+            "tracearr"    "Tracearr - stream analytics"             "$(_default_on tracearr off)" \
             3>&1 1>&2 2>&3) || CHOSEN=""
 
         # whiptail's own --checklist output is a properly double-quoted,
@@ -734,6 +736,8 @@ _guided_setup_quick_toggles() {
     _has vaultwarden && TOGGLE_FLAGS+=(--vaultwarden) || TOGGLE_FLAGS+=(--no-vaultwarden)
     _has dashy       && TOGGLE_FLAGS+=(--dashy)      || TOGGLE_FLAGS+=(--no-dashy)
     _has pihole      && TOGGLE_FLAGS+=(--pihole)     || TOGGLE_FLAGS+=(--no-pihole)
+    _has sportarr    && TOGGLE_FLAGS+=(--sportarr)   || TOGGLE_FLAGS+=(--no-sportarr)
+    _has tracearr    && TOGGLE_FLAGS+=(--tracearr)   || TOGGLE_FLAGS+=(--no-tracearr)
 
     if [ "$TIER" = "heavy" ] && [ -n "$GPU_VENDOR" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
@@ -783,7 +787,7 @@ _guided_setup_customize_services() {
         "sonarr"      "Sonarr (TV)"                                 "$(_svc_on sonarr)" \
         "prowlarr"    "Prowlarr (indexers)"                         "$(_svc_on prowlarr)" \
         "qbittorrent" "qBittorrent"                                 "$(_svc_on qbittorrent)" \
-        "jellyseerr"  "Jellyseerr (requests)"                       "$(_svc_on jellyseerr)" \
+        "seerr"  "Seerr (requests)"                       "$(_svc_on seerr)" \
         "bazarr"      "Bazarr (subtitles)"                          "$(_svc_on bazarr)" \
         "flaresolverr" "FlareSolverr"                                "$(_svc_on flaresolverr)" \
         "lidarr"      "Lidarr (music)"                              "$(_svc_on lidarr)" \
@@ -806,6 +810,8 @@ _guided_setup_customize_services() {
         "uptime-kuma" "Uptime Kuma"                                    "$(_svc_on uptime-kuma)" \
         "watchtower"  "Watchtower"                                     "$(_svc_on watchtower)" \
         "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"              "$(_svc_on pihole)" \
+        "sportarr"    "Sportarr (sports PVR)"                           "$(_svc_on sportarr)" \
+        "tracearr"    "Tracearr (stream analytics)"                     "$(_svc_on tracearr)" \
         3>&1 1>&2 2>&3) || CHOSEN=""
 
     # whiptail's own --checklist output is a properly double-quoted,
