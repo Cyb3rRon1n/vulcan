@@ -750,6 +750,7 @@ def start():
         pihole=None,
         sportarr=None,
         tracearr=None,
+        threadfin=None,
         gpu=None,
         puid=None,
         pgid=None,
@@ -1108,6 +1109,10 @@ def main(
         None, "--tracearr/--no-tracearr",
         help="Real-time stream analytics (Tautulli/Jellystat replacement)"
     ),
+    threadfin: bool | None = typer.Option(
+        None, "--threadfin/--no-threadfin",
+        help="M3U/IPTV proxy for Jellyfin/Plex/Emby live TV"
+    ),
     start: bool | None = typer.Option(None, "--start/--no-start"),
     version: bool | None = typer.Option(
         None, "--version/--no-version",
@@ -1302,9 +1307,9 @@ def run_install(
         config = _gather_generation_config(
             info, tier, media_path, vpn, sabnzbd, recyclarr, homepage,
             homepage_private, metube, downtify, netdata, vaultwarden, dashy,
-            dashy_private, pihole, sportarr, tracearr, gpu, puid, pgid,
-            timezone, non_interactive, previous, custom_services_from_flag,
-            domain, cloudflare_dns,
+            dashy_private, pihole, sportarr, tracearr, threadfin, gpu,
+            puid, pgid, timezone, non_interactive, previous,
+            custom_services_from_flag, domain, cloudflare_dns,
             cloudflare_email, auth_username, auth_password, auth_users_raw, panel
         )
         panel.advance()
@@ -1621,6 +1626,7 @@ def _gather_generation_config(
     pihole: bool | None,
     sportarr: bool | None,
     tracearr: bool | None,
+    threadfin: bool | None,
     gpu: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -1767,6 +1773,7 @@ def _gather_generation_config(
                 "Security": ["authelia", "crowdsec", "vaultwarden"],
                 "Dashboards": ["homepage", "dashy"],
                 "System": ["watchtower", "filebrowser"],
+                "Live TV": ["threadfin"],
             }
 
             console.print("[bold]Available services by category:[/bold]")
@@ -2197,6 +2204,18 @@ def _gather_generation_config(
     if enable_tracearr:
         enabled_optional.add("tracearr")
 
+    threadfin_default = "threadfin" in previous["enabled_optional"] if previous else False
+
+    if threadfin is not None:
+        enable_threadfin = threadfin
+    elif non_interactive:
+        enable_threadfin = threadfin_default
+    else:
+        enable_threadfin = False
+
+    if enable_threadfin:
+        enabled_optional.add("threadfin")
+
     pihole_enabled = (
         "pihole" in enabled_optional if custom_services_selected is None
         else "pihole" in custom_services_selected
@@ -2461,6 +2480,7 @@ def _generate_and_maybe_start(
     panel.note(f"  Pi-hole: {'enabled' if 'pihole' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Sportarr: {'enabled' if 'sportarr' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Tracearr: {'enabled' if 'tracearr' in config.enabled_optional else 'disabled'}")
+    panel.note(f"  Threadfin: {'enabled' if 'threadfin' in config.enabled_optional else 'disabled'}")
     panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
 
     if config.custom_services is not None:

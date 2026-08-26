@@ -1448,3 +1448,47 @@ services:
           memory: "{{ limits.tracearr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'threadfin' in enabled %}
+  threadfin:
+    image: fyb3roptik/threadfin
+    container_name: threadfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/threadfin/conf:/home/threadfin/conf
+      - ./config/threadfin/temp:/tmp/threadfin:rw
+    ports:
+      - "{{ ports['threadfin'] }}:34400"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.threadfin.rule=Host(`threadfin.{{ domain }}`)"
+      - "traefik.http.routers.threadfin.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.threadfin.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.threadfin.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.threadfin.loadbalancer.server.port=34400"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.threadfin.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.threadfin.cpus }}"
+          memory: "{{ limits.threadfin.memory }}"
+    restart: unless-stopped
+{% endif %}
