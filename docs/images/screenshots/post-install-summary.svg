@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+  <rect width="900" height="560" rx="12" fill="#0d1117"/>
+  <path d="M0,12 a12,12 0 0 1 12,-12 h876 a12,12 0 0 1 12,12 v34 h-900 z" fill="#161b22"/>
+  <line x1="0" y1="46" x2="900" y2="46" stroke="#30363d" stroke-width="1"/>
+  <circle cx="26" cy="23" r="7" fill="#e0645a" opacity="0.85"/>
+  <circle cx="48" cy="23" r="7" fill="#e0b04a" opacity="0.85"/>
+  <circle cx="70" cy="23" r="7" fill="#5fb87a" opacity="0.85"/>
+  <text x="450" y="28" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#8b949e">vulcan</text>
+
+  <rect x="0" y="46" width="900" height="514" fill="#000000"/>
+
+  <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Vulcan - Media Homelab Deploy</text>
+
+  <rect x="120" y="96" width="660" height="390" fill="#00a8a8" stroke="#5fd6d6" stroke-width="2"/>
+
+  <text x="450" y="126" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="bold" fill="#000000">Setup Complete</text>
+  <line x1="150" y1="140" x2="750" y2="140" stroke="#007878" stroke-width="2"/>
+
+  <g font-family="Menlo, Consolas, monospace" font-size="13" fill="#003c3c">
+    <text x="150" y="168" font-weight="bold">Vulcan setup is complete!</text>
+
+    <text x="150" y="196">Your stack is running.</text>
+
+    <text x="150" y="224" font-weight="bold">Service URLs:</text>
+    <text x="166" y="244">Jellyfin:    http://192.168.1.100:8096</text>
+    <text x="166" y="264">Radarr:      http://192.168.1.100:7878</text>
+    <text x="166" y="284">Sonarr:      http://192.168.1.100:8989</text>
+    <text x="166" y="304">Prowlarr:    http://192.168.1.100:9696</text>
+    <text x="166" y="324">qBittorrent: http://192.168.1.100:8080</text>
+    <text x="166" y="344">Homepage:    http://192.168.1.100:3000</text>
+
+    <text x="150" y="372" font-weight="bold">To manage your stack:</text>
+    <text x="166" y="392">docker compose -f stack/docker-compose.yml ps</text>
+    <text x="166" y="412">docker compose -f stack/docker-compose.yml down</text>
+
+    <text x="150" y="440">Tier: medium | Path: /mnt/media | PUID/PGID: 1000/1000</text>
+    <text x="150" y="460">Services: medium tier defaults (vpn homepage)</text>
+  </g>
+
+  <rect x="405" y="450" width="90" height="28" fill="#00a8a8" stroke="#003c3c" stroke-width="1.5"/>
+  <text x="450" y="469" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#000000">&lt;OK&gt;</text>
+
+  <text x="450" y="535" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, not a literal capture - real whiptail run pending (see ROADMAP.md)</text>
+</svg>
