@@ -1559,6 +1559,38 @@ def _offer_storage_setup(non_interactive: bool) -> str | None:
     return mount_point
 
 
+_SERVICE_CONFLICTS: list[tuple[set[str], set[str], str]] = [
+    (
+        {"gluetun", "tailscale"}, set(),
+        "Gluetun (container VPN) and Tailscale (host VPN) both manage network "
+        "routing and cannot run together. Pick one.",
+    ),
+]
+
+
+_SERVICE_DEPS: list[tuple[str, str, str]] = [
+    ("cloudflared", "traefik", "Cloudflare Tunnel requires Traefik as the reverse proxy."),
+    ("authelia", "traefik", "Authelia requires Traefik for forward-auth middleware."),
+    ("crowdsec", "traefik", "CrowdSec requires Traefik for its bouncer middleware."),
+]
+
+
+def _check_service_conflicts(services: set[str]) -> str | None:
+    """Return an error message if *services* contains an incompatible combination, else None."""
+
+    for required_both, required_neither, message in _SERVICE_CONFLICTS:
+        if required_both.issubset(services):
+            return message
+        if required_neither and required_neither.issubset(services):
+            return message
+
+    for service, dependency, message in _SERVICE_DEPS:
+        if service in services and dependency not in services:
+            return message
+
+    return None
+
+
 def _gather_generation_config(
     info: SystemInfo,
     tier: str | None,
@@ -1685,6 +1717,12 @@ def _gather_generation_config(
 
     if custom_services_from_flag is not None:
 
+        conflict = _check_service_conflicts(custom_services_from_flag)
+
+        if conflict:
+            console.print(f"[red]{conflict}[/red]")
+            raise typer.Exit(code=1)
+
         custom_services_selected = custom_services_from_flag
 
     elif non_interactive:
@@ -1719,6 +1757,12 @@ def _gather_generation_config(
 
                 if unknown:
                     console.print(f"[red]Unknown service(s): {', '.join(sorted(unknown))}[/red]")
+                    continue
+
+                conflict = _check_service_conflicts(requested)
+
+                if conflict:
+                    console.print(f"[red]{conflict}[/red]")
                     continue
 
                 custom_services_selected = requested
@@ -2186,6 +2230,16 @@ def _gather_generation_config(
         final_tz = default_tz if non_interactive else typer.prompt("Timezone", default=default_tz)
     else:
         final_tz = timezone
+
+    final_services = (
+        custom_services_selected if custom_services_selected is not None
+        else enabled_optional | {s.key for s in chosen_tier.services if not s.optional}
+    )
+    conflict = _check_service_conflicts(final_services)
+
+    if conflict:
+        console.print(f"[red]{conflict}[/red]")
+        raise typer.Exit(code=1)
 
     return GenerationConfig(
         tier=chosen_tier,
