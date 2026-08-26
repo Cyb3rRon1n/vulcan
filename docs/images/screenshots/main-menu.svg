@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="586" viewBox="0 0 900 586">
-  <rect width="900" height="586" rx="12" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="662" viewBox="0 0 900 662">
+  <rect width="900" height="662" rx="12" fill="#0d1117"/>
   <path d="M0,12 a12,12 0 0 1 12,-12 h876 a12,12 0 0 1 12,12 v34 h-900 z" fill="#161b22"/>
   <line x1="0" y1="46" x2="900" y2="46" stroke="#30363d" stroke-width="1"/>
   <circle cx="26" cy="23" r="7" fill="#e0645a" opacity="0.85"/>
@@ -7,11 +7,11 @@
   <circle cx="70" cy="23" r="7" fill="#5fb87a" opacity="0.85"/>
   <text x="450" y="28" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#8b949e">vulcan</text>
 
-  <rect x="0" y="46" width="900" height="540" fill="#000000"/>
+  <rect x="0" y="46" width="900" height="616" fill="#000000"/>
 
   <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Vulcan - Media Homelab Deploy</text>
 
-  <rect x="150" y="96" width="600" height="436" fill="#00a8a8" stroke="#5fd6d6" stroke-width="2"/>
+  <rect x="150" y="96" width="600" height="512" fill="#00a8a8" stroke="#5fd6d6" stroke-width="2"/>
 
   <text x="450" y="128" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="bold" fill="#000000">Vulcan</text>
   <line x1="180" y1="142" x2="720" y2="142" stroke="#007878" stroke-width="2"/>
@@ -20,22 +20,24 @@
   <!-- menu rows -->
   <g font-family="Menlo, Consolas, monospace" font-size="14">
     <rect x="180" y="182" width="540" height="26" fill="#c23b3b"/>
-    <text x="196" y="200" fill="#ffffff" font-weight="bold">Guided Setup - detect hardware, generate a stack</text>
+    <text x="196" y="200" fill="#ffffff" font-weight="bold">1. Guided Setup - detect hardware, generate a stack (new install)</text>
 
-    <text x="196" y="228" fill="#000000">Media Storage Setup - provision blank drives</text>
-    <text x="196" y="256" fill="#000000">Update Stack - pull latest images, recreate containers</text>
-    <text x="196" y="284" fill="#000000">Pull Images - prep for an offline start later</text>
-    <text x="196" y="312" fill="#000000">Backup Stack - archive config/compose/env to backups/</text>
-    <text x="196" y="340" fill="#000000">Restore Stack - from the most recent backup</text>
-    <text x="196" y="368" fill="#000000">Uninstall Stack - stop and delete stack/ entirely</text>
-    <text x="196" y="396" fill="#000000">Update Vulcan - fast-forward this checkout</text>
-    <text x="196" y="424" fill="#000000">Exit</text>
+    <text x="196" y="228" fill="#000000">2. Media Storage Setup - provision blank drives as media storage (new install)</text>
+    <text x="196" y="256" fill="#000000">3. Start Stack - start an already-generated stack</text>
+    <text x="196" y="284" fill="#000000">4. Update Stack - pull latest images, recreate containers</text>
+    <text x="196" y="312" fill="#000000">5. Pull Images - prep for an offline start later</text>
+    <text x="196" y="340" fill="#000000">6. Backup Stack - archive config/compose/env to backups/</text>
+    <text x="196" y="368" fill="#000000">7. Restore Stack - from the most recent backup</text>
+    <text x="196" y="396" fill="#000000">8. Uninstall Stack - stop and delete stack/ entirely</text>
+    <text x="196" y="424" fill="#000000">9. Update Vulcan - fast-forward this checkout</text>
+    <text x="196" y="452" fill="#000000">R. Reset Media Storage - tear down provisioned storage</text>
+    <text x="196" y="480" fill="#000000">0. Exit</text>
   </g>
 
-  <rect x="380" y="476" width="90" height="28" fill="#00a8a8" stroke="#003c3c" stroke-width="1.5"/>
-  <text x="425" y="495" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#000000">&lt;OK&gt;</text>
-  <rect x="490" y="476" width="110" height="28" fill="#00a8a8" stroke="#003c3c" stroke-width="1.5"/>
-  <text x="545" y="495" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#000000">&lt;Cancel&gt;</text>
+  <rect x="380" y="552" width="90" height="28" fill="#00a8a8" stroke="#003c3c" stroke-width="1.5"/>
+  <text x="425" y="571" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#000000">&lt;OK&gt;</text>
+  <rect x="490" y="552" width="110" height="28" fill="#00a8a8" stroke="#003c3c" stroke-width="1.5"/>
+  <text x="545" y="571" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#000000">&lt;Cancel&gt;</text>
 
-  <text x="450" y="561" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, not a literal capture - real whiptail run pending (see ROADMAP.md)</text>
+  <text x="450" y="637" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, not a literal capture - real whiptail run pending (see ROADMAP.md)</text>
 </svg>

@@ -24,7 +24,7 @@
     <text x="176" y="228" fill="#000000">[ ] sabnzbd     SABnzbd - Usenet downloader</text>
     <text x="176" y="256" fill="#000000">[ ] recyclarr   Recyclarr - TRaSH Guides sync</text>
     <text x="176" y="284" fill="#000000">[*] homepage    Homepage dashboard</text>
-    <text x="176" y="312" fill="#000000">[ ] metube      MeTube - YouTube downloader</text>
+    <text x="176" y="312" fill="#000000">[ ] metube      MeTube - video downloader</text>
     <text x="176" y="340" fill="#000000">[ ] downtify    Downtify - Spotify downloader</text>
     <text x="176" y="368" fill="#000000">[ ] netdata     Netdata - system monitoring</text>
     <text x="176" y="396" fill="#000000">[ ] vaultwarden Vaultwarden - password manager</text>
