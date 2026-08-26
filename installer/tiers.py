@@ -77,7 +77,6 @@ TIERS: dict[str, TierDefinition] = {
     "heavy": TierDefinition("heavy", "Heavy", 6, 16, 1000, _HEAVY_SERVICES),
 }
 
-
 ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES
 
 _ORDERED_HIGH_TO_LOW = ["heavy", "medium", "light"]
@@ -87,66 +86,109 @@ def tier_description(tier: TierDefinition) -> str:
     """
     Generated from the tier's real ServiceDefinition list, not
     hand-written - a hardcoded copy would have gone stale the moment
-    services were added or moved between tiers.
+    a service was added.
     """
 
-    core = [s.display_name for s in tier.services if not s.optional]
-    optional = [s.display_name for s in tier.services if s.optional]
+    core = [service.display_name for service in tier.services if not service.optional]
+    optional = [service.display_name for service in tier.services if service.optional]
 
-    lines = [
-        f"[bold]{tier.display_name} tier[/bold]"
-        f" ({tier.min_cores}+ cores, {tier.min_ram_gb:.0f}GB+ RAM, "
-        f"{tier.min_disk_gb}GB+ free disk):",
-        "",
-    ]
+    description = ", ".join(core)
 
-    if core:
-        lines.append("[bold]Core:[/bold] " + ", ".join(core))
     if optional:
-        lines.append("[bold]Optional:[/bold] " + ", ".join(optional))
+        description += " - optional: " + ", ".join(optional)
 
-    return "\n".join(lines)
+    return description
 
 
-def recommend_tier(info: SystemInfo) -> str:
-    """
-    Deterministic tier recommendation from detected hardware.
-    Returns the highest tier whose every minimum is met.
-    """
+@dataclass
+class Recommendation:
 
-    cores = info.cpu_cores_logical or info.cpu_cores_physical or 0
+    tier: TierDefinition
+    meets_minimum: bool
+    explanation: str
 
-    for tier_name in _ORDERED_HIGH_TO_LOW:
-        tier = TIERS[tier_name]
+
+def _shortfalls(cores: int, system_info: SystemInfo, tier: TierDefinition) -> list[str]:
+
+    gaps = []
+
+    if cores < tier.min_cores:
+        gaps.append(f"{cores} cores (needs {tier.min_cores})")
+
+    if system_info.ram_total_gb < tier.min_ram_gb:
+        gaps.append(f"{system_info.ram_total_gb:.1f}GB RAM (needs {tier.min_ram_gb}GB)")
+
+    if system_info.disk_free_gb < tier.min_disk_gb:
+        gaps.append(f"{system_info.disk_free_gb:.1f}GB free disk (needs {tier.min_disk_gb}GB)")
+
+    return gaps
+
+
+def _next_tier_up(tier: TierDefinition) -> TierDefinition | None:
+
+    index = _ORDERED_HIGH_TO_LOW.index(tier.name)
+
+    if index == 0:
+        return None
+
+    return TIERS[_ORDERED_HIGH_TO_LOW[index - 1]]
+
+
+def _explain(
+    cores: int,
+    system_info: SystemInfo,
+    tier: TierDefinition,
+    next_tier: TierDefinition | None
+) -> str:
+
+    if next_tier is None:
+        return f"Qualifies for {tier.display_name} - the highest available tier."
+
+    gaps = _shortfalls(cores, system_info, next_tier)
+
+    if not gaps:
+        return f"Qualifies for {tier.display_name}."
+
+    return (
+        f"Qualifies for {tier.display_name}. Short of {next_tier.display_name}: "
+        f"{', '.join(gaps)}."
+    )
+
+
+def _explain_shortfall(cores: int, system_info: SystemInfo, light: TierDefinition) -> str:
+
+    gaps = _shortfalls(cores, system_info, light)
+
+    return (
+        f"Below the recommended minimum for {light.display_name}: {', '.join(gaps)}. "
+        f"{light.display_name} will still be set up, but expect it to be tight."
+    )
+
+
+def recommend_tier(system_info: SystemInfo) -> Recommendation:
+
+    cores = system_info.cpu_cores_logical or system_info.cpu_cores_physical or 0
+
+    for name in _ORDERED_HIGH_TO_LOW:
+
+        tier = TIERS[name]
+
         if (
             cores >= tier.min_cores
-            and info.ram_total_gb >= tier.min_ram_gb
-            and info.disk_free_gb >= tier.min_disk_gb
+            and system_info.ram_total_gb >= tier.min_ram_gb
+            and system_info.disk_free_gb >= tier.min_disk_gb
         ):
-            return tier_name
 
-    return "light"
+            return Recommendation(
+                tier=tier,
+                meets_minimum=True,
+                explanation=_explain(cores, system_info, tier, _next_tier_up(tier))
+            )
 
+    light = TIERS["light"]
 
-def tier_upgrade_hints(info: SystemInfo, current: str) -> list[str]:
-    """
-    If the user is on a lower tier, explain what hardware would
-    unlock the next one - concrete, not aspirational.
-    """
-
-    idx = _ORDERED_HIGH_TO_LOW.index(current)
-    if idx == 0:
-        return []
-
-    cores = info.cpu_cores_logical or info.cpu_cores_physical or 0
-    next_tier = TIERS[_ORDERED_HIGH_TO_LOW[idx - 1]]
-    hints = []
-
-    if cores < next_tier.min_cores:
-        hints.append(f"{next_tier.min_cores}+ CPU cores (you have {cores})")
-    if info.ram_total_gb < next_tier.min_ram_gb:
-        hints.append(f"{next_tier.min_ram_gb:.0f}GB+ RAM (you have {info.ram_total_gb:.1f}GB)")
-    if info.disk_free_gb < next_tier.min_disk_gb:
-        hints.append(f"{next_tier.min_disk_gb}GB+ free disk (you have {info.disk_free_gb:.0f}GB)")
-
-    return hints
+    return Recommendation(
+        tier=light,
+        meets_minimum=False,
+        explanation=_explain_shortfall(cores, system_info, light)
+    )
