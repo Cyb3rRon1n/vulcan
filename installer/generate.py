@@ -92,6 +92,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
     "Security": ["authelia", "crowdsec", "vaultwarden"],
     "Infrastructure": ["traefik", "filebrowser"],
+    "Live TV": ["threadfin"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -117,6 +118,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "pihole": 8053,
     "sportarr": 1867,
     "tracearr": 3002,
+    "threadfin": 34400,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -153,6 +155,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
     "sportarr": "Sports PVR -自动monitors leagues, downloads events, organizes into your media library",
     "tracearr": "Real-time stream analytics for Jellyfin/Plex/Emby (Tautulli/Jellystat replacement)",
+    "threadfin": "M3U/IPTV proxy - emulates HDHomeRun tuner for Jellyfin/Plex/Emby live TV",
 }
 
 

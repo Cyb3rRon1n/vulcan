@@ -36,58 +36,28 @@ _LIGHT_SERVICES = [
     ServiceDefinition("prowlarr", "Prowlarr"),
     ServiceDefinition("qbittorrent", "qBittorrent"),
     ServiceDefinition("filebrowser", "FileBrowser (file manager)"),
-    # Tier-agnostic, not Medium+-only - qBittorrent is present starting
-    # here too, and Gluetun is what actually keeps its torrent traffic
-    # from exposing a real IP to the swarm. Moved up from
-    # _MEDIUM_SERVICES so it protects qBittorrent at every tier that
-    # has it, not just Medium/Heavy.
     ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True),
     ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
     ServiceDefinition("recyclarr", "Recyclarr", optional=True),
     ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True),
-    # Tier-agnostic like Decluttarr, and for the same reason: Radarr/
-    # Sonarr are non-optional in every tier, so Maintainerr always has
-    # something real to manage - it's the other half of the original
-    # "media agent" request (unwatched/unwanted library cleanup),
-    # complementary to Decluttarr's download-queue cleanup, not a
-    # duplicate of it.
     ServiceDefinition("maintainerr", "Maintainerr", optional=True),
     ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
-    # A direct owner request for a second dashboard option alongside
-    # Homepage, not a replacement - a real prior-CasaOS-setup preference
-    # for Dashy's more visually polished, themeable UI over Homepage's
-    # more utilitarian one. Gets the identical auto-pre-seeding
-    # treatment Homepage already has (see render_dashy_config() in
-    # generate.py), not a lesser second-class option.
     ServiceDefinition("dashy", "Dashy dashboard", optional=True),
-    # Tier-agnostic like Decluttarr/Maintainerr - a direct user request
-    # for the same "automated downloader" role their old CasaOS-hosted
-    # Windows VM served, done container-native instead. Output lands in
-    # the media library so Jellyfin can just scan it directly.
     ServiceDefinition("metube", "MeTube", optional=True),
     ServiceDefinition("downtify", "Downtify", optional=True),
-    # Tier-agnostic like the others above, but deliberately not
-    # default-anything the way Gluetun is - real, meaningfully deeper
-    # host access than any other service here (SYS_PTRACE/SYS_ADMIN,
-    # read-only access to most of the host filesystem, the Docker
-    # socket, network_mode: host) for real-time CPU/RAM/disk/network/
-    # temperature monitoring. A genuine security tradeoff named in the
-    # CLI/TUI prompt and write_stack()'s own warning, not defaulted
-    # quietly either way.
     ServiceDefinition("netdata", "Netdata", optional=True),
-    # Tier-agnostic like the others above. A direct user request for a
-    # self-hosted password manager to hold the growing pile of
-    # per-service credentials this stack generates. Not routed through
-    # Authelia even when enabled - see the compose template's own
-    # comment on the vaultwarden block for why (same native-app-login
-    # conflict as Jellyfin).
     ServiceDefinition("vaultwarden", "Vaultwarden", optional=True),
+    ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
     ServiceDefinition("seerr", "Seerr (media requests)"),
     ServiceDefinition("bazarr", "Bazarr"),
     ServiceDefinition("flaresolverr", "FlareSolverr"),
+    ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True),
+    ServiceDefinition("uptime-kuma", "Uptime Kuma", optional=True),
+    ServiceDefinition("watchtower", "Watchtower", optional=True),
+    ServiceDefinition("threadfin", "Threadfin (IPTV proxy)", optional=True),
 ]
 
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
@@ -95,30 +65,10 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("readarr", "Readarr", optional=True),
     ServiceDefinition("traefik", "Traefik", optional=True),
     ServiceDefinition("authelia", "Authelia", optional=True),
-    # Custom-mode only, same placement as Authelia/Traefik - genuinely
-    # useful only once Traefik is routing real traffic (it blocks
-    # malicious IPs at the edge, before they ever reach a login page).
-    # Unlike Authelia, it's not gated behind the native-app-login
-    # conflict - IP-reputation/behavior blocking doesn't break Jellyfin/
-    # Vaultwarden's native apps the way a browser-redirect auth
-    # challenge does, so it applies to every routed service including
-    # those two (see the compose template's own comments on each).
     ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True),
     ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True),
-    # Custom-mode only, requires Traefik (see write_stack()'s own warning) -
-    # points at Traefik as its single upstream rather than routing each
-    # service itself, so it inherits every existing router/TLS/middleware
-    # decision instead of duplicating it. Removes the need to forward
-    # ports 80/443 from the router at all; --cloudflare-dns's real
-    # certificates and this are independent (the tunnel's own internal
-    # entrypoint to Traefik is plain HTTP - Cloudflare's edge already
-    # terminated public TLS by the time traffic reaches it).
     ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True),
-    ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True),
     ServiceDefinition("sportarr", "Sportarr (sports PVR)", optional=True),
-    ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True),
-    ServiceDefinition("uptime-kuma", "Uptime Kuma"),
-    ServiceDefinition("watchtower", "Watchtower"),
 ]
 
 TIERS: dict[str, TierDefinition] = {
@@ -127,9 +77,7 @@ TIERS: dict[str, TierDefinition] = {
     "heavy": TierDefinition("heavy", "Heavy", 6, 16, 1000, _HEAVY_SERVICES),
 }
 
-# Heavy's own list is already the flat union of all three tiers (Medium =
-# Light + 4, Heavy = Medium + 5) - this is the full catalog custom-mode
-# service selection picks from, not a separate registry.
+
 ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES
 
 _ORDERED_HIGH_TO_LOW = ["heavy", "medium", "light"]
@@ -139,114 +87,63 @@ def tier_description(tier: TierDefinition) -> str:
     """
     Generated from the tier's real ServiceDefinition list, not
     hand-written - a hardcoded copy would have gone stale the moment
-    a service was added (this project has hit that exact class of
-    staleness multiple times with hand-maintained service counts
-    elsewhere in the docs). Core services always render; optional ones
-    only listed if the tier actually has any (Light's core-only list
-    reads cleaner without a trailing "- optional:" when every optional
-    service still shows via its own checkbox anyway).
+    services were added or moved between tiers.
     """
 
-    core = [service.display_name for service in tier.services if not service.optional]
-    optional = [service.display_name for service in tier.services if service.optional]
+    core = [s.display_name for s in tier.services if not s.optional]
+    optional = [s.display_name for s in tier.services if s.optional]
 
-    description = ", ".join(core)
+    lines = [
+        f"[bold]{tier.display_name} tier[/bold]"
+        f" ({tier.min_cores}+ cores, {tier.min_ram_gb:.0f}GB+ RAM, "
+        f"{tier.min_disk_gb}GB+ free disk):",
+        "",
+    ]
 
+    if core:
+        lines.append("[bold]Core:[/bold] " + ", ".join(core))
     if optional:
-        description += " - optional: " + ", ".join(optional)
+        lines.append("[bold]Optional:[/bold] " + ", ".join(optional))
 
-    return description
-
-
-@dataclass
-class Recommendation:
-
-    tier: TierDefinition
-    meets_minimum: bool
-    explanation: str
+    return "\n".join(lines)
 
 
-def _shortfalls(cores: int, system_info: SystemInfo, tier: TierDefinition) -> list[str]:
+def recommend_tier(info: SystemInfo) -> str:
+    """
+    Deterministic tier recommendation from detected hardware.
+    Returns the highest tier whose every minimum is met.
+    """
 
-    gaps = []
-
-    if cores < tier.min_cores:
-        gaps.append(f"{cores} cores (needs {tier.min_cores})")
-
-    if system_info.ram_total_gb < tier.min_ram_gb:
-        gaps.append(f"{system_info.ram_total_gb:.1f}GB RAM (needs {tier.min_ram_gb}GB)")
-
-    if system_info.disk_free_gb < tier.min_disk_gb:
-        gaps.append(f"{system_info.disk_free_gb:.1f}GB free disk (needs {tier.min_disk_gb}GB)")
-
-    return gaps
-
-
-def _next_tier_up(tier: TierDefinition) -> TierDefinition | None:
-
-    index = _ORDERED_HIGH_TO_LOW.index(tier.name)
-
-    if index == 0:
-        return None
-
-    return TIERS[_ORDERED_HIGH_TO_LOW[index - 1]]
-
-
-def _explain(
-    cores: int,
-    system_info: SystemInfo,
-    tier: TierDefinition,
-    next_tier: TierDefinition | None
-) -> str:
-
-    if next_tier is None:
-        return f"Qualifies for {tier.display_name} - the highest available tier."
-
-    gaps = _shortfalls(cores, system_info, next_tier)
-
-    if not gaps:
-        return f"Qualifies for {tier.display_name}."
-
-    return (
-        f"Qualifies for {tier.display_name}. Short of {next_tier.display_name}: "
-        f"{', '.join(gaps)}."
-    )
-
-
-def _explain_shortfall(cores: int, system_info: SystemInfo, light: TierDefinition) -> str:
-
-    gaps = _shortfalls(cores, system_info, light)
-
-    return (
-        f"Below the recommended minimum for {light.display_name}: {', '.join(gaps)}. "
-        f"{light.display_name} will still be set up, but expect it to be tight."
-    )
-
-
-def recommend_tier(system_info: SystemInfo) -> Recommendation:
-
-    cores = system_info.cpu_cores_logical or system_info.cpu_cores_physical or 0
-
-    for name in _ORDERED_HIGH_TO_LOW:
-
-        tier = TIERS[name]
-
+    for tier_name in _ORDERED_HIGH_TO_LOW:
+        tier = TIERS[tier_name]
         if (
-            cores >= tier.min_cores
-            and system_info.ram_total_gb >= tier.min_ram_gb
-            and system_info.disk_free_gb >= tier.min_disk_gb
+            info.cpu_cores >= tier.min_cores
+            and info.memory_gb >= tier.min_ram_gb
+            and info.disk_free_gb >= tier.min_disk_gb
         ):
+            return tier_name
 
-            return Recommendation(
-                tier=tier,
-                meets_minimum=True,
-                explanation=_explain(cores, system_info, tier, _next_tier_up(tier))
-            )
+    return "light"
 
-    light = TIERS["light"]
 
-    return Recommendation(
-        tier=light,
-        meets_minimum=False,
-        explanation=_explain_shortfall(cores, system_info, light)
-    )
+def tier_upgrade_hints(info: SystemInfo, current: str) -> list[str]:
+    """
+    If the user is on a lower tier, explain what hardware would
+    unlock the next one - concrete, not aspirational.
+    """
+
+    idx = _ORDERED_HIGH_TO_LOW.index(current)
+    if idx == 0:
+        return []
+
+    next_tier = TIERS[_ORDERED_HIGH_TO_LOW[idx - 1]]
+    hints = []
+
+    if info.cpu_cores < next_tier.min_cores:
+        hints.append(f"{next_tier.min_cores}+ CPU cores (you have {info.cpu_cores})")
+    if info.memory_gb < next_tier.min_ram_gb:
+        hints.append(f"{next_tier.min_ram_gb:.0f}GB+ RAM (you have {info.memory_gb:.1f}GB)")
+    if info.disk_free_gb < next_tier.min_disk_gb:
+        hints.append(f"{next_tier.min_disk_gb}GB+ free disk (you have {info.disk_free_gb:.0f}GB)")
+
+    return hints
