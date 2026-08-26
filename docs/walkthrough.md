@@ -174,27 +174,211 @@ wizard.
 
 Configure these last, once Radarr/Sonarr are already connected to Prowlarr
 and downloading successfully - all three sit on top of a working *arr
-setup rather than replacing any part of it:
+setup rather than replacing any part of it.
 
-- **Recyclarr** needs each app's real API key and base URL added to
-  `stack/config/recyclarr/recyclarr.yml`.
-- **Decluttarr** was pre-seeded with real base URLs, but each `api_key` is
-  still a placeholder - edit `stack/config/decluttarr/config.yaml`
-  directly. It starts in `test_run: true` (a dry run) - flip that once
-  you've confirmed the config is right.
-- **Maintainerr** has no pre-seeded config - connect it to Jellyfin (or
-  Plex/Emby) and Radarr/Sonarr through its own setup wizard, then create
-  your library-cleanup rules there.
+### Recyclarr
+
+Needs each app's real API key and base URL added to
+`stack/config/recyclarr/recyclarr.yml`.
+
+### Decluttarr
+
+Decluttarr watches Radarr/Sonarr's download queue and automatically removes
+stalled downloads, failed downloads, and bad files, then triggers a fresh
+search for each one it removes. It sits on top of your existing *arr setup -
+it doesn't replace any part of it, just keeps the queue clean so you don't
+have to babysit failed grabs manually.
+
+Vulcan pre-seeded a config at `stack/config/decluttarr/config.yaml` with the
+correct base URLs for every *arr app you enabled. Each `api_key` is still a
+`CHANGEME` placeholder - you need to fill those in before Decluttarr can
+connect.
+
+**Step 1: Get the API keys.** For each *arr app (Radarr, Sonarr, Lidarr,
+Readarr) that you enabled, visit its web UI, go to Settings > General, and
+copy the API key listed there. Save each one in Vaultwarden as you go.
+
+**Step 2: Edit the config file.**
+
+```
+nano stack/config/decluttarr/config.yaml
+```
+
+The file looks like this (Radarr and Sonarr shown - Lidarr and Readarr follow
+the same pattern if enabled):
+
+```yaml
+general:
+  log_level: INFO
+  test_run: true
+  timer: 10
+
+job_defaults:
+  max_strikes: 3
+  min_days_between_searches: 7
+  max_concurrent_searches: 3
+
+jobs:
+  remove_bad_files:
+  remove_failed_downloads:
+  remove_stalled:
+
+instances:
+  radarr:
+    - base_url: "http://radarr:7878"
+      api_key: "CHANGEME"
+  sonarr:
+    - base_url: "http://sonarr:8989"
+      api_key: "CHANGEME"
+
+download_clients:
+  qbittorrent:
+    - base_url: "http://qbittorrent:8080"
+      name: "qBittorrent"
+```
+
+Replace each `CHANGEME` with the real API key from that app's Settings >
+General page. The `base_url` values are already correct (they use Docker's
+internal hostnames, not your LAN IP) - leave them as-is.
+
+If your qBittorrent WebUI has auth configured (it should, per section 5),
+you can optionally add an `api_key` or `username`/`password` to the
+`qbittorrent` entry under `download_clients` - Decluttarr will use it to
+check download status. Without auth credentials there, Decluttarr can still
+clean up stalled items at the *arr level but won't be able to verify status
+directly with qBittorrent.
+
+**Step 3: Understand what each option does.**
+
+- `test_run: true` - dry run mode. Decluttarr logs what it *would* remove
+  but doesn't actually remove anything. This is the safe default while you're
+  confirming the config is right.
+- `timer: 10` - how often (in minutes) Decluttarr checks the queue.
+- `max_strikes: 3` - an item must fail this many times before Decluttarr
+  removes it and searches again. Prevents removing items on a single flaky
+  timeout.
+- `min_days_between_searches: 7` - after Decluttarr removes an item and
+  re-searches, it won't re-search the same title again for this many days.
+  Prevents search loops on titles that genuinely have no available release.
+- `max_concurrent_searches: 3` - limits how many re-searches run at once to
+  avoid hammering your indexers.
+- `jobs` - which cleanup jobs are active. All three are enabled by default:
+  `remove_bad_files` (incomplete/missing files), `remove_failed_downloads`
+  (download client reported failure), `remove_stalled` (no progress for a
+  prolonged period).
+
+**Step 4: Test it.** Restart the Decluttarr container to pick up the config
+changes:
+
+```
+docker compose -f stack/docker-compose.yml restart decluttarr
+```
+
+Check the logs to confirm it connected successfully:
+
+```
+docker compose -f stack/docker-compose.yml logs decluttarr
+```
+
+Look for lines showing it found your Radarr/Sonarr instances and started
+scanning the queue. Errors about invalid API keys mean you need to
+double-check what you pasted in step 2.
+
+**Step 5: Flip to live mode.** Once the logs confirm Decluttarr is connecting
+to all your *arr apps and the logged removals look correct, edit the config
+one more time and change `test_run: true` to `test_run: false`, then restart
+the container again. Decluttarr will now actually remove items and trigger
+re-searches.
+
+### Maintainerr
+
+Maintainerr cleans up media from your Jellyfin (or Plex/Emby) libraries
+based on rules you define - for example, remove anything unwatched after 30
+days, or remove an entire show once you've finished watching it. It works at
+the *library* level (what's on your server and who has watched it), whereas
+Decluttarr works at the *download queue* level (stalled or failed grabs).
+They're complementary: Decluttarr keeps your download queue clean, Maintainerr
+keeps your library clean.
+
+Vulcan doesn't pre-seed any config for Maintainerr - it's entirely configured
+through its own web UI.
+
+**Step 1: Connect to Jellyfin.** Visit Maintainerr's web UI (the URL Vulcan
+printed when the stack started - typically `http://<your-ip>:6246`, or
+`maintainerr.<your-domain>` if Traefik is enabled). Walk through the setup
+wizard:
+
+1. Select **Jellyfin** as your media server (or Plex/Emby if that's what
+   you're running instead).
+2. Enter the Jellyfin server URL. From inside Docker, this is
+   `http://jellyfin:8096` - the wizard may detect it automatically, or it may
+   ask for your host's LAN IP (e.g. `http://192.168.1.100:8096`). Either
+   works; the internal Docker address avoids routing issues.
+3. Enter your Jellyfin username and password (or an API key from Jellyfin's
+   Dashboard > API Keys).
+
+**Step 2: Connect Radarr/Sonarr.** Still in the setup wizard:
+
+1. Add a **Radarr** instance: URL `http://radarr:7878`, API key from
+   Radarr's Settings > General page.
+2. Add a **Sonarr** instance: URL `http://sonarr:8989`, API key from
+   Sonarr's Settings > General page.
+3. Add Lidarr/Readarr the same way if you enabled them.
+
+These connections let Maintainerr delete media files through Radarr/Sonarr
+(which handles removal from disk) rather than deleting them directly.
+
+**Step 3: Create rules.** Once the wizard is complete, go to Rules and
+create your first rule set. Each rule set targets a specific Jellyfin library
+and defines conditions for what gets removed. Common patterns:
+
+- **Unwatched movies**: Jellyfin library = Movies, condition = "last played
+  more than 30 days ago" (or never played), action = remove.
+- **Finished TV shows**: Jellyfin library = TV Shows, condition = "all
+  episodes watched" and "last played more than 14 days ago", action =
+  remove.
+- **Storage-based**: condition = "library size exceeds X GB", action = remove
+  oldest unwatched first.
+
+Save each rule set, then enable it. Maintainerr runs its rules on a schedule
+(configurable in Settings) and shows pending actions before executing them, so
+you can review what it plans to remove before anything actually gets deleted.
 
 ## 11. MeTube / Downtify
 
 If you enabled either: paste a URL to start a download, then add a
 Jellyfin library pointed at their output folder so the result shows up
-there automatically:
+there automatically.
 
-- MeTube: `stack/media/youtube` on the host
-- Downtify: `stack/media/music/downtify` on the host (inside your existing
-  Music library path, so no new Jellyfin library is needed for this one)
+### MeTube
+
+MeTube downloads YouTube videos and playlists. Downloads land in
+`stack/media/youtube` on the host. To see them in Jellyfin, add a library
+there (Dashboard > Libraries > Add Media Library, any content type works)
+pointed at `/data/media/youtube`.
+
+### Downtify
+
+Downtify downloads tracks, albums, and playlists from Spotify and saves them
+as local audio files. No Spotify Premium account is needed, and no API key -
+just paste a Spotify track, album, or playlist URL into its web UI and it
+downloads everything.
+
+Downloads land in `stack/media/music/downtify` on the host, which sits
+inside your existing Music library path - Jellyfin picks up the files
+automatically with no new library needed. If Lidarr is also enabled, it may
+flag this subfolder as unmapped files on its own library scans; that's
+cosmetic, not destructive, since Lidarr never auto-imports or deletes
+anything without confirmation.
+
+Downtify's own image has no documented PUID/PGID support, so downloaded
+files may land owned by root rather than your configured PUID/PGID like
+every other service - Jellyfin's read-only mount is unaffected, but you may
+need `sudo` to move or delete them directly on the host.
+
+Paste a track, album, or playlist URL at Downtify's web UI (the URL Vulcan
+printed when the stack started - typically `http://<your-ip>:8000`, or
+`downtify.<your-domain>` if Traefik is enabled) to start a download.
 
 ## 12. Homepage / Dashy / Uptime Kuma / Netdata / Traefik dashboard
 
