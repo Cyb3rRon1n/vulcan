@@ -1321,6 +1321,8 @@ services:
   unbound:
     image: klutchell/unbound:latest
     container_name: unbound
+    ports:
+      - "{{ ports['pihole'] }}:80"
     volumes:
       - ./config/pihole/unbound:/etc/unbound
     cap_drop:
@@ -1349,14 +1351,10 @@ services:
       - FTLCONF_dns_upstreams=
       - PIHOLE_DNS=127.0.0.1#5335
       - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
-      - PIHOLE_WEBPORT={{ ports['pihole'] }}
     volumes:
       - ./config/pihole/etc:/etc/pihole
       - ./config/pihole/dnsmasq:/etc/dnsmasq.d
     network_mode: "service:unbound"
-    dns:
-      - 127.0.0.1
-      - ::1
     cap_drop:
       - ALL
     cap_add:

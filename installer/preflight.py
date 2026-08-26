@@ -161,6 +161,67 @@ def check_ports_available(compose_path: str) -> dict:
     }
 
 
+_NETWORK_CONFLICT_RULES = {
+    "dns": "dns and network_mode: \"service:<target>\" are mutually exclusive in Docker",
+    "ports": "ports on a network_mode: \"service:<target>\" container are ignored; publish them on the target instead",
+}
+
+
+def check_network_conflicts(compose_path: str) -> dict:
+    """
+    Reads the generated compose YAML and detects Docker-incompatible
+    network option combinations — analogous to check_ports_available()
+    but for structural compose errors that Docker would reject at
+    runtime with opaque messages like "conflicting options: dns and
+    the network mode".
+
+    Checks:
+    - dns on a service with network_mode: "service:X" (Docker rejects)
+    - ports on a service with network_mode: "service:X" (silently ignored)
+    - network_mode: "service:X" where X doesn't exist in the compose file
+
+    Returns a dict with:
+      - "ok": bool (True if no conflicts)
+      - "errors": list of {service, option, reason} dicts
+    """
+
+    compose_path = Path(compose_path)
+    parsed = yaml.safe_load(compose_path.read_text()) or {}
+    services = parsed.get("services", {})
+    service_names = set(services.keys())
+    errors: list[dict] = []
+
+    for svc_name, svc_def in services.items():
+        net_mode = svc_def.get("network_mode", "")
+        if not isinstance(net_mode, str) or not net_mode.startswith("service:"):
+            continue
+
+        target = net_mode.split(":", 1)[1].strip()
+
+        if target not in service_names:
+            errors.append({
+                "service": svc_name,
+                "option": "network_mode",
+                "reason": f"references \"{target}\" which does not exist in the compose file",
+            })
+
+        for option, reason_tpl in _NETWORK_CONFLICT_RULES.items():
+            if option in svc_def:
+                reason = reason_tpl.replace("<target>", target)
+                errors.append({"service": svc_name, "option": option, "reason": reason})
+
+    return {"ok": not errors, "errors": errors}
+
+
+def format_network_conflicts(net_check: dict) -> str:
+    """Human-readable summary of network conflicts, for CLI/TUI display."""
+
+    lines = []
+    for err in net_check["errors"]:
+        lines.append(f"  {err['service']}.{err['option']}: {err['reason']}")
+    return "\n".join(lines)
+
+
 def format_port_conflicts(port_check: dict) -> str:
     """
     Single source of truth for the conflict message text, shared by

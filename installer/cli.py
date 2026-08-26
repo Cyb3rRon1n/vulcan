@@ -58,7 +58,12 @@ from installer.post_install import (
     update_stack,
     verify_stack_running,
 )
-from installer.preflight import check_ports_available, format_port_conflicts
+from installer.preflight import (
+    check_network_conflicts,
+    check_ports_available,
+    format_network_conflicts,
+    format_port_conflicts,
+)
 from installer.panel import RunPanel, _NoOpPanel, progress_panel
 from installer.self_update import update_vulcan_self
 from installer.storage import (
@@ -759,6 +764,13 @@ def start():
         console.print(f"[yellow]! {warning}[/yellow]")
 
     result = _resolve_port_conflicts(config, result)
+
+    net_check = check_network_conflicts(result["compose_path"])
+
+    if not net_check["ok"]:
+        console.print("[red]Network configuration errors (Docker would reject these):[/red]")
+        console.print(format_network_conflicts(net_check))
+        raise typer.Exit(code=1)
 
     proc = run_docker_command(
         [
@@ -2392,6 +2404,13 @@ def _generate_and_maybe_start(
     if do_start:
 
         result = _resolve_port_conflicts(config, result)
+
+        net_check = check_network_conflicts(result["compose_path"])
+
+        if not net_check["ok"]:
+            console.print("[red]Network configuration errors (Docker would reject these):[/red]")
+            console.print(format_network_conflicts(net_check))
+            raise typer.Exit(code=1)
 
         proc = run_docker_command(
             [
