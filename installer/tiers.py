@@ -114,10 +114,12 @@ def recommend_tier(info: SystemInfo) -> str:
     Returns the highest tier whose every minimum is met.
     """
 
+    cores = info.cpu_cores_logical or info.cpu_cores_physical or 0
+
     for tier_name in _ORDERED_HIGH_TO_LOW:
         tier = TIERS[tier_name]
         if (
-            info.cpu_cores >= tier.min_cores
+            cores >= tier.min_cores
             and info.memory_gb >= tier.min_ram_gb
             and info.disk_free_gb >= tier.min_disk_gb
         ):
@@ -136,11 +138,12 @@ def tier_upgrade_hints(info: SystemInfo, current: str) -> list[str]:
     if idx == 0:
         return []
 
+    cores = info.cpu_cores_logical or info.cpu_cores_physical or 0
     next_tier = TIERS[_ORDERED_HIGH_TO_LOW[idx - 1]]
     hints = []
 
-    if info.cpu_cores < next_tier.min_cores:
-        hints.append(f"{next_tier.min_cores}+ CPU cores (you have {info.cpu_cores})")
+    if cores < next_tier.min_cores:
+        hints.append(f"{next_tier.min_cores}+ CPU cores (you have {cores})")
     if info.memory_gb < next_tier.min_ram_gb:
         hints.append(f"{next_tier.min_ram_gb:.0f}GB+ RAM (you have {info.memory_gb:.1f}GB)")
     if info.disk_free_gb < next_tier.min_disk_gb:
