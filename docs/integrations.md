@@ -45,12 +45,12 @@ With a Cloudflare Tunnel running, you can protect every service behind Cloudflar
 2. Choose **Self-hosted**, name it (e.g. `Jellyfin`)
 3. Set the application domain to the service's subdomain (e.g. `jellyfin.yourdomain.com`)
 4. Under **Policy**, add a rule: Emails → your family member's email address (or any `@yourfamilydomain.com` pattern)
-5. Repeat for each service you want family to reach (Jellyseerr, Jellyfin are typical; Radarr/Sonarr you probably only want yourself accessing)
+5. Repeat for each service you want family to reach (Seerr, Jellyfin are typical; Radarr/Sonarr you probably only want yourself accessing)
 
 Family members will see a Cloudflare login page before reaching the actual app — the same zero-trust principle you see at your employer. No VPN apps needed, no phones need configuration, and every access is logged.
 
 !!! note "Traefik's own login vs Cloudflare Access"
-    These are complementary, not alternatives. Cloudflare Access authenticates at the edge (before traffic ever reaches your server). Traefik/Authelia authenticates at the server level. For family access to Jellyfin/Jellyseerr, Cloudflare Access alone is sufficient — you can skip Authelia's own login for those specific services if the UX of two login screens back-to-back is too much.
+    These are complementary, not alternatives. Cloudflare Access authenticates at the edge (before traffic ever reaches your server). Traefik/Authelia authenticates at the server level. For family access to Jellyfin/Seerr, Cloudflare Access alone is sufficient — you can skip Authelia's own login for those specific services if the UX of two login screens back-to-back is too much.
 
 ## Private remote access (Tailscale)
 
@@ -62,22 +62,22 @@ Add `authelia` alongside `traefik` in a custom selection to put a real login in 
 
 ### RBAC (admin vs. media-only users)
 
-When `--domain` is active, Authelia enforces role-based access control: the admin user (the one you created during install) has full access to every service, while additional users in the `media` group can only reach Jellyfin and Jellyseerr — Radarr, Sonarr, Traefik dashboard, Uptime Kuma, and every other management service are blocked.
+When `--domain` is active, Authelia enforces role-based access control: the admin user (the one you created during install) has full access to every service, while additional users in the `media` group can only reach Jellyfin and Seerr — Radarr, Sonarr, Traefik dashboard, Uptime Kuma, and every other management service are blocked.
 
-Vulcan doesn't create management accounts on every service individually (each service has its own auth model); Authelia's RBAC is the single layer that decides who sees what. The admin group (`group:admin`) can reach everything; the media group (`group:media`) is scoped to exactly Jellyfin + Jellyseerr.
+Vulcan doesn't create management accounts on every service individually (each service has its own auth model); Authelia's RBAC is the single layer that decides who sees what. The admin group (`group:admin`) can reach everything; the media group (`group:media`) is scoped to exactly Jellyfin + Seerr.
 
-!!! note "Why Jellyfin and Jellyseerr are outside Authelia"
-    Jellyfin's native apps (mobile, TV, smart-TV) can't complete a browser-redirect login flow, so Jellyfin and Jellyseerr are deliberately excluded from Authelia's forwardAuth middleware — their own login is the real protection layer. RBAC only governs the management services that *are* routed through Authelia.
+!!! note "Why Jellyfin and Seerr are outside Authelia"
+    Jellyfin's native apps (mobile, TV, smart-TV) can't complete a browser-redirect login flow, so Jellyfin and Seerr are deliberately excluded from Authelia's forwardAuth middleware — their own login is the real protection layer. RBAC only governs the management services that *are* routed through Authelia.
 
 ### Multi-user setup
 
 Pass `--auth-users` to add additional Authelia users at install time:
 
 ```bash
-./install --plain --tier heavy --services traefik,authelia,cloudflared,jellyfin,jellyseerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --auth-users 'friend:friendpass:media' --non-interactive --yes
+./install --plain --tier heavy --services traefik,authelia,cloudflared,jellyfin,seerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --auth-users 'friend:friendpass:media' --non-interactive --yes
 ```
 
-Format: `username:password:group` (comma-separated for multiple users). The `group` is either `admin` (full access to all services) or `media` (Jellyfin + Jellyseerr only). Passwords are hashed automatically — you never see plaintext storage of them.
+Format: `username:password:group` (comma-separated for multiple users). The `group` is either `admin` (full access to all services) or `media` (Jellyfin + Seerr only). Passwords are hashed automatically — you never see plaintext storage of them.
 
 To add users after install, either re-run with `--auth-users` or edit `stack/config/authelia/users_database.yml` directly — both are identical YAML, and a re-run never overwrites the admin account.
 
@@ -107,3 +107,23 @@ If Homepage or Dashy is included, it boots with real tiles for every other web-f
 ## Real-time monitoring (Netdata)
 
 Live CPU/RAM/disk/network/temperature and per-container awareness, matched to its own official recommended configuration.
+
+## Stream analytics (Tracearr)
+
+Real-time stream analytics for Jellyfin/Plex/Emby — a modern replacement for Tautulli and Jellystat. The `supervised` image bundles its own PostgreSQL and Redis, so no extra database containers are needed. Point it at your media server's URL on first access (`http://<host>:3000`) and it begins tracking views, sessions, and bandwidth immediately.
+
+## DNS ad-blocker (Pi-hole + Unbound)
+
+Pi-hole provides DNS-level ad blocking across your entire network, with Unbound as a recursive resolver so you don't depend on any upstream DNS provider. Pi-hole's web UI is exposed on port 8053 (not 80, to avoid conflicting with Traefik if both are enabled).
+
+**To use Pi-hole as your network's DNS server:**
+
+1. Set your router's DHCP DNS option to point at this host's IP (e.g. `192.168.1.100#53` or just the IP if Pi-hole listens on port 53)
+2. Or configure each device manually to use this host's IP as its DNS server
+3. Access the Pi-hole admin panel at `http://<host>:8053/admin`
+
+When Traefik is also enabled with a domain, Pi-hole is routed at `pihole.<domain>`.
+
+## Sports automation (Sportarr)
+
+A PVR for sports — monitors leagues and events, automatically downloads match replays and highlights via your existing download clients (qBittorrent/SABnzbd + Prowlarr). Exposed on port 1867.

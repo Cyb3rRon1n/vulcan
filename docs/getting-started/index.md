@@ -43,7 +43,7 @@ Prefer the original plain-prompt flow over the guided `whiptail` menu (e.g. on a
 - Testing a new `--services` combination without affecting a running stack
 
 ```bash
-./install --dry-run --tier heavy --services traefik,authelia,cloudflared,jellyfin,jellyseerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --non-interactive --yes
+./install --dry-run --tier heavy --services traefik,authelia,cloudflared,jellyfin,seerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --non-interactive --yes
 ```
 
 `--dry-run` implies `--no-start --non-interactive --yes` — no confirmation prompts, no Docker operations. After generating, review `stack/docker-compose.yml` and `stack/.env`, then start manually when ready:
@@ -54,13 +54,13 @@ docker compose -f stack/docker-compose.yml --env-file stack/.env up -d
 
 ### Multi-user Authelia (RBAC)
 
-Pass `--auth-users` to add additional Authelia users at install time — useful for giving family members their own Jellyfin/Jellyseerr login while keeping Radarr, Sonarr, and management services admin-only:
+Pass `--auth-users` to add additional Authelia users at install time — useful for giving family members their own Jellyfin/Seerr login while keeping Radarr, Sonarr, and management services admin-only:
 
 ```bash
-./install --plain --tier heavy --services traefik,authelia,cloudflared,jellyfin,jellyseerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --auth-users 'friend:friendpass:media' --non-interactive --yes
+./install --plain --tier heavy --services traefik,authelia,cloudflared,jellyfin,seerr,radarr,sonarr --domain media.example.com --auth-username admin --auth-password 'yourpassword' --auth-users 'friend:friendpass:media' --non-interactive --yes
 ```
 
-Format: `username:password:group` — group is either `admin` (full access) or `media` (Jellyfin + Jellyseerr only). See [Optional Integrations](../integrations.md#auth-authelia) for full details.
+Format: `username:password:group` — group is either `admin` (full access) or `media` (Jellyfin + Seerr only). See [Optional Integrations](../integrations.md#auth-authelia) for full details.
 
 !!! note "`--offline` is currently CLI-only"
     `--offline` skips the automatic Docker install attempt when there's no connection. The guided menu doesn't yet ask about it — a real, open gap, tracked in the [Roadmap](../roadmap.md). Use `--plain --offline` or `--non-interactive --offline` on a machine with no internet access.
