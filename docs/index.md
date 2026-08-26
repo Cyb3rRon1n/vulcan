@@ -16,17 +16,32 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 
 <p align="center">
   <img src="images/screenshots/main-menu.svg" alt="Vulcan Main Menu example" style="max-width: 100%; width: 820px;"><br>
-  <sub>The persistent Main Menu — Guided Setup plus every lifecycle command, real `whiptail`</sub>
+  <sub>The persistent Main Menu — Guided Setup plus every lifecycle command, real <code>whiptail</code></sub>
 </p>
 
 <p align="center">
   <img src="images/screenshots/tier-picker.svg" alt="Vulcan tier picker example" style="max-width: 100%; width: 820px;"><br>
-  <sub>Guided Setup's tier picker — real detected specs and a real recommendation, before you choose</sub>
+  <sub>Guided Setup's tier picker — real detected specs, a real recommendation, and the services each tier includes</sub>
 </p>
 
 <p align="center">
   <img src="images/screenshots/services-checklist.svg" alt="Vulcan optional services checklist example" style="max-width: 100%; width: 820px;"><br>
   <sub>The optional-services checklist — sensible defaults, freely overridable</sub>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/custom-services.svg" alt="Vulcan custom services picker example" style="max-width: 100%; width: 820px;"><br>
+  <sub>Custom mode — pick exactly which of the 27 services to include, regardless of tier</sub>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/storage-setup.svg" alt="Vulcan media storage setup example" style="max-width: 100%; width: 820px;"><br>
+  <sub>Media Storage Setup — provision blank drives as a pooled media volume</sub>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/post-install-summary.svg" alt="Vulcan setup complete summary" style="max-width: 100%; width: 820px;"><br>
+  <sub>Setup Complete — service URLs and management commands at a glance</sub>
 </p>
 
 !!! note "Representative mockups, not literal captures"
