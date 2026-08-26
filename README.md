@@ -65,7 +65,7 @@ Each tier's actual services are shown before you pick — not just the name.
 
 | Tier | Target Hardware | Core Services |
 |------|-----------------|---------------|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | qBittorrent, Radarr, Sonarr, Prowlarr |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + Jellyseerr, Bazarr, FlareSolverr |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + Uptime Kuma, Watchtower |
 
@@ -75,7 +75,7 @@ All tiers share the same directory layout and volume naming, so re-running later
 
 ### Custom mode
 
-Pick exactly which services to include, from all 28 known services regardless of tier, pre-checked based on your hardware:
+Pick exactly which services to include, from all 27 known services regardless of tier, pre-checked based on your hardware:
 
 ```bash
 sudo ./install --plain --tier medium --services qbittorrent,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
