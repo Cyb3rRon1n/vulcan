@@ -1953,7 +1953,7 @@ def _gather_generation_config(
 
     if custom_services_selected is None:
 
-        # Defaults to True (opt-out, not opt-in) on a fresh install -
+        console.print("\n[bold]Downloads & Network[/bold]")        # Defaults to True (opt-out, not opt-in) on a fresh install -
         # qBittorrent is present at every tier, and Gluetun is what
         # actually keeps its torrent traffic from exposing a real IP
         # to the swarm. A real, deliberate behavior change: previously
@@ -2001,6 +2001,8 @@ def _gather_generation_config(
 
     if custom_services_selected is None:
 
+        console.print("\n[bold]Media Management[/bold]")
+
         recyclarr_default = "recyclarr" in previous["enabled_optional"] if previous else False
 
         if recyclarr is None:
@@ -2017,6 +2019,8 @@ def _gather_generation_config(
             enabled_optional.add("recyclarr")
 
     if custom_services_selected is None:
+
+        console.print("\n[bold]Dashboards[/bold]")
 
         homepage_default = (
             ("homepage" in previous["enabled_optional"]) or (previous.get("tier") == "heavy")
@@ -2069,6 +2073,8 @@ def _gather_generation_config(
 
     if custom_services_selected is None:
 
+        console.print("\n[bold]Downloads[/bold]")
+
         metube_default = "metube" in previous["enabled_optional"] if previous else False
 
         if metube is None:
@@ -2103,6 +2109,8 @@ def _gather_generation_config(
 
     if custom_services_selected is None:
 
+        console.print("\n[bold]Monitoring[/bold]")
+
         # Deliberately no opt-out-style default like Gluetun's - real,
         # meaningfully deeper host access than every other service
         # here (SYS_PTRACE/SYS_ADMIN, read-only host filesystem,
@@ -2127,6 +2135,8 @@ def _gather_generation_config(
             enabled_optional.add("netdata")
 
     if custom_services_selected is None:
+
+        console.print("\n[bold]System[/bold]")
 
         vaultwarden_default = "vaultwarden" in previous["enabled_optional"] if previous else False
 
