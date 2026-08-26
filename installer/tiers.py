@@ -120,7 +120,7 @@ def recommend_tier(info: SystemInfo) -> str:
         tier = TIERS[tier_name]
         if (
             cores >= tier.min_cores
-            and info.memory_gb >= tier.min_ram_gb
+            and info.ram_total_gb >= tier.min_ram_gb
             and info.disk_free_gb >= tier.min_disk_gb
         ):
             return tier_name
@@ -144,8 +144,8 @@ def tier_upgrade_hints(info: SystemInfo, current: str) -> list[str]:
 
     if cores < next_tier.min_cores:
         hints.append(f"{next_tier.min_cores}+ CPU cores (you have {cores})")
-    if info.memory_gb < next_tier.min_ram_gb:
-        hints.append(f"{next_tier.min_ram_gb:.0f}GB+ RAM (you have {info.memory_gb:.1f}GB)")
+    if info.ram_total_gb < next_tier.min_ram_gb:
+        hints.append(f"{next_tier.min_ram_gb:.0f}GB+ RAM (you have {info.ram_total_gb:.1f}GB)")
     if info.disk_free_gb < next_tier.min_disk_gb:
         hints.append(f"{next_tier.min_disk_gb}GB+ free disk (you have {info.disk_free_gb:.0f}GB)")
 
