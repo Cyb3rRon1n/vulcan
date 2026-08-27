@@ -435,9 +435,24 @@ storage_setup_flow() {
     local raid_flag=()
     [ -n "$raid_level" ] && raid_flag=(--raid-level "$raid_level")
 
+    # Check if any selected drive has existing filesystem/partition (needs --confirm-wipe)
+    local need_confirm_wipe=false
+    for device in "${CHOSEN_DEVICE_LIST[@]}"; do
+        local fstype mountpoint
+        fstype=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"fstype\":\"[^\"]*" | sed 's/.*"fstype":"\([^"]*\)".*/\1/')
+        mountpoint=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"mountpoint\":\"[^\"]*" | sed 's/.*"mountpoint":"\([^"]*\)".*/\1/')
+        if [ -n "$fstype" ] || [ -n "$mountpoint" ]; then
+            need_confirm_wipe=true
+            break
+        fi
+    done
+
+    local wipe_flag=()
+    [ "$need_confirm_wipe" = true ] && wipe_flag=(--confirm-wipe)
+
     confirm_and_run "Media Storage Setup" \
         "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT as $level_summary. Continue?" \
-        "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}"
+        "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}" "${wipe_flag[@]}"
 }
 
 # --- Media Storage Teardown ------------------------------------------
