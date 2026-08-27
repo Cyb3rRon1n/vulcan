@@ -365,7 +365,8 @@ def plan_storage_layout(
     device_paths: list[str],
     mount_point: str,
     filesystem: str = "ext4",
-    raid_level: str | None = None
+    raid_level: str | None = None,
+    confirm_wipe: bool = False
 ) -> dict:
     """
     Pure - computes the real command sequence that would provision
@@ -464,6 +465,11 @@ def plan_storage_layout(
                     f"only {len(device_paths)} given."
                 ),
             }
+
+        if confirm_wipe:
+            for path in device_paths:
+                if already_has_data.get(path):
+                    commands.append(["wipefs", "-a", path])
 
         commands.append(
             ["mdadm", "--create", "/dev/md0", f"--level={level}",

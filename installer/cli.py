@@ -469,7 +469,7 @@ def storage_apply(
 
         raid_level = picked
 
-    plan = plan_storage_layout(device_paths, mount_point, filesystem, raid_level)
+    plan = plan_storage_layout(device_paths, mount_point, filesystem, raid_level, confirm_wipe)
 
     console.print(describe_storage_plan(plan))
 
