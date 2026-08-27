@@ -1857,23 +1857,16 @@ def _gather_generation_config(
             )
             valid_keys = {service.key for service in ALL_SERVICES}
 
-            _SERVICE_CATEGORIES: dict[str, list[str]] = {
-                "Media": ["jellyfin", "seerr"],
-                "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "decluttarr", "recyclarr", "flaresolverr", "sportarr"],
-                "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
-                "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
-                "Infrastructure": ["traefik", "cloudflared", "tailscale", "pihole", "gluetun"],
-                "Security": ["authelia", "crowdsec", "vaultwarden"],
-                "Dashboards": ["homepage", "dashy"],
-                "System": ["watchtower", "filebrowser"],
-                "Live TV": ["threadfin"],
-            }
+            # Build categories from service definitions
+            category_map: dict[str, list[tuple[str, str]]] = {}
+            for svc in ALL_SERVICES:
+                if svc.key in valid_keys:
+                    category_map.setdefault(svc.category, []).append((svc.key, svc.display_name))
 
             console.print("[bold]Available services by category:[/bold]")
-            for cat, svcs in _SERVICE_CATEGORIES.items():
-                present = [s for s in svcs if s in valid_keys]
-                if present:
-                    console.print(f"  {cat}: {', '.join(present)}")
+            for cat in sorted(category_map.keys()):
+                svcs = category_map[cat]
+                console.print(f"  {cat}: {', '.join(f'{k} ({n})' for k, n in svcs)}")
             console.print()
 
             while True:

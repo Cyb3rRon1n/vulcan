@@ -865,43 +865,68 @@ _guided_setup_customize_services() {
         fi
     }
 
+    # Services grouped by category (matches tiers.py ServiceDefinition.category)
+    # Format: key:display_name:category
+    local -a SERVICE_LIST=(
+        "jellyfin:Jellyfin (media server):Media Server"
+        "seerr:Seerr (media requests):Media Server"
+        "radarr:Radarr (movies):Media Management"
+        "sonarr:Sonarr (TV):Media Management"
+        "lidarr:Lidarr (music):Media Management"
+        "readarr:Readarr (books):Media Management"
+        "prowlarr:Prowlarr (indexers):Media Management"
+        "bazarr:Bazarr (subtitles):Media Management"
+        "flaresolverr:FlareSolverr:Media Management"
+        "recyclarr:Recyclarr (TRaSH sync):Media Management"
+        "decluttarr:Decluttarr (download queue cleanup):Media Management"
+        "maintainerr:Maintainerr (library cleanup):Media Management"
+        "sportarr:Sportarr (sports PVR):Media Management"
+        "qbittorrent:qBittorrent:Downloaders"
+        "sabnzbd:SABnzbd (Usenet):Downloaders"
+        "metube:MeTube (video downloader):Downloaders"
+        "downtify:Downtify (Spotify downloader):Downloaders"
+        "uptime-kuma:Uptime Kuma (monitoring):Monitoring"
+        "tracearr:Tracearr (stream analytics):Monitoring"
+        "netdata:Netdata (system monitoring):Monitoring"
+        "gluetun:Gluetun (VPN):Infrastructure"
+        "pihole:Pi-hole + Unbound (DNS ad-blocker):Infrastructure"
+        "traefik:Traefik (reverse proxy):Infrastructure"
+        "cloudflared:Cloudflare Tunnel:Infrastructure"
+        "tailscale:Tailscale (private remote access):Infrastructure"
+        "authelia:Authelia (authentication):Security"
+        "crowdsec:CrowdSec (intrusion protection):Security"
+        "vaultwarden:Vaultwarden (password manager):Security"
+        "homepage:Homepage/Homarr dashboard:Dashboards"
+        "dashy:Dashy dashboard:Dashboards"
+        "watchtower:Watchtower (auto-updates):Utilities"
+        "filebrowser:FileBrowser (file manager):Utilities"
+        "threadfin:Threadfin (IPTV proxy):Live TV"
+    )
+
+    # Build checklist args grouped by category
+    local -a checklist_args=()
+    local last_category=""
+    local entry
+    for entry in "${SERVICE_LIST[@]}"; do
+        IFS=':' read -r key display category <<< "$entry"
+        # Add blank line between categories (whiptail shows as non-selectable spacer)
+        if [ "$category" != "$last_category" ]; then
+            if [ -n "$last_category" ]; then
+                checklist_args+=("" "──────────────────────────────────────" "OFF")
+            fi
+            checklist_args+=("" "=== $category ===" "OFF")
+            last_category="$category"
+        fi
+        checklist_args+=("$key" "$display" "$(_svc_on "$key")")
+    done
+
     CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services" \
-            --checklist "Choose exactly which services to include:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-        "jellyfin"    "Jellyfin (media server)"                     "$(_svc_on jellyfin)" \
-        "radarr"      "Radarr (movies)"                             "$(_svc_on radarr)" \
-        "sonarr"      "Sonarr (TV)"                                 "$(_svc_on sonarr)" \
-        "prowlarr"    "Prowlarr (indexers)"                         "$(_svc_on prowlarr)" \
-        "qbittorrent" "qBittorrent"                                 "$(_svc_on qbittorrent)" \
-        "seerr"  "Seerr (requests)"                       "$(_svc_on seerr)" \
-        "bazarr"      "Bazarr (subtitles)"                          "$(_svc_on bazarr)" \
-        "flaresolverr" "FlareSolverr"                                "$(_svc_on flaresolverr)" \
-        "lidarr"      "Lidarr (music)"                              "$(_svc_on lidarr)" \
-        "readarr"     "Readarr (books)"                             "$(_svc_on readarr)" \
-        "gluetun"     "Gluetun (VPN)"                                "$(_svc_on gluetun)" \
-        "sabnzbd"     "SABnzbd"                                      "$(_svc_on sabnzbd)" \
-        "recyclarr"   "Recyclarr"                                    "$(_svc_on recyclarr)" \
-        "decluttarr"  "Decluttarr (download queue cleanup)"          "$(_svc_on decluttarr)" \
-        "maintainerr" "Maintainerr (library cleanup)"                "$(_svc_on maintainerr)" \
-        "homepage"    "Homepage/Homarr dashboard"                    "$(_svc_on homepage)" \
-        "dashy"       "Dashy dashboard"                              "$(_svc_on dashy)" \
-        "metube"      "MeTube (video downloader)"                    "$(_svc_on metube)" \
-        "downtify"    "Downtify (Spotify downloader)"                "$(_svc_on downtify)" \
-        "netdata"     "Netdata (system monitoring)"                  "$(_svc_on netdata)" \
-        "vaultwarden" "Vaultwarden (password manager)"                "$(_svc_on vaultwarden)" \
-        "traefik"     "Reverse proxy (Traefik)"                       "$(_svc_on traefik)" \
-        "authelia"    "Authentication (Authelia)"                     "$(_svc_on authelia)" \
-        "crowdsec"    "Intrusion protection (CrowdSec)"                "$(_svc_on crowdsec)" \
-        "tailscale"   "Tailscale (private remote access)"              "$(_svc_on tailscale)" \
-        "uptime-kuma" "Uptime Kuma"                                    "$(_svc_on uptime-kuma)" \
-        "watchtower"  "Watchtower"                                     "$(_svc_on watchtower)" \
-        "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"              "$(_svc_on pihole)" \
-        "sportarr"    "Sportarr (sports PVR)"                           "$(_svc_on sportarr)" \
-        "tracearr"    "Tracearr (stream analytics)"                     "$(_svc_on tracearr)" \
-        "threadfin"   "Threadfin (IPTV proxy for live TV)"              "$(_svc_on threadfin)" \
-        3>&1 1>&2 2>&3) || CHOSEN=""
+            --checklist "Choose exactly which services to include (grouped by category):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "${checklist_args[@]}" \
+            3>&1 1>&2 2>&3) || CHOSEN=""
 
     # whiptail's own --checklist output is a properly double-quoted,
-    # space-separated tag list (e.g. `"gluetun" "homepage"`) - eval is
+    # space-separated tag list (e.g. "gluetun" "homepage") - eval is
     # the standard, safe idiom for turning that into a real bash array,
     # since the quoting is whiptail's own, not unsanitized user input.
     # Static analysis can't trace an eval'd assignment, hence the disables below:
