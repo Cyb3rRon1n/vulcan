@@ -1205,7 +1205,7 @@ def main(
     if ctx.invoked_subcommand is not None:
         return
 
-if dry_run:
+    if dry_run:
         non_interactive = True
         yes = True
         start = False
