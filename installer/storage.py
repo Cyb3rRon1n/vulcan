@@ -33,6 +33,7 @@ _EXCLUDED_NAME_PREFIXES = ("zram", "loop")
 # set up storage safely" feature), though nothing stops a user from
 # requesting it explicitly via filesystem/level overrides later.
 _MDADM_MIN_DEVICES = {
+    "0": 2,
     "1": 2,
     "5": 3,
     "6": 4,
@@ -192,6 +193,9 @@ def _raid_usable_drive_equivalents(level: str, count: int) -> int:
     are usable.
     """
 
+    if level == "0":
+        return count
+
     if level == "1":
         return 1
 
@@ -211,10 +215,12 @@ def _raid_level_options(count: int) -> list[dict]:
     """
     The real RAID choices worth offering for `count` devices, each with
     honest tradeoff descriptors - the picker's source of truth. Single
-    device: no RAID makes sense, so nothing to choose. Two devices:
-    only RAID1 is a real redundancy option (mirror). 3+ devices: RAID5
-    is the recommended default, RAID6 and RAID10 (even counts only)
-    are the honest alternatives - deliberately not guessing which is
+    device: no RAID makes sense, so nothing to choose. 2+ devices:
+    RAID0 (striping, full capacity, no redundancy) is always offered
+    as an explicit opt-in. Two devices additionally offer RAID1
+    (mirror, the recommended redundancy pick). 3+ devices: RAID5 is
+    the recommended default, RAID6 and RAID10 (even counts only) are
+    the honest alternatives - deliberately not guessing which is
     "best", since that genuinely depends on the user's priorities
     (capacity vs. fault tolerance vs. rebuild speed).
     """
@@ -224,8 +230,19 @@ def _raid_level_options(count: int) -> list[dict]:
     if count < 2:
         return options
 
+    # RAID0 (striping) is always a valid choice on 2+ devices - full
+    # capacity, no redundancy. It's opt-in, never the default: the whole
+    # point of provisioning media storage here is data that survives a
+    # drive failure, so redundant levels stay the recommended picks.
+    options.append({
+        "level": "0",
+        "usable": _raid_usable_drive_equivalents("0", count),
+        "total": count,
+        "recommended": False,
+    })
+
     if count == 2:
-        return [{
+        return [*options, {
             "level": "1",
             "usable": 1,
             "total": count,
@@ -267,6 +284,7 @@ def describe_raid_option(option: dict) -> str:
     total = option["total"]
 
     tradeoffs = {
+        "0": f"all {total} drives combined, full capacity - no redundancy, one drive failure loses everything",
         "1": "mirrors 2 drives into 1 - slow, but the only redundancy option at 2 drives",
         "5": f"~{usable} of {total} drives usable, survives 1 drive failure - read-friendly, slower writes",
         "6": f"~{usable} of {total} drives usable, survives 2 drive failures - slowest writes",

@@ -58,6 +58,7 @@ from installer.post_install import (
     update_stack,
     verify_stack_running,
 )
+from installer.deps import ensure_system_deps
 from installer.preflight import (
     check_network_conflicts,
     check_ports_available,
@@ -125,6 +126,45 @@ def _launch_menu() -> int:
     result = subprocess.run(["bash", str(MENU_SH_PATH)], env=menu_env)
     return result.returncode
 
+
+def _ensure_system_deps(non_interactive: bool) -> None:
+    """
+    Ensure whiptail (the TUI) and mdadm (RAID provisioning) exist before
+    the flow needs them - a fresh OS ships neither. Auto-installs via the
+    distro package manager with consent in interactive mode; in
+    non-interactive mode it installs unconditionally (scripted runs imply
+    consent) and only warns if anything remains missing. python3 is
+    handled by the bash `install` bootstrap before this ever runs, so
+    it's expected to already be present here.
+    """
+
+    plan = ensure_system_deps(dry_run=True)
+
+    if not plan["packages"]:
+        return
+
+    if not non_interactive:
+        console.print(
+            "[bold]Missing system packages:[/bold] "
+            + ", ".join(plan["packages"])
+        )
+        if not typer.confirm("Install them now?"):
+            console.print("[yellow]Skipping - some features (TUI/RAID) may not work.[/yellow]")
+            return
+
+    result = ensure_system_deps()
+
+    for tool in result["installed"]:
+        console.print(f"[green]Installed:[/green] {tool}")
+
+    if result["missing_after"]:
+        console.print(
+            f"[red]Still missing after install: {', '.join(result['missing_after'])}[/red]"
+        )
+        if result["error"]:
+            console.print(f"[red]{result['error']}[/red]")
+    elif result["needs_reboot"]:
+        console.print("[yellow]Installed as a layered package - reboot to take effect.[/yellow]")
 
 @app.command()
 def version():
@@ -1165,10 +1205,12 @@ def main(
     if ctx.invoked_subcommand is not None:
         return
 
-    if dry_run:
+if dry_run:
         non_interactive = True
         yes = True
         start = False
+
+    _ensure_system_deps(non_interactive=non_interactive)
 
     if not non_interactive and not plain:
 
@@ -1465,11 +1507,16 @@ def _choose_raid_level(device_count: int) -> str | None:
     for index, option in enumerate(options, start=1):
         console.print(f"  {index}. {describe_raid_option(option)}")
 
+    default = next(
+        (o["level"] for o in options if o["recommended"]),
+        options[0]["level"] if options else None,
+    )
+
     while True:
 
         raw = typer.prompt(
             "RAID level (number or RAID#)",
-            default="5",
+            default=default,
         ).strip()
 
         for index, option in enumerate(options, start=1):
