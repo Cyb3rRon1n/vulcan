@@ -16,6 +16,7 @@ class ServiceDefinition:
     key: str
     display_name: str
     optional: bool = False
+    category: str = "Other"
 
 
 @dataclass
@@ -30,45 +31,45 @@ class TierDefinition:
 
 
 _LIGHT_SERVICES = [
-    ServiceDefinition("jellyfin", "Jellyfin"),
-    ServiceDefinition("radarr", "Radarr"),
-    ServiceDefinition("sonarr", "Sonarr"),
-    ServiceDefinition("prowlarr", "Prowlarr"),
-    ServiceDefinition("qbittorrent", "qBittorrent"),
-    ServiceDefinition("filebrowser", "FileBrowser (file manager)"),
-    ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True),
-    ServiceDefinition("sabnzbd", "SABnzbd", optional=True),
-    ServiceDefinition("recyclarr", "Recyclarr", optional=True),
-    ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True),
-    ServiceDefinition("maintainerr", "Maintainerr", optional=True),
-    ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True),
-    ServiceDefinition("dashy", "Dashy dashboard", optional=True),
-    ServiceDefinition("metube", "MeTube", optional=True),
-    ServiceDefinition("downtify", "Downtify", optional=True),
-    ServiceDefinition("netdata", "Netdata", optional=True),
-    ServiceDefinition("vaultwarden", "Vaultwarden", optional=True),
-    ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True),
+    ServiceDefinition("jellyfin", "Jellyfin", category="Media Server"),
+    ServiceDefinition("radarr", "Radarr", category="Media Management"),
+    ServiceDefinition("sonarr", "Sonarr", category="Media Management"),
+    ServiceDefinition("prowlarr", "Prowlarr", category="Media Management"),
+    ServiceDefinition("qbittorrent", "qBittorrent", category="Downloaders"),
+    ServiceDefinition("filebrowser", "FileBrowser (file manager)", category="Utilities"),
+    ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True, category="Infrastructure"),
+    ServiceDefinition("sabnzbd", "SABnzbd", optional=True, category="Downloaders"),
+    ServiceDefinition("recyclarr", "Recyclarr", optional=True, category="Media Management"),
+    ServiceDefinition("decluttarr", "Decluttarr (download queue cleanup)", optional=True, category="Media Management"),
+    ServiceDefinition("maintainerr", "Maintainerr", optional=True, category="Media Management"),
+    ServiceDefinition("homepage", "Homepage/Homarr dashboard", optional=True, category="Dashboards"),
+    ServiceDefinition("dashy", "Dashy dashboard", optional=True, category="Dashboards"),
+    ServiceDefinition("metube", "MeTube", optional=True, category="Downloaders"),
+    ServiceDefinition("downtify", "Downtify", optional=True, category="Downloaders"),
+    ServiceDefinition("netdata", "Netdata", optional=True, category="Monitoring"),
+    ServiceDefinition("vaultwarden", "Vaultwarden", optional=True, category="Security"),
+    ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True, category="Infrastructure"),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [
-    ServiceDefinition("seerr", "Seerr (media requests)"),
-    ServiceDefinition("bazarr", "Bazarr"),
-    ServiceDefinition("flaresolverr", "FlareSolverr"),
-    ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True),
-    ServiceDefinition("uptime-kuma", "Uptime Kuma", optional=True),
-    ServiceDefinition("watchtower", "Watchtower", optional=True),
-    ServiceDefinition("threadfin", "Threadfin (IPTV proxy)", optional=True),
+    ServiceDefinition("seerr", "Seerr (media requests)", category="Media Server"),
+    ServiceDefinition("bazarr", "Bazarr", category="Media Management"),
+    ServiceDefinition("flaresolverr", "FlareSolverr", category="Media Management"),
+    ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True, category="Monitoring"),
+    ServiceDefinition("uptime-kuma", "Uptime Kuma", optional=True, category="Monitoring"),
+    ServiceDefinition("watchtower", "Watchtower", optional=True, category="Utilities"),
+    ServiceDefinition("threadfin", "Threadfin (IPTV proxy)", optional=True, category="Live TV"),
 ]
 
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
-    ServiceDefinition("lidarr", "Lidarr", optional=True),
-    ServiceDefinition("readarr", "Readarr", optional=True),
-    ServiceDefinition("traefik", "Traefik", optional=True),
-    ServiceDefinition("authelia", "Authelia", optional=True),
-    ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True),
-    ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True),
-    ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True),
-    ServiceDefinition("sportarr", "Sportarr (sports PVR)", optional=True),
+    ServiceDefinition("lidarr", "Lidarr", optional=True, category="Media Management"),
+    ServiceDefinition("readarr", "Readarr", optional=True, category="Media Management"),
+    ServiceDefinition("traefik", "Traefik", optional=True, category="Infrastructure"),
+    ServiceDefinition("authelia", "Authelia", optional=True, category="Security"),
+    ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True, category="Security"),
+    ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True, category="Infrastructure"),
+    ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True, category="Infrastructure"),
+    ServiceDefinition("sportarr", "Sportarr (sports PVR)", optional=True, category="Media Management"),
 ]
 
 TIERS: dict[str, TierDefinition] = {
