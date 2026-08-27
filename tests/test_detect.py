@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 from installer.detect import (
     SystemInfo,
+    _parse_block_size_gb,
     describe_media_redundancy,
     detect_cpu,
     detect_disk,
@@ -16,6 +17,7 @@ from installer.detect import (
     detect_render_group_gid,
     detect_storage_mount,
     detect_system,
+    provisionable_disk_gb,
 )
 
 
@@ -171,6 +173,66 @@ def test_detect_disk_handles_missing_path():
         "disk_free_gb": 0.0,
         "disk_path_checked": "/does/not/exist"
     }
+
+
+def test_parse_block_size_gb_parses_lsblk_human_sizes():
+
+    assert _parse_block_size_gb("3.7T") == 3788.8
+    assert _parse_block_size_gb("512M") == 0.5
+    assert _parse_block_size_gb("128G") == 128.0
+    assert _parse_block_size_gb("1K") is not None
+    assert _parse_block_size_gb("0B") == 0.0
+    assert _parse_block_size_gb("junk") is None
+
+
+def test_provisionable_disk_gb_sums_blank_unprotected_devices():
+
+    fake_devices = [
+        {"path": "/dev/sdb", "size": "3.7T"},
+        {"path": "/dev/sdc", "size": "512M"},
+    ]
+
+    with patch(
+        "installer.detect.list_blank_unprotected_devices",
+        return_value=fake_devices,
+    ):
+
+        assert provisionable_disk_gb() == 3789.3
+
+
+def test_provisionable_disk_gb_empty_returns_zero():
+
+    with patch(
+        "installer.detect.list_blank_unprotected_devices",
+        return_value=[],
+    ):
+
+        assert provisionable_disk_gb() == 0.0
+
+
+def test_detect_system_reports_max_of_free_and_provisionable():
+
+    fake_usage = MagicMock()
+    fake_usage.free = 50 * 1024 ** 3
+
+    with patch("installer.detect.shutil.disk_usage", return_value=fake_usage), \
+         patch(
+            "installer.detect.list_blank_unprotected_devices",
+            return_value=[{"path": "/dev/sdb", "size": "3.7T"}],
+         ), \
+         patch("installer.detect.detect_gpu", return_value=None), \
+         patch("installer.detect.detect_docker", return_value={
+             "docker_installed": False, "docker_running": False,
+             "docker_compose_v2": False,
+         }), \
+         patch("installer.detect.detect_os", return_value={
+             "architecture": "x86_64", "os_id": "fedora",
+             "os_pretty_name": "Fedora", "os_is_atomic": False,
+         }):
+
+        info = detect_system()
+
+    assert info.disk_free_gb == 3788.8
 
 
 def test_detect_storage_mount_reports_mnt_media_when_mounted():
@@ -728,6 +790,9 @@ def test_detect_system_assembles_everything():
     ), patch(
         "installer.detect.detect_disk",
         return_value={"disk_free_gb": 500.0, "disk_path_checked": "/"}
+    ), patch(
+        "installer.detect.list_blank_unprotected_devices",
+        return_value=[]
     ), patch(
         "installer.detect.detect_gpu", return_value="nvidia"
     ), patch(

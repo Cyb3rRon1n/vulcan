@@ -22,6 +22,7 @@ from pathlib import Path
 import psutil
 
 from installer.shell import run_ok
+from installer.storage import list_blank_unprotected_devices
 
 
 @dataclass
@@ -116,6 +117,40 @@ def detect_disk(path: str) -> dict:
         "disk_free_gb": round(free_bytes / (1024 ** 3), 2),
         "disk_path_checked": path
     }
+
+
+def _parse_block_size_gb(size: str) -> float | None:
+    """lsblk human SIZE string -> GiB ('3.7T' -> 3788.8), or None on junk."""
+
+    units = {
+        "K": 1 / 1048576, "M": 1 / 1024, "G": 1.0,
+        "T": 1024.0, "P": 1048576.0, "B": 1 / 1073741824,
+    }
+
+    try:
+        number = float(size[:-1])
+        unit = size[-1].upper()
+    except (ValueError, IndexError):
+        return None
+
+    mult = units.get(unit)
+    return round(number * mult, 2) if mult is not None else None
+
+
+def provisionable_disk_gb() -> float:
+    """Total GiB of genuinely spare (blank, unprotected) real disks - what a
+    fresh machine can provision for media storage. Invisible to
+    shutil.disk_usage('/',...), which only sees mounted filesystems; this is
+    why a fresh box with blank drives used to recommend a lower tier."""
+
+    total = 0.0
+
+    for device in list_blank_unprotected_devices():
+        size = _parse_block_size_gb(device.get("size", ""))
+        if size is not None:
+            total += size
+
+    return total
 
 
 _STORAGE_MOUNT_DEFAULT = "/mnt/media"
@@ -533,13 +568,22 @@ def detect_system(disk_path: str = "/") -> SystemInfo:
     recommendation, before the user's real media path is known - the
     CLI/TUI flow calls detect_disk() again directly against the real
     chosen path once it has one, rather than trusting this default
-    for anything but that initial guess.
+    for anything but that initial guess. disk_free_gb reports the
+    larger of free space on the disk_path mount and the raw spare
+    disk capacity available to provision, so a fresh machine with
+    blank (unmounted) drives isn't mis-sized by the boot partition.
     """
+
+    disk_info = detect_disk(disk_path)
+    disk_info["disk_free_gb"] = max(
+        disk_info["disk_free_gb"],
+        provisionable_disk_gb(),
+    )
 
     return SystemInfo(
         **detect_cpu(),
         **detect_memory(),
-        **detect_disk(disk_path),
+        **disk_info,
         gpu_vendor=detect_gpu(),
         **detect_docker(),
         **detect_os()

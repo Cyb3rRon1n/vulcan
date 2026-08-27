@@ -267,43 +267,53 @@ def test_raid_level_options_single_device_has_no_raid_choice():
     assert _raid_level_options(1) == []
 
 
-def test_raid_level_options_two_devices_only_offers_raid1():
+def test_raid_level_options_two_devices_offers_raid0_and_raid1():
 
     options = _raid_level_options(2)
 
-    assert [o["level"] for o in options] == ["1"]
+    assert [o["level"] for o in options] == ["0", "1"]
+    assert options[0]["recommended"] is False
+    assert options[1]["recommended"] is True
 
 
-def test_raid_level_options_three_devices_only_offers_raid5():
+def test_raid_level_options_three_devices_offers_raid0_and_raid5():
 
     options = _raid_level_options(3)
 
-    assert [o["level"] for o in options] == ["5"]
-    assert options[0]["recommended"] is True
+    assert [o["level"] for o in options] == ["0", "5"]
+    assert options[0]["recommended"] is False
+    assert options[1]["recommended"] is True
 
 
-def test_raid_level_options_four_devices_offers_5_6_10_with_5_recommended():
+def test_raid_level_options_four_devices_offers_0_5_6_10_with_5_recommended():
 
     options = _raid_level_options(4)
 
-    assert [o["level"] for o in options] == ["5", "6", "10"]
-    assert options[0]["recommended"] is True
-    assert options[1]["recommended"] is False
+    assert [o["level"] for o in options] == ["0", "5", "6", "10"]
+    assert options[0]["recommended"] is False
+    assert options[1]["recommended"] is True
     assert options[2]["recommended"] is False
+    assert options[3]["recommended"] is False
 
 
 def test_raid_level_options_five_devices_skips_raid10():
 
     options = _raid_level_options(5)
 
-    assert [o["level"] for o in options] == ["5", "6"]
+    assert [o["level"] for o in options] == ["0", "5", "6"]
 
 
 def test_raid_level_options_six_devices_offers_raid10_again():
 
     options = _raid_level_options(6)
 
-    assert [o["level"] for o in options] == ["5", "6", "10"]
+    assert [o["level"] for o in options] == ["0", "5", "6", "10"]
+
+
+def test_raid_usable_capacity_raid0_is_full_capacity():
+
+    assert _raid_usable_drive_equivalents("0", 4) == 4
+    assert _raid_usable_drive_equivalents("0", 8) == 8
 
 
 def test_raid_usable_capacity_four_drives_raid5_is_three():

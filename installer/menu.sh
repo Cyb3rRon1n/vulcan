@@ -496,6 +496,19 @@ guided_setup() {
     log_title "Starting Guided Setup"
     log_info "User entered guided setup"
 
+    # --- Phase 0: Media storage provisioning (optional) ---
+    # Offer to provision genuinely blank drives into one media volume
+    # before detection/tier, so a fresh machine's spare disks become the
+    # RAID-sized volume that the tier recommendation and the default media
+    # path below already see. No-op (silent) when there's nothing blank to
+    # offer - storage_setup_flow re-runs refresh_detect itself.
+    refresh_detect
+
+    if [ -n "$BLANK_STORAGE_DEVICES" ]; then
+        log_title "Phase 0: Media Storage Setup"
+        storage_setup_flow
+    fi
+
     log_title "Phase 1: System Detection"
     refresh_detect
     log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"

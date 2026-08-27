@@ -6,8 +6,33 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 REQUIRED_VERSION="3.11"
 
 if ! command -v python3 &> /dev/null; then
-    echo "python3 is required but was not found. Install Python $REQUIRED_VERSION+ and try again." >&2
-    exit 1
+    echo "python3 is required but was not found - attempting to install it." >&2
+
+    # python3 is the one bootstrap dependency that must exist before the
+    # venv can be created, so it's handled here in bash. Same distro-family
+    # mapping as installer/deps.py.
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+    fi
+
+    case "${ID:-}" in
+        ubuntu|debian|raspbian|linuxmint)
+            BOOTSTRAP_DEPS=(apt-get install -y python3 python3-venv) ;;
+        fedora|rhel|centos|rocky|almalinux)
+            BOOTSTRAP_DEPS=(dnf install -y python3) ;;
+        arch)
+            BOOTSTRAP_DEPS=(pacman -Sy --noconfirm python) ;;
+        *)
+            echo "Unsupported distro (ID=${ID:-unknown}). Install Python $REQUIRED_VERSION+ manually and re-run." >&2
+            exit 1 ;;
+    esac
+
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Installing python3 needs root - re-run as: sudo $0 $*" >&2
+        exit 1
+    fi
+
+    "${BOOTSTRAP_DEPS[@]}"
 fi
 
 PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
