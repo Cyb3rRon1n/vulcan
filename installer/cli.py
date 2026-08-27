@@ -2056,7 +2056,7 @@ def _gather_generation_config(
         # exposed without ever being asked. A regenerate still respects
         # whatever was explicitly chosen last time, same as every other
         # optional service here.
-        vpn_default = "gluetun" in previous["enabled_optional"] if previous else True
+        vpn_default = "gluetun" in previous["enabled_optional"] if previous else False
 
         if vpn is None:
 

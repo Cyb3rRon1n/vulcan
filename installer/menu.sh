@@ -779,7 +779,7 @@ _guided_setup_quick_toggles() {
 
         CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Optional Services" \
             --checklist "Choose optional services to enable:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun on)" \
+            "gluetun"     "VPN for torrent traffic (recommended)"  "$(_default_on gluetun off)" \
             "sabnzbd"     "SABnzbd - Usenet downloader"            "$(_default_on sabnzbd off)" \
             "recyclarr"   "Recyclarr - TRaSH Guides sync"          "$(_default_on recyclarr off)" \
             "homepage"    "Homepage dashboard"                     "$(_default_on homepage on)" \
