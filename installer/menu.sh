@@ -330,22 +330,24 @@ storage_setup_flow() {
     local -a device_paths
     IFS=',' read -r -a device_paths <<< "$ALL_UNPROTECTED_DEVICES"
 
-    # Build lsblk query for these specific devices to get size, fstype, mountpoint
+    # Build lsblk query for these specific devices to get size, fstype, mountpoint, model, serial
     local lsblk_paths
     lsblk_paths=$(IFS=,; echo "${device_paths[*]}")
 
     local lsblk_output
-    lsblk_output=$(lsblk -J -o "NAME,PATH,SIZE,FSTYPE,MOUNTPOINT" "$lsblk_paths" 2>/dev/null || echo '{"blockdevices":[]}')
+    lsblk_output=$(lsblk -J -o "NAME,PATH,SIZE,FSTYPE,MOUNTPOINT,MODEL,SERIAL" "$lsblk_paths" 2>/dev/null || echo '{"blockdevices":[]}')
 
     # Parse JSON to build checklist with device info
     local -a checklist_args=()
     local device
     for device in "${device_paths[@]}"; do
-        # Extract info from lsblk JSON using grep/sed (simpler than full JSON parsing in bash)
-        local size fstype mountpoint
+        # Extract info from lsblk JSON using grep/sed
+        local size fstype mountpoint model serial
         size=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"size\":\"[^\"]*" | sed 's/.*"size":"\([^"]*\)".*/\1/')
         fstype=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"fstype\":\"[^\"]*" | sed 's/.*"fstype":"\([^"]*\)".*/\1/')
         mountpoint=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"mountpoint\":\"[^\"]*" | sed 's/.*"mountpoint":"\([^"]*\)".*/\1/')
+        model=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"model\":\"[^\"]*" | sed 's/.*"model":"\([^"]*\)".*/\1/')
+        serial=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"serial\":\"[^\"]*" | sed 's/.*"serial":"\([^"]*\)".*/\1/')
 
         local desc
         if [ -z "$fstype" ] && [ -z "$mountpoint" ]; then
@@ -354,6 +356,13 @@ storage_setup_flow() {
             desc="mounted at $mountpoint ($fstype) - $size"
         else
             desc="$fstype - $size"
+        fi
+
+        if [ -n "$model" ] && [ "$model" != "null" ]; then
+            desc="$desc - $model"
+        fi
+        if [ -n "$serial" ] && [ "$serial" != "null" ]; then
+            desc="$desc (SN: $serial)"
         fi
 
         # Pre-select blank devices, leave non-blank unselected (user must explicitly choose to wipe)
@@ -387,18 +396,11 @@ storage_setup_flow() {
     local raid_level=""
     local level_summary=""
 
-    # The CLI offers the RAID picker only in interactive mode; from the
-    # menu it runs --non-interactive, so the choice is gathered here and
-    # passed through as --raid-level. Mirrors the engine's own option
-    # table (_raid_level_options in installer/storage.py): a real
-    # radiolist only when there's more than one valid option (4+
-    # devices); 3 devices has RAID5 as the only choice, and 1-2 devices
-    # have no picker at all (single ext4 / RAID1 by the engine's own
-    # default), so those cases just state what will happen.
     if [ "$device_count" -ge 4 ]; then
 
         RAID_LEVEL=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
             --radiolist "Choose a RAID level for these $device_count devices:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "0"  "RAID0 - striping, $device_count of $device_count drives usable, NO redundancy (max capacity, any drive fails = data loss)" "OFF" \
             "5"  "RAID5 - ~$((device_count - 1)) of $device_count drives usable, survives 1 drive failure (recommended)" "ON" \
             "6"  "RAID6 - ~$((device_count - 2)) of $device_count drives usable, survives 2 drive failures" "OFF" \
             "10" "RAID10 - ~$((device_count / 2)) of $device_count drives usable, survives 1 drive per pair" "OFF" \
@@ -407,9 +409,25 @@ storage_setup_flow() {
         raid_level="$RAID_LEVEL"
         level_summary="mdadm RAID$RAID_LEVEL"
     elif [ "$device_count" -eq 3 ]; then
-        level_summary="mdadm RAID5"
+
+        RAID_LEVEL=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+            --radiolist "Choose a RAID level for these $device_count devices:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "0"  "RAID0 - striping, 3 of 3 drives usable, NO redundancy (max capacity, any drive fails = data loss)" "OFF" \
+            "5"  "RAID5 - ~2 of 3 drives usable, survives 1 drive failure (recommended)" "ON" \
+            3>&1 1>&2 2>&3) || return 0
+
+        raid_level="$RAID_LEVEL"
+        level_summary="mdadm RAID$RAID_LEVEL"
     elif [ "$device_count" -eq 2 ]; then
-        level_summary="mdadm RAID1"
+
+        RAID_LEVEL=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
+            --radiolist "Choose a RAID level for these $device_count devices:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "0"  "RAID0 - striping, 2 of 2 drives usable, NO redundancy (max capacity, any drive fails = data loss)" "OFF" \
+            "1"  "RAID1 - mirror, 1 of 2 drives usable, survives 1 drive failure (recommended)" "ON" \
+            3>&1 1>&2 2>&3) || return 0
+
+        raid_level="$RAID_LEVEL"
+        level_summary="mdadm RAID$RAID_LEVEL"
     else
         level_summary="a single ext4 volume"
     fi
