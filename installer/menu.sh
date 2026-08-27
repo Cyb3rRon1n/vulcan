@@ -567,16 +567,17 @@ guided_setup() {
     log_info "User entered guided setup"
 
     # --- Phase 0: Media storage provisioning (optional) ---
-    # Offer to provision any unprotected drives into one media volume
-    # before detection/tier, so a fresh machine's spare disks become the
-    # RAID-sized volume that the tier recommendation and the default media
-    # path below already see. No-op (silent) when there's nothing unprotected to
-    # offer - storage_setup_flow re-runs refresh_detect itself.
+    # First ask if user wants to set up media storage
     refresh_detect
 
     if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
-        log_title "Phase 0: Media Storage Setup"
-        storage_setup_flow
+        if whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" --yesno \
+            "Vulcan detected unprotected drives that can be provisioned as a media storage volume (RAID if 2+ drives).\n\nWould you like to set up media storage now?\n\nThis will:\n  - Detect all available drives\n  - Let you choose which to use\n  - Configure RAID level (RAID0/1/5/6/10)\n  - Create filesystem and mount at /mnt/media\n\nChoose No to skip and use an existing path instead." "$DLG_ROWS" "$DLG_COLS"; then
+            log_title "Phase 0: Media Storage Setup"
+            storage_setup_flow
+        else
+            log_info "User skipped media storage setup"
+        fi
     fi
 
     log_title "Phase 1: System Detection"
@@ -903,40 +904,97 @@ _guided_setup_customize_services() {
         "threadfin:Threadfin (IPTV proxy):Live TV"
     )
 
-    # Build checklist args grouped by category
-    local -a checklist_args=()
-    local last_category=""
-    local entry
+    # Build category -> services map
+    declare -A CATEGORY_SERVICES
+    local -a CATEGORIES=()
+    local entry key display category
     for entry in "${SERVICE_LIST[@]}"; do
         IFS=':' read -r key display category <<< "$entry"
-        # Add blank line between categories (whiptail shows as non-selectable spacer)
-        if [ "$category" != "$last_category" ]; then
-            if [ -n "$last_category" ]; then
-                checklist_args+=("" "──────────────────────────────────────" "OFF")
-            fi
-            checklist_args+=("" "=== $category ===" "OFF")
-            last_category="$category"
+        if [[ -z "${CATEGORY_SERVICES[$category]:-}" ]]; then
+            CATEGORIES+=("$category")
         fi
-        checklist_args+=("$key" "$display" "$(_svc_on "$key")")
+        CATEGORY_SERVICES["$category"]+="${CATEGORY_SERVICES[$category]:+,}$entry"
     done
 
-    CHOSEN=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services" \
-            --checklist "Choose exactly which services to include (grouped by category):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "${checklist_args[@]}" \
-            3>&1 1>&2 2>&3) || CHOSEN=""
+    # Selected services accumulator
+    declare -A SELECTED_MAP
+    local joined="${PREVIOUS_ENABLED_OPTIONAL:-}"
 
-    # whiptail's own --checklist output is a properly double-quoted,
-    # space-separated tag list (e.g. "gluetun" "homepage") - eval is
-    # the standard, safe idiom for turning that into a real bash array,
-    # since the quoting is whiptail's own, not unsanitized user input.
-    # Static analysis can't trace an eval'd assignment, hence the disables below:
-    # shellcheck disable=SC2034,SC2154
-    eval "SELECTED=($CHOSEN)"
+    # Seed from previous or core
+    if [ -n "$PREVIOUS_TIER" ]; then
+        IFS=',' read -ra prev <<< "$PREVIOUS_ENABLED_OPTIONAL"
+        for svc in "${prev[@]}"; do
+            SELECTED_MAP["$svc"]=1
+        done
+    else
+        IFS=',' read -ra core_svcs <<< "jellyfin,radarr,sonarr,prowlarr,qbittorrent"
+        for svc in "${core_svcs[@]}"; do
+            SELECTED_MAP["$svc"]=1
+        done
+    fi
 
+    # Category selection loop - one screen per category
+    while true; do
+        # Count total selected across all categories
+        local selected_total=0
+        for svc in "${!SELECTED_MAP[@]}"; do
+            ((selected_total++))
+        done
+
+        local -a cat_menu=()
+        for cat in "${CATEGORIES[@]}"; do
+            # Count selected in this category
+            local selected_count=0
+            IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat]}"
+            for svc_entry in "${cat_svcs[@]}"; do
+                IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
+                [[ -n "${SELECTED_MAP[$svc_key]:-}" ]] && ((selected_count++))
+            done
+            local total_count=${#cat_svcs[@]}
+            cat_menu+=("$cat" "$cat ($selected_count/$total_count selected)")
+        done
+        cat_menu+=("done" "Done - Continue to next step")
+
+        local cat_choice
+        cat_choice=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services - Select Category" \
+            --menu "Choose a category to configure services. $selected_total of ${#SERVICE_LIST[@]} services selected.\n\n(Blank = not selected, ✓ = selected)" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "${cat_menu[@]}" \
+            3>&1 1>&2 2>&3) || return 1
+
+        [ "$cat_choice" = "done" ] && break
+
+        # Show checklist for this category
+        local -a cat_checklist=()
+        IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
+        for svc_entry in "${cat_svcs[@]}"; do
+            IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
+            cat_checklist+=("$svc_key" "$svc_display" "$(_svc_on "$svc_key")")
+        done
+
+        local cat_chosen
+        cat_chosen=$(whiptail --backtitle "$BACKTITLE" --title "Customize: $cat_choice" \
+            --checklist "Select services in this category:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "${cat_checklist[@]}" \
+            3>&1 1>&2 2>&3) || cat_chosen=""
+
+        # Update selection map for this category
+        # First clear all in this category
+        IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
+        for svc_entry in "${cat_svcs[@]}"; do
+            IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
+            unset SELECTED_MAP["$svc_key"]
+        done
+        # Then set chosen ones
+        eval "local -a cat_selected=($cat_chosen)"
+        for svc in "${cat_selected[@]}"; do
+            SELECTED_MAP["$svc"]=1
+        done
+    done
+
+    # Build final joined list
     local joined=""
     local item
-    for item in "${SELECTED[@]:-}"; do
-        [ -z "$item" ] && continue
+    for item in "${!SELECTED_MAP[@]}"; do
         joined="${joined:+$joined,}$item"
     done
 
