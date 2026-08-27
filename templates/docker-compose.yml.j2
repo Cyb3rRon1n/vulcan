@@ -75,6 +75,12 @@ services:
               count: 1
               capabilities: [gpu]
 {% endif %}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8096/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
 {% endif %}
 {% if 'radarr' in enabled %}
@@ -1423,6 +1429,11 @@ services:
       - ./config/tracearr:/app/data
     ports:
       - "{{ ports['tracearr'] }}:3000"
+{% if 'jellyfin' in enabled %}
+    depends_on:
+      jellyfin:
+        condition: service_healthy
+{% endif %}
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
