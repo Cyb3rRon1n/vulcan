@@ -313,9 +313,9 @@ storage_setup_flow() {
 
     refresh_detect
 
-    if [ -z "$BLANK_STORAGE_DEVICES" ]; then
+    if [ -z "$ALL_UNPROTECTED_DEVICES" ]; then
         whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-            --msgbox "No blank, unprotected storage devices found. A blank device is one with no filesystem and no partition table, and not backing / or /boot." "$DLG_ROWS" "$DLG_COLS"
+            --msgbox "No unprotected storage devices found. All drives appear to be in use by the system (/ or /boot)." "$DLG_ROWS" "$DLG_COLS"
         return 0
     fi
 
@@ -326,23 +326,47 @@ storage_setup_flow() {
         3>&1 1>&2 2>&3) || return 0
     [ -z "$MEDIA_MOUNT_POINT" ] && return 0
 
-    # BLANK_STORAGE_DEVICES is a comma-separated list (e.g.
-    # /dev/sdb,/dev/sdc) - turn it into a real bash array, then build a
-    # whiptail --checklist with every blank device pre-selected (they're
-    # blank, so there's nothing to wipe - selecting them by default
-    # matches the "identify available blank storage" intent, and the
-    # user can still deselect any they want to keep spare).
-    local -a blank_devices
-    IFS=',' read -r -a blank_devices <<< "$BLANK_STORAGE_DEVICES"
+    # Get detailed info for all unprotected devices using lsblk
+    local -a device_paths
+    IFS=',' read -r -a device_paths <<< "$ALL_UNPROTECTED_DEVICES"
 
+    # Build lsblk query for these specific devices to get size, fstype, mountpoint
+    local lsblk_paths
+    lsblk_paths=$(IFS=,; echo "${device_paths[*]}")
+
+    local lsblk_output
+    lsblk_output=$(lsblk -J -o "NAME,PATH,SIZE,FSTYPE,MOUNTPOINT" "$lsblk_paths" 2>/dev/null || echo '{"blockdevices":[]}')
+
+    # Parse JSON to build checklist with device info
     local -a checklist_args=()
     local device
-    for device in "${blank_devices[@]:-}"; do
-        checklist_args+=( "$device" "blank storage device" "ON" )
+    for device in "${device_paths[@]}"; do
+        # Extract info from lsblk JSON using grep/sed (simpler than full JSON parsing in bash)
+        local size fstype mountpoint
+        size=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"size\":\"[^\"]*" | sed 's/.*"size":"\([^"]*\)".*/\1/')
+        fstype=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"fstype\":\"[^\"]*" | sed 's/.*"fstype":"\([^"]*\)".*/\1/')
+        mountpoint=$(echo "$lsblk_output" | grep -o "\"path\":\"$device\"[^}]*\"mountpoint\":\"[^\"]*" | sed 's/.*"mountpoint":"\([^"]*\)".*/\1/')
+
+        local desc
+        if [ -z "$fstype" ] && [ -z "$mountpoint" ]; then
+            desc="blank - $size"
+        elif [ -n "$mountpoint" ]; then
+            desc="mounted at $mountpoint ($fstype) - $size"
+        else
+            desc="$fstype - $size"
+        fi
+
+        # Pre-select blank devices, leave non-blank unselected (user must explicitly choose to wipe)
+        local default_on="OFF"
+        if [ -z "$fstype" ] && [ -z "$mountpoint" ]; then
+            default_on="ON"
+        fi
+
+        checklist_args+=( "$device" "$desc" "$default_on" )
     done
 
     CHOSEN_DEVICES=$(whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" \
-        --checklist "Select which blank device(s) to provision as media storage:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+        --checklist "Select drive(s) to provision as media storage (blank drives pre-selected; selecting others will WIPE them):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
         "${checklist_args[@]}" \
         3>&1 1>&2 2>&3) || return 0
 
@@ -497,14 +521,14 @@ guided_setup() {
     log_info "User entered guided setup"
 
     # --- Phase 0: Media storage provisioning (optional) ---
-    # Offer to provision genuinely blank drives into one media volume
+    # Offer to provision any unprotected drives into one media volume
     # before detection/tier, so a fresh machine's spare disks become the
     # RAID-sized volume that the tier recommendation and the default media
-    # path below already see. No-op (silent) when there's nothing blank to
+    # path below already see. No-op (silent) when there's nothing unprotected to
     # offer - storage_setup_flow re-runs refresh_detect itself.
     refresh_detect
 
-    if [ -n "$BLANK_STORAGE_DEVICES" ]; then
+    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
         log_title "Phase 0: Media Storage Setup"
         storage_setup_flow
     fi

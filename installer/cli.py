@@ -78,6 +78,7 @@ from installer.storage import (
     identify_protected_devices,
     list_blank_unprotected_devices,
     list_block_devices,
+    list_unprotected_devices,
     plan_storage_layout,
     plan_storage_teardown,
 )
@@ -234,6 +235,9 @@ def detect_shell():
         # The provisioned media-storage mount point (default /mnt/media)
         # when one is actually mounted - installer/menu.sh defaults its
         # Guided Setup Media Library path to this on a fresh install.
+        "ALL_UNPROTECTED_DEVICES": ",".join(
+            d["path"] for d in list_unprotected_devices()
+        ),
         "STORAGE_MOUNT": detect_storage_mount() or "",
         "STACK_EXISTS": "true" if stack_exists else "false",
         "HAS_BACKUPS": "true" if has_backups else "false",
@@ -1339,33 +1343,44 @@ def run_install(
 
         # Phase: Storage setup - offer to provision blank drives before Docker/tier
         if previous is None and media_path is None:
-            blank_devices = list_blank_unprotected_devices()
-            if blank_devices:
-                device_list = ", ".join(f"{d['path']} ({d['size']})" for d in blank_devices)
-                console.print(f"[bold]Detected spare storage:[/bold] {device_list} - blank, not backing the system disk.")
+            available_devices = list_unprotected_devices()
+            if available_devices:
+                device_list = ", ".join(
+                    f"{d['path']} ({d['size']}){' [blank]' if not d.get('fstype') and not d.get('children') else ''}"
+                    for d in available_devices
+                )
+                console.print(f"[bold]Available drives for media storage:[/bold] {device_list}")
+                console.print("[dim]Drives marked [blank] have no filesystem/partitions. Others will be wiped if selected.[/dim]")
                 if not non_interactive:
-                    if typer.confirm("Set these up as a single media storage volume (mdadm RAID if 2+ devices)?"):
+                    if typer.confirm("Set up one or more drives as a media storage volume (mdadm RAID if 2+)?") :
                         default_mount = "/mnt/media"
                         mount_point = typer.prompt("Mount point for the media volume", default=default_mount)
-                        device_paths = [d["path"] for d in blank_devices]
-                        raid_level = _choose_raid_level(len(device_paths))
-                        if raid_level is not None or len(device_paths) <= 1:
-                            plan = plan_storage_layout(device_paths, mount_point, raid_level=raid_level)
-                            console.print(describe_storage_plan(plan))
-                            if not plan["error"]:
-                                typed = typer.prompt(
-                                    f"Type the exact device list to confirm ({', '.join(device_paths)})",
-                                    hide_input=False,
-                                )
-                                if {p.strip() for p in typed.split(",") if p.strip()} == set(device_paths):
-                                    result = apply_storage_layout(plan)
-                                    for cmd in result.get("ran", []):
-                                        console.print(f"[green]ran:[/green] {cmd}")
-                                    for note in result.get("skipped", []):
-                                        console.print(f"[cyan]skipped:[/cyan] {note}")
-                                    if result["success"]:
-                                        media_path = mount_point
-                                        panel.note(f"[green]Storage provisioned at {mount_point}[/green]")
+                        console.print("\nSelect drives to use (comma-separated, e.g. /dev/sdb,/dev/sdc):")
+                        for i, d in enumerate(available_devices):
+                            status = "blank" if not d.get('fstype') and not d.get('children') else f"has {d.get('fstype', 'partition')}"
+                            console.print(f"  {i+1}. {d['path']} ({d['size']}) - {status}")
+                        chosen = typer.prompt("Drives to use").strip()
+                        device_paths = [p.strip() for p in chosen.split(",") if p.strip()]
+                        valid_paths = {d["path"] for d in available_devices}
+                        if device_paths and set(device_paths).issubset(valid_paths):
+                            raid_level = _choose_raid_level(len(device_paths))
+                            if raid_level is not None or len(device_paths) <= 1:
+                                plan = plan_storage_layout(device_paths, mount_point, raid_level=raid_level)
+                                console.print(describe_storage_plan(plan))
+                                if not plan["error"]:
+                                    typed = typer.prompt(
+                                        f"Type the exact device list to confirm ({', '.join(device_paths)})",
+                                        hide_input=False,
+                                    )
+                                    if {p.strip() for p in typed.split(",") if p.strip()} == set(device_paths):
+                                        result = apply_storage_layout(plan)
+                                        for cmd in result.get("ran", []):
+                                            console.print(f"[green]ran:[/green] {cmd}")
+                                        for note in result.get("skipped", []):
+                                            console.print(f"[cyan]skipped:[/cyan] {note}")
+                                        if result["success"]:
+                                            media_path = mount_point
+                                            panel.note(f"[green]Storage provisioned at {mount_point}[/green]")
         panel.advance()
 
         info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline, panel)
