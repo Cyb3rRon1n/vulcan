@@ -169,6 +169,27 @@ def list_blank_unprotected_devices() -> list[dict]:
     return candidates
 
 
+def list_unprotected_devices() -> list[dict]:
+    """
+    All disks NOT backing / or /boot - includes drives with existing
+    filesystems/partitions that the user may choose to wipe and repurpose.
+    Used for the interactive storage setup where the user explicitly
+    selects drives to provision as media storage. Read-only.
+    """
+
+    protected = identify_protected_devices()
+    candidates = []
+
+    for disk in list_block_devices():
+
+        if disk["path"] in protected:
+            continue
+
+        candidates.append(disk)
+
+    return candidates
+
+
 def _mdadm_level_for_device_count(count: int) -> str:
     """
     Simple, honest default, not an attempt to guess the "best" level:
