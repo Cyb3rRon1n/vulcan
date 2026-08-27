@@ -326,7 +326,7 @@ storage_setup_flow() {
         3>&1 1>&2 2>&3) || return 0
     [ -z "$MEDIA_MOUNT_POINT" ] && return 0
 
-    # Get detailed info for all unprotected devices using lsblk
+# Get detailed info for all unprotected devices using lsblk
     local -a device_paths
     IFS=',' read -r -a device_paths <<< "$ALL_UNPROTECTED_DEVICES"
 
@@ -339,6 +339,7 @@ storage_setup_flow() {
 
     # Parse JSON to build checklist with device info
     local -a checklist_args=()
+    local -a blank_devices=()
     local device
     for device in "${device_paths[@]}"; do
         # Extract info from lsblk JSON using grep/sed
@@ -365,10 +366,12 @@ storage_setup_flow() {
             desc="$desc (SN: $serial)"
         fi
 
-        # Pre-select blank devices, leave non-blank unselected (user must explicitly choose to wipe)
-        local default_on="OFF"
+        # Track blank devices (pre-selected) vs drives with data (not pre-selected)
         if [ -z "$fstype" ] && [ -z "$mountpoint" ]; then
+            blank_devices+=("$device")
             default_on="ON"
+        else
+            default_on="OFF"
         fi
 
         checklist_args+=( "$device" "$desc" "$default_on" )
@@ -395,6 +398,16 @@ storage_setup_flow() {
     local device_count="${#CHOSEN_DEVICE_LIST[@]}"
     local raid_level=""
     local level_summary=""
+
+    # Determine if --confirm-wipe is needed: any chosen device NOT in blank_devices list
+    local need_confirm_wipe=false
+    local blank_set=" ${blank_devices[*]} "
+    for device in "${CHOSEN_DEVICE_LIST[@]}"; do
+        if [[ "$blank_set" != *" $device "* ]]; then
+            need_confirm_wipe=true
+            break
+        fi
+    done
 
     if [ "$device_count" -ge 4 ]; then
 
