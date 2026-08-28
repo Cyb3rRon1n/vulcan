@@ -215,7 +215,7 @@ main_menu() {
 
         # Build menu with clear phases: SETUP → OPERATIONS → STORAGE → SYSTEM
         menu_items=(
-            # SETUP PHASE
+            # SETUP PHASE - Linear flow for new users
             "complete-setup"       "1. Complete Setup (recommended) → storage → guided → configure → start"
             "guided-setup"         "2. Guided Setup → detect hardware, generate stack (no start)"
             "configure-services"   "3. Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc."
@@ -223,13 +223,13 @@ main_menu() {
 
             # OPERATIONS
             "update-stack"         "5. Update Stack → pull latest images, recreate containers"
-            "pull-images"          "6. Pull Images → prep for offline start later"
-            "backup-stack"         "7. Backup Stack → archive config/compose/env to backups/"
-            "restore-stack"        "8. Restore Stack → from most recent backup"
-            "stack-status"         "9. Stack Status → show running/healthy/failed containers"
+            "pull-images"          "5. Pull Images → prep for offline start later"
+            "backup-stack"         "6. Backup Stack → archive config/compose/env to backups/"
+            "restore-stack"        "7. Restore Stack → from most recent backup"
+            "stack-status"         "8. Stack Status → show running/healthy/failed containers"
 
             # STORAGE
-            "storage-setup"        "9. Media Storage Setup → provision blank drives as media storage"
+            "storage-setup"        "8. Media Storage Setup → provision blank drives as media storage"
         )
 
         # Conditional: reset storage only when provisioned
@@ -265,9 +265,6 @@ main_menu() {
                 ;;
             configure-services)
                 configure_services_flow
-                ;;
-            reset-storage)
-                storage_teardown_flow
                 ;;
             start-stack)
                 confirm_and_run "Start Stack" \
@@ -790,53 +787,28 @@ configure_services_flow() {
             gluetun)
                 if ! prompt_edit_then_restart "gluetun" \
                     "Gluetun VPN Setup" \
-                    "Gluetun needs your VPN provider credentials in stack/.env:\n\n\
-1. Edit stack/.env and set:\n\
-   VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n\
-   VPN_TYPE=wireguard (or openvpn)\n\n\
-For WireGuard:\n\
-   WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\n\
-For OpenVPN:\n\
-   OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\n\
-Full provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"; then
+                    $'Gluetun needs your VPN provider credentials in stack/.env:\n\n1. Edit stack/.env and set:\n   VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n   VPN_TYPE=wireguard (or openvpn)\n\nFor WireGuard:\n   WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\nFor OpenVPN:\n   OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\nFull provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n\nAfter editing .env: docker compose -f stack/docker-compose.yml up -d gluetun'; then
                     continue
                 fi
                 ;;
             cloudflared)
                 if ! prompt_edit_then_restart "cloudflared" \
                     "Cloudflare Tunnel Setup" \
-                    "Cloudflare Tunnel needs a tunnel token from Cloudflare Zero Trust:\n\n\
-1. Go to https://one.dash.cloudflare.com → Access → Tunnels\n\
-2. Create a tunnel → Copy the token (starts with ey...)\n\
-3. Edit stack/.env and set:\n\
-   CLOUDFLARE_TUNNEL_TOKEN=<your_token>\n\n\
-Note: Tunnel must have public hostnames configured for your services."; then
+                    $'Cloudflare Tunnel needs a tunnel token from Cloudflare Zero Trust:\n\n1. Go to https://one.dash.cloudflare.com → Access → Tunnels\n2. Create a tunnel → Copy the token (starts with ey...)\n3. Edit stack/.env and set:\n   CLOUDFLARE_TUNNEL_TOKEN=<your_token>\n\nNote: Tunnel must have public hostnames configured for your services.'; then
                     continue
                 fi
                 ;;
             tailscale)
                 if ! prompt_edit_then_restart "tailscale" \
                     "Tailscale Setup" \
-                    "Tailscale needs an auth key:\n\n\
-1. Go to https://login.tailscale.com/admin/settings/keys\n\
-2. Generate an auth key (reusable, ephemeral, pre-authorized)\n\
-3. Edit stack/.env and set:\n\
-   TAILSCALE_AUTHKEY=<your_auth_key>\n\n\
-Optional: TAILSCALE_HOSTNAME=<custom_name>"; then
+                    $'Tailscale needs an auth key:\n\n1. Go to https://login.tailscale.com/admin/settings/keys\n2. Generate an auth key (reusable, ephemeral, pre-authorized)\n3. Edit stack/.env and set:\n   TAILSCALE_AUTHKEY=<your_auth_key>\n\nOptional: TAILSCALE_HOSTNAME=<custom_name>'; then
                     continue
                 fi
                 ;;
             traefik)
                 if ! prompt_edit_then_restart "traefik" \
                     "Traefik Domain Setup" \
-                    "Traefik needs a domain with DNS pointing to this host:\n\n\
-1. Own a domain (e.g. example.com)\n\
-2. Create DNS A records pointing to this host's public IP:\n\
-   *.example.com → YOUR_PUBLIC_IP\n\
-3. Edit stack/.env and set:\n\
-   DOMAIN=example.com\n\n\
-3. For real Let's Encrypt certs (optional):\n\
-   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)"; then
+                    $'Traefik needs a domain with DNS pointing to this host:\n\n1. Own a domain (e.g. example.com)\n2. Create DNS A records pointing to this host\'s public IP:\n   *.example.com → YOUR_PUBLIC_IP\n3. Edit stack/.env and set:\n   DOMAIN=example.com\n\n3. For real Let\'s Encrypt certs (optional):\n   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)'; then
                     continue
                 fi
                 ;;
@@ -872,8 +844,7 @@ prompt_edit_then_restart() {
 
     while true; do
         whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
-            "$instructions\n\n\
-After editing .env, choose an option below:" "$DLG_ROWS" "$DLG_COLS"
+            $'$instructions\n\nAfter editing .env, choose an option below:' "$DLG_ROWS" "$DLG_COLS"
 
         local action
         action=$(whiptail --backtitle "$BACKTITLE" --title "$title" \
@@ -892,10 +863,10 @@ After editing .env, choose an option below:" "$DLG_ROWS" "$DLG_COLS"
                 fi
                 if docker compose -f stack/docker-compose.yml up -d "$service" 2>/dev/null; then
                     whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
-                        "$service restarted successfully.\n\nRe-checking status..." "$DLG_ROWS" "$DLG_COLS"
+                        $'$service restarted successfully.\n\nRe-checking status...' "$DLG_ROWS" "$DLG_COLS"
                 else
                     whiptail --backtitle "$BACKTITLE" --title "$title - Error" --msgbox \
-                        "Failed to restart $service. Check logs:\n  docker compose -f stack/docker-compose.yml logs $service" "$DLG_ROWS" "$DLG_COLS"
+                        $'Failed to restart $service. Check logs:\n  docker compose -f stack/docker-compose.yml logs $service' "$DLG_ROWS" "$DLG_COLS"
                 fi
                 ;;
             recheck)
@@ -1046,41 +1017,37 @@ guided_setup_no_start() {
     # If gluetun (VPN) was selected, prompt for credentials now
     if [[ " ${TOGGLE_FLAGS[@]} " =~ " --vpn " ]]; then
         if [ -z "${VPN_SERVICE_PROVIDER:-}" ] || [ -z "${VPN_TYPE:-}" ]; then
-            if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno 
-                "Gluetun VPN was selected but no VPN credentials were provided.
-
-You must provide VPN credentials for the stack to start successfully.
-
-Would you like to configure VPN credentials now?" "$DLG_ROWS" "$DLG_COLS"; then
-                VPN_SERVICE_PROVIDER=$(whiptail --backtitle "$BACKTITLE" --title "VPN Provider" 
-                    --inputbox "VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)" "$DLG_ROWS" "$DLG_COLS" "" 
+            if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno \
+                $'Gluetun VPN was selected but no VPN credentials were provided.\n\nYou must provide VPN credentials for the stack to start successfully.\n\nWould you like to configure VPN credentials now?' "$DLG_ROWS" "$DLG_COLS"; then
+                VPN_SERVICE_PROVIDER=$(whiptail --backtitle "$BACKTITLE" --title "VPN Provider" \
+                    --inputbox "VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)" "$DLG_ROWS" "$DLG_COLS" "" \
                     3>&1 1>&2 2>&3) || return
-                VPN_TYPE=$(whiptail --backtitle "$BACKTITLE" --title "VPN Type" 
-                    --radiolist "Select VPN type:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" 
-                    "wireguard" "WireGuard (recommended)" "ON" 
-                    "openvpn" "OpenVPN" "OFF" 
+                VPN_TYPE=$(whiptail --backtitle "$BACKTITLE" --title "VPN Type" \
+                    --radiolist "Select VPN type:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+                    "wireguard" "WireGuard (recommended)" "ON" \
+                    "openvpn" "OpenVPN" "OFF" \
                     3>&1 1>&2 2>&3) || return
                 
                 if [ "$VPN_TYPE" = "wireguard" ]; then
-                    WIREGUARD_PRIVATE_KEY=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Key" 
-                        --passwordbox "WireGuard Private Key" "$DLG_ROWS" "$DLG_COLS" "" 
+                    WIREGUARD_PRIVATE_KEY=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Key" \
+                        --passwordbox "WireGuard Private Key" "$DLG_ROWS" "$DLG_COLS" "" \
                         3>&1 1>&2 2>&3) || return
-                    WIREGUARD_ADDRESSES=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Addresses" 
-                        --inputbox "WireGuard Addresses (e.g. 10.0.0.2/24)" "$DLG_ROWS" "$DLG_COLS" "" 
+                    WIREGUARD_ADDRESSES=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Addresses" \
+                        --inputbox "WireGuard Addresses (e.g. 10.0.0.2/24)" "$DLG_ROWS" "$DLG_COLS" "" \
                         3>&1 1>&2 2>&3) || return
                 else
-                    OPENVPN_USER=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN User" 
-                        --inputbox "OpenVPN Username" "$DLG_ROWS" "$DLG_COLS" "" 
+                    OPENVPN_USER=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN User" \
+                        --inputbox "OpenVPN Username" "$DLG_ROWS" "$DLG_COLS" "" \
                         3>&1 1>&2 2>&3) || return
-                    OPENVPN_PASSWORD=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN Password" 
-                        --passwordbox "OpenVPN Password" "$DLG_ROWS" "$DLG_COLS" "" 
+                    OPENVPN_PASSWORD=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN Password" \
+                        --passwordbox "OpenVPN Password" "$DLG_ROWS" "$DLG_COLS" "" \
                         3>&1 1>&2 2>&3) || return
                 fi
                 
                 export VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES OPENVPN_USER OPENVPN_PASSWORD
             else
-                whiptail --backtitle "$BACKTITLE" --title "VPN Required" --msgbox 
-                    "Gluetun requires VPN credentials to function. Disabling VPN for this installation." 
+                whiptail --backtitle "$BACKTITLE" --title "VPN Required" --msgbox \
+                    $'Gluetun requires VPN credentials to function. Disabling VPN for this installation.' \
                     "$DLG_ROWS" "$DLG_COLS"
                 TOGGLE_FLAGS=( "${TOGGLE_FLAGS[@]/--vpn/--no-vpn}" )
             fi
