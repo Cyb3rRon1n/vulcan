@@ -225,15 +225,16 @@ main_menu() {
         # the same "doesn't apply yet" explanation Media Storage Setup's
         # own internal msgbox gives for its equivalent empty state.
         menu_items=(
-            "guided-setup"    "1. Guided Setup - detect hardware, generate a stack (new install)"
-            "storage-setup"   "2. Media Storage Setup - provision blank drives as media storage (new install)"
-            "start-stack"     "3. Start Stack - start an already-generated stack"
-            "update-stack"    "4. Update Stack - pull latest images, recreate containers"
-            "pull-images"     "5. Pull Images - prep for an offline start later"
-            "backup-stack"    "6. Backup Stack - archive config/compose/env to backups/"
-            "restore-stack"   "7. Restore Stack - from the most recent backup"
-            "uninstall-stack" "8. Uninstall Stack - stop and delete stack/ entirely"
-            "update-self"     "9. Update Vulcan - fast-forward this checkout"
+            "guided-setup"       "1. Guided Setup - detect hardware, generate a stack (new install)"
+            "storage-setup"      "2. Media Storage Setup - provision blank drives as media storage (new install)"
+            "configure-services" "3. Configure Services - set up VPN, Tailscale, Cloudflare, Traefik, Authelia, etc."
+            "start-stack"        "4. Start Stack - start an already-generated stack"
+            "update-stack"       "5. Update Stack - pull latest images, recreate containers"
+            "pull-images"        "6. Pull Images - prep for an offline start later"
+            "backup-stack"       "7. Backup Stack - archive config/compose/env to backups/"
+            "restore-stack"      "8. Restore Stack - from the most recent backup"
+            "uninstall-stack"    "9. Uninstall Stack - stop and delete stack/ entirely"
+            "update-self"        "10. Update Vulcan - fast-forward this checkout"
         )
 
         if [ -z "$BLANK_STORAGE_DEVICES" ] && [ -n "$STORAGE_MOUNT" ]; then
@@ -259,6 +260,9 @@ main_menu() {
                 ;;
             storage-setup)
                 storage_setup_flow
+                ;;
+            configure-services)
+                configure_services_flow
                 ;;
             reset-storage)
                 storage_teardown_flow
@@ -504,6 +508,171 @@ storage_teardown_flow() {
     confirm_and_run "Reset Media Storage" \
         "Final confirmation: tear down the storage mounted at $STORAGE_MOUNT?" \
         "$VULCAN_BIN" storage teardown --mount-point "$STORAGE_MOUNT" --non-interactive --yes --confirm-wipe
+}
+
+# --- Configure Services -----------------------------------------------
+#
+# Post-install walkthrough for services that need extra configuration
+# (VPN credentials, tunnel tokens, domain setup, etc.). Runs after the
+# stack is generated and started, so the user can fill in .env values
+# and restart affected services.
+configure_services_flow() {
+
+    refresh_detect
+
+    if [ ! -f "stack/docker-compose.yml" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
+            --msgbox "No stack found. Run Guided Setup first." "$DLG_ROWS" "$DLG_COLS"
+        return 0
+    fi
+
+    # Check which services needing config are enabled
+    local -a config_items=()
+    local -a config_descriptions=()
+
+    # Load current .env to see what's already set
+    local env_file="stack/.env"
+    if [ -f "$env_file" ]; then
+        # shellcheck disable=SC1090
+        source "$env_file"
+    fi
+
+    # gluetun - needs VPN credentials
+    if grep -q "gluetun" stack/docker-compose.yml; then
+        local status="NOT CONFIGURED"
+        [ -n "${VPN_SERVICE_PROVIDER:-}" ] && [ -n "${VPN_TYPE:-}" ] && [ -n "${WIREGUARD_PRIVATE_KEY:-}${OPENVPN_USER:-}${OPENVPN_PASSWORD:-}" ] && status="CONFIGURED"
+        config_items+=("gluetun" "Gluetun VPN - $status (needs VPN provider credentials)")
+    fi
+
+    # cloudflared - needs tunnel token
+    if grep -q "cloudflared" stack/docker-compose.yml; then
+        local status="NOT CONFIGURED"
+        [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ] && status="CONFIGURED"
+        config_items+=("cloudflared" "Cloudflare Tunnel - $status (needs tunnel token from Cloudflare Zero Trust)")
+    fi
+
+    # tailscale - needs auth key
+    if grep -q "tailscale" stack/docker-compose.yml; then
+        local status="NOT CONFIGURED"
+        [ -n "${TAILSCALE_AUTHKEY:-}" ] && status="CONFIGURED"
+        config_items+=("tailscale" "Tailscale - $status (needs auth key from Tailscale admin console)")
+    fi
+
+    # traefik - needs domain (handled in guided setup, but check DNS)
+    if grep -q "traefik" stack/docker-compose.yml; then
+        local status="NOT CONFIGURED"
+        [ -n "${DOMAIN:-}" ] && status="DOMAIN SET"
+        config_items+=("traefik" "Traefik - $status (needs domain + DNS A records pointing to this host)")
+    fi
+
+    # authelia - needs admin user (done in guided setup)
+    if grep -q "authelia" stack/docker-compose.yml; then
+        local status="CONFIGURED"
+        [ ! -f "stack/config/authelia/users_database.yml" ] && status="NOT CONFIGURED"
+        config_items+=("authelia" "Authelia SSO - $status (admin user created during setup)")
+    fi
+
+    # pihole - needs admin password
+    if grep -q "pihole" stack/docker-compose.yml; then
+        local status="NOT CONFIGURED"
+        [ -n "${PIHOLE_PASSWORD:-}" ] && status="CONFIGURED"
+        config_items+=("pihole" "Pi-hole - $status (needs admin password)")
+    fi
+
+    if [ ${#config_items[@]} -eq 0 ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
+            --msgbox "No configurable services found in the current stack." "$DLG_ROWS" "$DLG_COLS"
+        return 0
+    fi
+
+    # Build menu
+    local -a menu_items=()
+    for ((i=0; i<${#config_items[@]}; i+=2)); do
+        menu_items+=("${config_items[i]}" "${config_items[i+1]}")
+    done
+    menu_items+=("done" "Done - return to main menu")
+
+    while true; do
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
+            --menu "Select a service to view setup instructions:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "${config_items[@]}" \
+            3>&1 1>&2 2>&3) || return 0
+
+        [ "$choice" = "done" ] && break
+
+        case "$choice" in
+            gluetun)
+                whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Setup" --msgbox \
+                    "Gluetun needs your VPN provider credentials in stack/.env:\n\n\
+1. Edit stack/.env and set:\n\
+   VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n\
+   VPN_TYPE=wireguard (or openvpn)\n\n\
+For WireGuard:\n\
+   WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\n\
+For OpenVPN:\n\
+   OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\n\
+Full provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n\n\
+After editing .env: docker compose -f stack/docker-compose.yml up -d gluetun" \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+            cloudflared)
+                whiptail --backtitle "$BACKTITLE" --title "Cloudflare Tunnel Setup" --msgbox \
+                    "Cloudflare Tunnel needs a tunnel token from Cloudflare Zero Trust:\n\n\
+1. Go to https://one.dash.cloudflare.com → Access → Tunnels\n\
+2. Create a tunnel → Copy the token (starts with ey...)\n\
+3. Edit stack/.env and set:\n\
+   CLOUDFLARE_TUNNEL_TOKEN=<your_token>\n\n\
+4. docker compose -f stack/docker-compose.yml up -d cloudflared\n\n\
+Note: Tunnel must have public hostnames configured for your services." \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+            tailscale)
+                whiptail --backtitle "$BACKTITLE" --title "Tailscale Setup" --msgbox \
+                    "Tailscale needs an auth key:\n\n\
+1. Go to https://login.tailscale.com/admin/settings/keys\n\
+2. Generate an auth key (reusable, ephemeral, pre-authorized)\n\
+3. Edit stack/.env and set:\n\
+   TAILSCALE_AUTHKEY=<your_auth_key>\n\n\
+4. docker compose -f stack/docker-compose.yml up -d tailscale\n\n\
+Optional: TAILSCALE_HOSTNAME=<custom_name>" \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+            traefik)
+                whiptail --backtitle "$BACKTITLE" --title "Traefik Domain Setup" --msgbox \
+                    "Traefik needs a domain with DNS pointing to this host:\n\n\
+1. Own a domain (e.g. example.com)\n\
+2. Create DNS A records pointing to this host's public IP:\n\
+   *.example.com → YOUR_PUBLIC_IP\n\
+3. Edit stack/.env and set:\n\
+   DOMAIN=example.com\n\n\
+4. For real Let's Encrypt certs (optional):\n\
+   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)\n\n\
+5. docker compose -f stack/docker-compose.yml up -d traefik" \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+            authelia)
+                whiptail --backtitle "$BACKTITLE" --title "Authelia SSO Setup" --msgbox \
+                    "Authelia was configured during Guided Setup:\n\
+- Admin user: check stack/config/authelia/users_database.yml\n\
+- Password was hashed during setup\n\n\
+To add users: edit stack/config/authelia/users_database.yml\n\
+and run: docker compose -f stack/docker-compose.yml restart authelia\n\n\
+Access: https://authelia.${DOMAIN:-yourdomain.com}" \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+            pihole)
+                whiptail --backtitle "$BACKTITLE" --title "Pi-hole Setup" --msgbox \
+                    "Pi-hole needs an admin password:\n\n\
+1. Edit stack/.env and set:\n\
+   PIHOLE_PASSWORD=<your_admin_password>\n\n\
+2. docker compose -f stack/docker-compose.yml up -d pihole\n\n\
+3. Access: http://<host_ip>:8083/admin (or https://pihole.${DOMAIN:-yourdomain.com} if Traefik+domain)\n\n\
+Default login: admin / your_password" \
+                    "$DLG_ROWS" "$DLG_COLS"
+                ;;
+        esac
+    done
 }
 
 # --- Restore --------------------------------------------------------
@@ -825,6 +994,7 @@ _guided_setup_quick_toggles() {
     _has sportarr    && TOGGLE_FLAGS+=(--sportarr)   || TOGGLE_FLAGS+=(--no-sportarr)
     _has tracearr    && TOGGLE_FLAGS+=(--tracearr)   || TOGGLE_FLAGS+=(--no-tracearr)
     _has threadfin   && TOGGLE_FLAGS+=(--threadfin)  || TOGGLE_FLAGS+=(--no-threadfin)
+    _has cloudflared && TOGGLE_FLAGS+=(--cloudflared) || TOGGLE_FLAGS+=(--no-cloudflared)
 
     if [ "$TIER" = "heavy" ] && [ -n "$GPU_VENDOR" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
