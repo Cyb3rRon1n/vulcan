@@ -209,37 +209,37 @@ confirm_and_run() {
 main_menu() {
     while true; do
 
-        # Refreshed every redraw (not just on entry) so a conditional
-        # item below - "Reset Media Storage" - reflects real current
-        # state right after an action taken from this same menu (e.g.
-        # provisioning or tearing down storage) changes it, not just
-        # whatever was true when main_menu() was first entered.
+        # Refreshed every redraw so conditional items reflect real current state
         refresh_detect
 
-        # "Reset Media Storage" is the one deliberate exception to this
-        # menu's own "every item always shown" rule (see the docstring
-        # below) - agreed directly with the owner (2026-08-17): it's a
-        # narrow, destructive, rarely-applicable action (only relevant
-        # once storage has actually been provisioned and nothing blank
-        # is left to offer instead), and a static menu label can't carry
-        # the same "doesn't apply yet" explanation Media Storage Setup's
-        # own internal msgbox gives for its equivalent empty state.
+        # Build menu with clear phases: SETUP → OPERATIONS → STORAGE → SYSTEM
         menu_items=(
-            "guided-setup"       "1. Guided Setup - detect hardware, generate a stack (new install)"
-            "storage-setup"      "2. Media Storage Setup - provision blank drives as media storage (new install)"
-            "configure-services" "3. Configure Services - set up VPN, Tailscale, Cloudflare, Traefik, Authelia, etc."
-            "start-stack"        "4. Start Stack - start an already-generated stack"
-            "update-stack"       "5. Update Stack - pull latest images, recreate containers"
-            "pull-images"        "6. Pull Images - prep for an offline start later"
-            "backup-stack"       "7. Backup Stack - archive config/compose/env to backups/"
-            "restore-stack"      "8. Restore Stack - from the most recent backup"
-            "uninstall-stack"    "9. Uninstall Stack - stop and delete stack/ entirely"
-            "update-self"        "10. Update Vulcan - fast-forward this checkout"
+            # SETUP PHASE
+            "complete-setup"       "1. Complete Setup (recommended) → storage → guided → configure → start"
+            "guided-setup"         "2. Guided Setup → detect hardware, generate stack (no start)"
+            "configure-services"   "3. Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc."
+            "start-stack"          "4. Start Stack → start an already-generated stack"
+
+            # OPERATIONS
+            "update-stack"         "5. Update Stack → pull latest images, recreate containers"
+            "pull-images"          "6. Pull Images → prep for offline start later"
+            "backup-stack"         "7. Backup Stack → archive config/compose/env to backups/"
+            "restore-stack"        "8. Restore Stack → from most recent backup"
+
+            # STORAGE
+            "storage-setup"        "9. Media Storage Setup → provision blank drives as media storage"
         )
 
+        # Conditional: reset storage only when provisioned
         if [ -z "$BLANK_STORAGE_DEVICES" ] && [ -n "$STORAGE_MOUNT" ]; then
-            menu_items+=("reset-storage" "R. Reset Media Storage - tear down provisioned storage at $STORAGE_MOUNT")
+            menu_items+=("reset-storage" "R. Reset Media Storage → tear down provisioned storage at $STORAGE_MOUNT")
         fi
+
+        # SYSTEM
+        menu_items+=(
+            "update-self"      "10. Update Vulcan → fast-forward this checkout"
+            "uninstall-stack"  "11. Uninstall Stack → stop and delete stack/ entirely"
+        )
 
         menu_items+=("exit" "0. Exit")
 
@@ -255,11 +255,11 @@ main_menu() {
         fi
 
         case "$CHOICE" in
+            complete-setup)
+                complete_setup_flow
+                ;;
             guided-setup)
                 guided_setup
-                ;;
-            storage-setup)
-                storage_setup_flow
                 ;;
             configure-services)
                 configure_services_flow
@@ -290,13 +290,19 @@ main_menu() {
             restore-stack)
                 restore_stack_flow
                 ;;
-            uninstall-stack)
-                uninstall_flow
+            storage-setup)
+                storage_setup_flow
+                ;;
+            reset-storage)
+                storage_teardown_flow
                 ;;
             update-self)
                 confirm_and_run "Update Vulcan" \
                     "This will fast-forward this Vulcan checkout to the latest origin/main." \
                     "$VULCAN_BIN" update-self --non-interactive --yes
+                ;;
+            uninstall-stack)
+                uninstall_flow
                 ;;
         esac
 
@@ -470,6 +476,85 @@ storage_setup_flow() {
     confirm_and_run "Media Storage Setup" \
         "This will provision $devices_csv into a single volume mounted at $MEDIA_MOUNT_POINT as $level_summary. Continue?" \
         "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}" "${wipe_flag[@]}"
+}
+
+# --- Complete Setup (Linear Flow) --------------------------------------
+#
+# One-click linear flow for new users: storage → guided → configure → start.
+# Runs the full setup sequence automatically with sensible defaults,
+# pausing only for required user input (media path, tier, VPN/domain decisions).
+complete_setup_flow() {
+
+    log_title "Complete Setup"
+    log_info "Starting complete linear setup flow"
+
+    # Phase 0: Storage setup (if blank devices available)
+    refresh_detect
+    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" --yesno \
+            "Vulcan detected unprotected drives that can be provisioned as a media storage volume (RAID if 2+ drives).\n\nSet up media storage now? This will:\n  - Let you choose which drives to use\n  - Configure RAID level (RAID0/1/5/6/10)\n  - Create filesystem and mount at /mnt/media\n\nChoose No to skip and use an existing path instead." "$DLG_ROWS" "$DLG_COLS"; then
+            log_title "Phase 0: Media Storage Setup"
+            storage_setup_flow
+        else
+            log_info "User skipped media storage setup"
+        fi
+    fi
+
+    # Phase 1: System detection + Docker
+    log_title "Phase 1: System Detection & Docker"
+    refresh_detect
+    log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"
+    log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
+    log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
+
+    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
+        log_info "Docker not fully ready"
+        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
+            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
+    fi
+
+    # Phase 2: Guided Setup (but don't start stack yet)
+    log_title "Phase 2: Guided Stack Configuration"
+    # Run guided setup but with --no-start equivalent
+    # We'll call the guided setup logic directly but suppress the final start
+    guided_setup_no_start
+
+    # Phase 3: Configure Services (if any need config)
+    log_title "Phase 3: Service Configuration"
+    refresh_detect
+    if [ -f "stack/docker-compose.yml" ]; then
+        # Check if any configurable services are enabled but not configured
+        local needs_config=false
+        if grep -q "gluetun" stack/docker-compose.yml && [ -z "${VPN_SERVICE_PROVIDER:-}${VPN_TYPE:-}" ]; then
+            needs_config=true
+        elif grep -q "cloudflared" stack/docker-compose.yml && [ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
+            needs_config=true
+        elif grep -q "tailscale" stack/docker-compose.yml && [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
+            needs_config=true
+        elif grep -q "traefik" stack/docker-compose.yml && [ -z "${DOMAIN:-}" ]; then
+            needs_config=true
+        elif grep -q "pihole" stack/docker-compose.yml && [ -z "${PIHOLE_PASSWORD:-}" ]; then
+            needs_config=true
+        fi
+
+        if [ "$needs_config" = true ]; then
+            if whiptail --backtitle "$BACKTITLE" --title "Configure Services" --yesno \
+                "Some services need additional configuration (VPN credentials, domain, tunnel tokens, etc.).\n\nOpen Configure Services menu now to set them up?" "$DLG_ROWS" "$DLG_COLS"; then
+                configure_services_flow
+            fi
+        fi
+    fi
+
+    # Phase 4: Start Stack
+    log_title "Phase 4: Starting Stack"
+    if whiptail --backtitle "$BACKTITLE" --title "Start Stack" --yesno \
+        "Stack is configured. Start it now?\n\nThis will pull images and start all enabled services." "$DLG_ROWS" "$DLG_COLS"; then
+        confirm_and_run "Start Stack" \
+            "This will start stack/docker-compose.yml, reassigning any port already in use." \
+            "$VULCAN_BIN" start
+    fi
+
+    log_info "Complete Setup finished"
 }
 
 # --- Media Storage Teardown ------------------------------------------
@@ -717,15 +802,130 @@ uninstall_flow() {
         "$VULCAN_BIN" uninstall --non-interactive --yes "${purge_flags[@]}" "${prune_flags[@]}"
 }
 
-# --- Guided Setup ------------------------------------------------------
+# --- Guided Setup (No Start) ------------------------------------------
 #
-# The bash-native version of WelcomeScreen -> TierConfigScreen ->
-# ReviewScreen (quick path) and, optionally, -> ServiceSelectionScreen
-# (customize path). Ends by handing a single fully-formed
-# `vulcan --non-interactive --yes ...` invocation to confirm_and_run -
-# no generation logic lives here, only gathering the same choices the
-# old TUI screens gathered.
-guided_setup() {
+# Same as guided_setup but stops before starting the stack.
+# Used by Complete Setup linear flow.
+guided_setup_no_start() {
+
+    # --- Welcome screen (Security Onion pattern) ---
+    if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
+        "\n\n\n\nWelcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
+        return 0
+    fi
+    log_title "Starting Guided Setup"
+    log_info "User entered guided setup"
+
+    # --- Phase 0: Media storage provisioning (optional) ---
+    refresh_detect
+
+    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
+        log_title "Phase 0: Media Storage Setup"
+        storage_setup_flow
+    fi
+
+    log_title "Phase 1: System Detection"
+    refresh_detect
+    log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"
+    log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
+    log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
+
+    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
+        log_info "Docker not fully ready, showing warning"
+        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
+            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
+    fi
+
+    log_title "Phase 2: Configuration"
+
+    local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
+
+    if [ -n "$PREVIOUS_TIER" ]; then
+        default_media_path="$PREVIOUS_MEDIA_PATH"
+        default_tier="$PREVIOUS_TIER"
+        default_puid_value="$PREVIOUS_PUID"
+        default_pgid_value="$PREVIOUS_PGID"
+        default_tz_value="$PREVIOUS_TIMEZONE"
+    else
+        default_media_path="${STORAGE_MOUNT:-$HOME/media}"
+        default_tier="$RECOMMENDED_TIER"
+        default_puid_value="$DEFAULT_PUID"
+        default_pgid_value="$DEFAULT_PGID"
+        default_tz_value="$DEFAULT_TIMEZONE"
+    fi
+
+    MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
+        --inputbox "Where should your media library live?" "$DLG_ROWS" "$DLG_COLS" "$default_media_path" \
+        3>&1 1>&2 2>&3) || return
+    [ -z "$MEDIA_PATH" ] && return
+
+    local light_on medium_on heavy_on
+    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
+    case "$default_tier" in
+        light) light_on="ON" ;;
+        medium) medium_on="ON" ;;
+        heavy) heavy_on="ON" ;;
+    esac
+
+    TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
+        --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
+        "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+        "light"  "Light - low-resource baseline" "$light_on" \
+        "medium" "Medium - the common case" "$medium_on" \
+        "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
+        3>&1 1>&2 2>&3) || return
+
+    local customize=false
+
+    if whiptail --backtitle "$BACKTITLE" --title "Services" \
+        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
+        customize=true
+    fi
+
+    SERVICES_FLAG=()
+    DOMAIN_FLAGS=()
+    TOGGLE_FLAGS=()
+
+    if [ "$customize" = true ]; then
+        _guided_setup_customize_services
+    else
+        _guided_setup_quick_toggles
+    fi
+
+    PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" "$DLG_ROWS" "$DLG_COLS" "$default_puid_value" \
+        3>&1 1>&2 2>&3) || return
+
+    PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PGID - group ID the containers run as" "$DLG_ROWS" "$DLG_COLS" "$default_pgid_value" \
+        3>&1 1>&2 2>&3) || return
+
+    TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
+        --inputbox "Timezone (e.g. America/New_York, Europe/London)" "$DLG_ROWS" "$DLG_COLS" "$default_tz_value" \
+        3>&1 1>&2 2>&3) || return
+
+    # Build and run the vulcan command (without --start)
+    local vulcan_cmd=("$VULCAN_BIN" --non-interactive --yes)
+
+    vulcan_cmd+=(--tier "$TIER")
+    vulcan_cmd+=(--media-path "$MEDIA_PATH")
+    vulcan_cmd+=(--puid "$PUID")
+    vulcan_cmd+=(--pgid "$PGID")
+    vulcan_cmd+=(--timezone "$TIMEZONE")
+
+    [ -n "$SERVICES_FLAG" ] && vulcan_cmd+=(--services "$SERVICES_FLAG")
+    [ -n "$DOMAIN_FLAGS" ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
+    [ -n "$TOGGLE_FLAGS" ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
+
+    confirm_and_run "Generate Stack" \
+        "This will generate stack/docker-compose.yml and .env with your choices. Stack will NOT be started." \
+        "${vulcan_cmd[@]}"
+
+    log_info "Guided Setup (no start) completed"
+}
+
+# --- Guided Setup ------------------------------------------------------
 
     # --- Welcome screen (Security Onion pattern) ---
     if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
@@ -917,6 +1117,23 @@ guided_setup() {
     fi
 
     return "$rc"
+
+# --- Guided Setup ------------------------------------------------------
+#
+# The main guided setup that includes the option to start the stack.
+# Calls guided_setup_no_start (which generates the stack) and then
+# optionally starts it based on user choice.
+guided_setup() {
+    guided_setup_no_start
+
+    # If stack was generated successfully and user chose --start, the
+    # START_FLAG logic in guided_setup_no_start already handled it.
+    # But for the standalone guided_setup, we need the --start prompt.
+    if [ "$START_FLAG" = "--start" ]; then
+        confirm_and_run "Start Stack" \
+            "This will start stack/docker-compose.yml, reassigning any port already in use." \
+            "$VULCAN_BIN" start
+    fi
 }
 
 # Quick path: tier's own default services, plus the same individual
