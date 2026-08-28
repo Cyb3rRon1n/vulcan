@@ -966,15 +966,20 @@ _guided_setup_customize_services() {
 
         # Show checklist for this category
         local -a cat_checklist=()
+        local -a cat_keys=()
         IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
         for svc_entry in "${cat_svcs[@]}"; do
             IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
             cat_checklist+=("$svc_key" "$svc_display" "$(_svc_on "$svc_key")")
+            cat_keys+=("$svc_key")
         done
+
+        # Add "Select All" / "Deselect All" pseudo-items at top
+        cat_checklist=("__select_all__" "✓ Select ALL in this category" "OFF" "__deselect_all__" "✗ Deselect ALL in this category" "OFF" "${cat_checklist[@]}")
 
         local cat_chosen
         cat_chosen=$(whiptail --backtitle "$BACKTITLE" --title "Customize: $cat_choice" \
-            --checklist "Select services in this category:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            --checklist "Select services in this category (use Select All / Deselect All):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
             "${cat_checklist[@]}" \
             3>&1 1>&2 2>&3) || cat_chosen=""
 
@@ -985,10 +990,24 @@ _guided_setup_customize_services() {
             IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
             unset SELECTED_MAP["$svc_key"]
         done
-        # Then set chosen ones
+        # Then set chosen ones (filter out pseudo-items)
         eval "local -a cat_selected=($cat_chosen)"
         for svc in "${cat_selected[@]}"; do
-            SELECTED_MAP["$svc"]=1
+            if [[ "$svc" != "__select_all__" && "$svc" != "__deselect_all__" ]]; then
+                SELECTED_MAP["$svc"]=1
+            fi
+        done
+        # Handle Select All / Deselect All
+        for svc in "${cat_selected[@]}"; do
+            if [[ "$svc" == "__select_all__" ]]; then
+                for key in "${cat_keys[@]}"; do
+                    SELECTED_MAP["$key"]=1
+                done
+            elif [[ "$svc" == "__deselect_all__" ]]; then
+                for key in "${cat_keys[@]}"; do
+                    unset SELECTED_MAP["$key"]
+                done
+            fi
         done
     done
 

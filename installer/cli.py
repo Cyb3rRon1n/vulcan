@@ -1808,6 +1808,17 @@ def _gather_generation_config(
     # non-interactive run, which is what the whiptail menu always uses).
     # The one-line recommendation stays either way; it's short and still
     # useful context even when the choice is already made.
+    # Show all services per tier before the recommendation
+    console.print("\n[bold]Services included in each tier:[/bold]")
+    for tier_name in ("light", "medium", "heavy"):
+        tier_obj = TIERS[tier_name]
+        core = [s for s in tier_obj.services if not s.optional]
+        opt = [s for s in tier_obj.services if s.optional]
+        rec_marker = " ← recommended" if tier_obj.name == recommendation.tier.name else ""
+        console.print(f"\n  {tier_obj.display_name}{rec_marker}:")
+        console.print(f"    Core ({len(core)}): {', '.join(s.display_name for s in core)}")
+        console.print(f"    Optional ({len(opt)}): {', '.join(s.display_name for s in opt)}")
+
     console.print(
         f"Recommended tier: [bold]{recommendation.tier.display_name}[/bold] - "
         f"{recommendation.explanation}"
