@@ -220,7 +220,7 @@ menu_install() {
         local choice
         choice=$(whiptail --backtitle "$BACKTITLE" --title "Install" \
             --menu "Choose install type:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "complete"      "Complete Setup (recommended) → storage → guided → configure → start" \
+            "complete"      "Complete Setup (recommended) → detect → plan → build → configure → start" \
             "guided"        "Guided Setup → detect hardware, generate stack (no start)" \
             "storage"       "Media Storage Setup → provision blank drives as RAID/media volume" \
             "back"          "Back to main menu" \
@@ -501,7 +501,7 @@ complete_setup_flow() {
 
     # Track completed phases
     local -a phase_done=(false false false false false)  # setup, plan, build, config, start
-    local phase_names=("SETUP (storage, tools)" "PLAN (tier, services)" "BUILD (generate stack)" "CONFIGURE (vpn, domain, etc.)" "START (launch stack)")
+    local phase_names=("SETUP (system tools)" "PLAN (tier, services)" "BUILD (generate stack)" "CONFIGURE (vpn, domain, etc.)" "START (launch stack)")
 
     # Helper: show progress checklist
     show_checklist() {
@@ -534,27 +534,11 @@ complete_setup_flow() {
     log_info "Starting complete linear setup flow"
 
     # ============================================================
-    # PHASE 0: SETUP - Storage & Tools
+    # PHASE 0: SETUP - System tools
     # ============================================================
     phase_done[0]=true
     show_checklist 1
 
-    # Phase 0: Storage setup (if blank devices available)
-    refresh_detect
-    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
-        if whiptail --backtitle "$BACKTITLE" --title "SETUP: Media Storage" --yesno \
-            "Vulcan detected unprotected drives that can be provisioned as a media storage volume (RAID if 2+ drives).\n\nSet up media storage now? This will:\n  - Let you choose which drives to use\n  - Configure RAID level (RAID0/1/5/6/10)\n  - Create filesystem and mount at /mnt/media\n\nChoose No to skip and use an existing path instead." "$DLG_ROWS" "$DLG_COLS"; then
-            log_title "SETUP: Media Storage"
-            storage_setup_flow
-            log_info "Storage setup completed"
-        else
-            log_info "User skipped media storage setup"
-        fi
-    else
-        log_info "No unprotected drives detected, skipping storage setup"
-    fi
-
-    # Check/install Python if needed (handled by installer script)
     log_info "System tools check completed"
 
     # ============================================================
@@ -1018,14 +1002,6 @@ guided_setup_no_start() {
     log_title "Starting Guided Setup"
     log_info "User entered guided setup"
 
-    # --- Phase 0: Media storage provisioning (optional) ---
-    refresh_detect
-
-    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
-        log_title "Phase 0: Media Storage Setup"
-        storage_setup_flow
-    fi
-
     log_title "Phase 1: System Detection"
     refresh_detect
     log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"
@@ -1184,20 +1160,6 @@ guided_setup() {
     fi
     log_title "Starting Guided Setup"
     log_info "User entered guided setup"
-
-    # --- Phase 0: Media storage provisioning (optional) ---
-    # First ask if user wants to set up media storage
-    refresh_detect
-
-    if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
-        if whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" --yesno \
-            "Vulcan detected unprotected drives that can be provisioned as a media storage volume (RAID if 2+ drives).\n\nWould you like to set up media storage now?\n\nThis will:\n  - Detect all available drives\n  - Let you choose which to use\n  - Configure RAID level (RAID0/1/5/6/10)\n  - Create filesystem and mount at /mnt/media\n\nChoose No to skip and use an existing path instead." "$DLG_ROWS" "$DLG_COLS"; then
-            log_title "Phase 0: Media Storage Setup"
-            storage_setup_flow
-        else
-            log_info "User skipped media storage setup"
-        fi
-    fi
 
     log_title "Phase 1: System Detection"
     refresh_detect
