@@ -1714,6 +1714,19 @@ def _check_service_conflicts(services: set[str]) -> str | None:
     return None
 
 
+def _resolve_service_deps(services: set[str]) -> set[str]:
+    """Auto-add required dependencies from _SERVICE_DEPS to the service set."""
+    result = set(services)
+    changed = True
+    while changed:
+        changed = False
+        for service, dependency, _ in _SERVICE_DEPS:
+            if service in result and dependency not in result:
+                result.add(dependency)
+                changed = True
+    return result
+
+
 def _gather_generation_config(
     info: SystemInfo,
     tier: str | None,
@@ -2453,6 +2466,7 @@ def _gather_generation_config(
         custom_services_selected if custom_services_selected is not None
         else enabled_optional | {s.key for s in chosen_tier.services if not s.optional}
     )
+    final_services = _resolve_service_deps(final_services)
     conflict = _check_service_conflicts(final_services)
 
     if conflict:
