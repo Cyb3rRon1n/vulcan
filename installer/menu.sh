@@ -768,7 +768,7 @@ _guided_setup_quick_toggles() {
         fi
     }
 
-    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole sportarr tracearr threadfin)
+    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole sportarr tracearr threadfin cloudflared)
 
     if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
         --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole, Sportarr, Tracearr, Threadfin)\n\nChoose No to pick individually instead." \
@@ -792,6 +792,7 @@ _guided_setup_quick_toggles() {
             "sportarr"    "Sportarr - sports PVR"                   "$(_default_on sportarr off)" \
             "tracearr"    "Tracearr - stream analytics"             "$(_default_on tracearr off)" \
             "threadfin"   "Threadfin - IPTV proxy for live TV"     "$(_default_on threadfin off)" \
+            "cloudflared" "Cloudflare Tunnel (needs tunnel token)" "$(_default_on cloudflared off)" \
             3>&1 1>&2 2>&3) || CHOSEN=""
 
         # whiptail's own --checklist output is a properly double-quoted,
