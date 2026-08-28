@@ -140,6 +140,11 @@ log_title() {
 # just generated or torn down).
 refresh_detect() {
     eval "$("$VULCAN_BIN" detect)"
+    # Load .env if it exists so config checks have access to env vars
+    if [ -f "stack/.env" ]; then
+        # shellcheck disable=SC1090
+        source "stack/.env"
+    fi
 }
 
 # whiptail --yesno confirm, then run the given command with real,
