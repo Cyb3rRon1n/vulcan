@@ -207,107 +207,113 @@ confirm_and_run() {
 # duplicate logic that already exists and is already tested. Selecting
 # an inapplicable item still gives the user a clear, real answer -
 # arguably more informative than a silently disabled button.
+# --- Sub-menus -----------------------------------------------------------
+
+menu_install() {
+    while true; do
+        refresh_detect
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "Install" \
+            --menu "Choose install type:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "complete"      "Complete Setup (recommended) → storage → guided → configure → start" \
+            "guided"        "Guided Setup → detect hardware, generate stack (no start)" \
+            "storage"       "Media Storage Setup → provision blank drives as RAID/media volume" \
+            "back"          "Back to main menu" \
+            3>&1 1>&2 2>&3) || return
+        case "$choice" in
+            complete) complete_setup_flow ;;
+            guided)   guided_setup ;;
+            storage)  storage_setup_flow ;;
+            back)     return ;;
+        esac
+    done
+}
+
+menu_configure() {
+    while true; do
+        refresh_detect
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "Configure" \
+            --menu "Configure services:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "services"    "Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc." \
+            "storage"     "Reconfigure Media Storage → change RAID, mount point, drives" \
+            "back"        "Back to main menu" \
+            3>&1 1>&2 2>&3) || return
+        case "$choice" in
+            services) configure_services_flow ;;
+            storage)  storage_setup_flow ;;
+            back)     return ;;
+        esac
+    done
+}
+
+menu_stack() {
+    while true; do
+        refresh_detect
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "Stack" \
+            --menu "Stack operations:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "start"       "Start Stack → start an already-generated stack" \
+            "status"      "Stack Status → show running/healthy/failed containers" \
+            "update"      "Update Stack → pull latest images, recreate containers" \
+            "pull"        "Pull Images → prep for offline start later" \
+            "backup"      "Backup Stack → archive config/compose/env to backups/" \
+            "restore"     "Restore Stack → from most recent backup" \
+            "back"        "Back to main menu" \
+            3>&1 1>&2 2>&3) || return
+        case "$choice" in
+            start)   confirm_and_run "Start Stack" "This will start stack/docker-compose.yml, reassigning any port already in use." "$VULCAN_BIN" start ;;
+            status)  stack_status_flow ;;
+            update)  confirm_and_run "Update Stack" "This will pull the latest images and recreate containers for stack/docker-compose.yml." "$VULCAN_BIN" update --non-interactive --yes ;;
+            pull)    confirm_and_run "Pull Images" "This will pull images for stack/docker-compose.yml without starting anything." "$VULCAN_BIN" pull ;;
+            backup)  confirm_and_run "Backup Stack" "This will archive stack/config/ and the compose/env files to backups/." "$VULCAN_BIN" backup ;;
+            restore) restore_stack_flow ;;
+            back)    return ;;
+        esac
+    done
+}
+
+menu_system() {
+    while true; do
+        refresh_detect
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "System" \
+            --menu "System operations:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "update"      "Update Vulcan → fast-forward this checkout" \
+            "uninstall"   "Uninstall Stack → stop and delete stack/ entirely" \
+            "back"        "Back to main menu" \
+            3>&1 1>&2 2>&3) || return
+        case "$choice" in
+            update)     confirm_and_run "Update Vulcan" "This will fast-forward this Vulcan checkout to the latest origin/main." "$VULCAN_BIN" update-self --non-interactive --yes ;;
+            uninstall)  uninstall_flow ;;
+            back)       return ;;
+        esac
+    done
+}
+
+# --- Main Menu -----------------------------------------------------------
+
 main_menu() {
     while true; do
-
-        # Refreshed every redraw so conditional items reflect real current state
         refresh_detect
 
-        # Build menu with clear phases: SETUP → OPERATIONS → STORAGE → SYSTEM
-        menu_items=(
-            # SETUP PHASE - Linear flow for new users
-            "complete-setup"       "1. Complete Setup (recommended) → storage → guided → configure → start"
-            "guided-setup"         "2. Guided Setup → detect hardware, generate stack (no start)"
-            "configure-services"   "3. Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc."
-            "start-stack"          "4. Start Stack → start an already-generated stack"
+        local choice
+        choice=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
+            --menu "Main Menu:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "install"     "Install → Complete, Guided, Storage" \
+            "configure"   "Configure → Services, Storage" \
+            "stack"       "Stack → Start, Status, Update, Pull, Backup, Restore" \
+            "system"      "System → Update, Uninstall" \
+            "exit"        "Exit" \
+            3>&1 1>&2 2>&3) || return
 
-            # OPERATIONS
-            "update-stack"         "5. Update Stack → pull latest images, recreate containers"
-            "pull-images"          "5. Pull Images → prep for offline start later"
-            "backup-stack"         "6. Backup Stack → archive config/compose/env to backups/"
-            "restore-stack"        "7. Restore Stack → from most recent backup"
-            "stack-status"         "8. Stack Status → show running/healthy/failed containers"
-
-            # STORAGE
-            "storage-setup"        "8. Media Storage Setup → provision blank drives as media storage"
-        )
-
-        # Conditional: reset storage only when provisioned
-        if [ -z "$BLANK_STORAGE_DEVICES" ] && [ -n "$STORAGE_MOUNT" ]; then
-            menu_items+=("reset-storage" "R. Reset Media Storage → tear down provisioned storage at $STORAGE_MOUNT")
-        fi
-
-        # SYSTEM
-        menu_items+=(
-            "update-self"      "10. Update Vulcan → fast-forward this checkout"
-            "uninstall-stack"  "11. Uninstall Stack → stop and delete stack/ entirely"
-        )
-
-        menu_items+=("exit" "0. Exit")
-
-        CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Vulcan" \
-            --menu "Choose an action:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "${menu_items[@]}" \
-            3>&1 1>&2 2>&3)
-        status=$?
-
-        if [ "$status" -ne 0 ] || [ "$CHOICE" = "exit" ]; then
-            clear
-            exit 0
-        fi
-
-        case "$CHOICE" in
-            complete-setup)
-                complete_setup_flow
-                ;;
-            guided-setup)
-                guided_setup
-                ;;
-            configure-services)
-                configure_services_flow
-                ;;
-            start-stack)
-                confirm_and_run "Start Stack" \
-                    "This will start stack/docker-compose.yml, reassigning any port already in use." \
-                    "$VULCAN_BIN" start
-                ;;
-            update-stack)
-                confirm_and_run "Update Stack" \
-                    "This will pull the latest images and recreate containers for stack/docker-compose.yml." \
-                    "$VULCAN_BIN" update --non-interactive --yes
-                ;;
-            pull-images)
-                confirm_and_run "Pull Images" \
-                    "This will pull images for stack/docker-compose.yml without starting anything." \
-                    "$VULCAN_BIN" pull
-                ;;
-            backup-stack)
-                confirm_and_run "Backup Stack" \
-                    "This will archive stack/config/ and the compose/env files to backups/." \
-                    "$VULCAN_BIN" backup
-                ;;
-            restore-stack)
-                restore_stack_flow
-                ;;
-            stack-status)
-                stack_status_flow
-                ;;
-            storage-setup)
-                storage_setup_flow
-                ;;
-            reset-storage)
-                storage_teardown_flow
-                ;;
-            update-self)
-                confirm_and_run "Update Vulcan" \
-                    "This will fast-forward this Vulcan checkout to the latest origin/main." \
-                    "$VULCAN_BIN" update-self --non-interactive --yes
-                ;;
-            uninstall-stack)
-                uninstall_flow
-                ;;
+        case "$choice" in
+            install)    menu_install ;;
+            configure)  menu_configure ;;
+            stack)      menu_stack ;;
+            system)     menu_system ;;
+            exit)       clear; exit 0 ;;
         esac
-
     done
 }
 
