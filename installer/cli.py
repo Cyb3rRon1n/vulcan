@@ -2104,21 +2104,37 @@ def _gather_generation_config(
             enable_vpn = vpn
 
         if enable_vpn:
-            # Prompt for VPN credentials if not already provided
+            # Read VPN credentials from environment if set (by TUI), otherwise prompt
+            vpn_service_provider = os.environ.get("VPN_SERVICE_PROVIDER")
+            vpn_type = os.environ.get("VPN_TYPE")
+            wireguard_private_key = os.environ.get("WIREGUARD_PRIVATE_KEY")
+            wireguard_addresses = os.environ.get("WIREGUARD_ADDRESSES")
+            openvpn_user = os.environ.get("OPENVPN_USER")
+            openvpn_password = os.environ.get("OPENVPN_PASSWORD")
+
+            # Prompt for VPN credentials if not already provided via environment
             if vpn is None and not non_interactive:
-                console.print("\n[bold]Gluetun VPN Configuration[/bold]")
-                console.print("You'll need your VPN provider's credentials. See:")
-                console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
+                if not vpn_service_provider or not vpn_type:
+                    console.print("\n[bold]Gluetun VPN Configuration[/bold]")
+                    console.print("You'll need your VPN provider's credentials. See:")
+                    console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
 
-                vpn_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
-                vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
+                    vpn_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
+                    vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
 
-                if vpn_type == "wireguard":
-                    wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
-                    wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
+                    if vpn_type == "wireguard":
+                        wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
+                        wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
+                    else:
+                        openvpn_user = typer.prompt("OpenVPN Username", default="")
+                        openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
                 else:
-                    openvpn_user = typer.prompt("OpenVPN Username", default="")
-                    openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
+                    vpn_service_provider = vpn_service_provider
+                    vpn_type = vpn_type
+                    wireguard_private_key = wireguard_private_key
+                    wireguard_addresses = wireguard_addresses
+                    openvpn_user = os.environ.get("OPENVPN_USER")
+                    openvpn_password = os.environ.get("OPENVPN_PASSWORD")
 
             enabled_optional.add("gluetun")
 
@@ -2506,7 +2522,13 @@ def _gather_generation_config(
         auth_users=auth_users_value,
         port_overrides=dict(previous["port_overrides"]) if previous and previous.get("port_overrides") else {},
         homepage_private=homepage_private_value,
-        dashy_private=dashy_private_value
+        dashy_private=dashy_private_value,
+        vpn_service_provider=vpn_service_provider,
+        vpn_type=vpn_type,
+        wireguard_private_key=wireguard_private_key,
+        wireguard_addresses=wireguard_addresses,
+        openvpn_user=openvpn_user,
+        openvpn_password=openvpn_password
     )
 
 
