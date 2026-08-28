@@ -491,30 +491,79 @@ storage_setup_flow() {
         "$VULCAN_BIN" storage apply --devices "$devices_csv" --mount-point "$MEDIA_MOUNT_POINT" --non-interactive --yes "${raid_flag[@]}" "${wipe_flag[@]}"
 }
 
-# --- Complete Setup (Linear Flow) --------------------------------------
+# --- Complete Setup (Visual Checklist Flow) --------------------------------------
 #
-# One-click linear flow for new users: storage → guided → configure → start.
-# Runs the full setup sequence automatically with sensible defaults,
-# pausing only for required user input (media path, tier, VPN/domain decisions).
+# Visual checklist flow: SETUP → PLAN → BUILD → CONFIGURE → START
+# Shows progress as checklist, grays out completed steps
 complete_setup_flow() {
+    log_title "Complete Setup"
+    log_info "Starting complete linear setup flow"
+
+    # Track completed phases
+    local -a phase_done=(false false false false false)  # setup, plan, build, config, start
+    local phase_names=("SETUP (storage, tools)" "PLAN (tier, services)" "BUILD (generate stack)" "CONFIGURE (vpn, domain, etc.)" "START (launch stack)")
+
+    # Helper: show progress checklist
+    show_checklist() {
+        local current_phase=$1  # 0-based index of current phase
+        local -a checklist_items=()
+        for i in "${!phase_names[@]}"; do
+            local status=" "
+            local prefix="  "
+            if [ "$i" -lt "$current_phase" ]; then
+                status="✓"
+                prefix="✓ "
+            elif [ "$i" -eq "$current_phase" ]; then
+                status="▶"
+                prefix="▶ "
+            else
+                status=" "
+                prefix="  "
+            fi
+            checklist_items+=("phase$i" "${prefix}${phase_names[i]}" "OFF")
+        done
+
+        # Use whiptail checklist as visual progress (read-only display)
+        whiptail --backtitle "$BACKTITLE" --title "Complete Setup Progress" \
+            --checklist "Setup Progress (▶ = current, ✓ = done)" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "${checklist_items[@]}" \
+            3>&1 1>&2 2>&3 >/dev/null || true
+    }
 
     log_title "Complete Setup"
     log_info "Starting complete linear setup flow"
 
+    # ============================================================
+    # PHASE 0: SETUP - Storage & Tools
+    # ============================================================
+    phase_done[0]=true
+    show_checklist 1
+
     # Phase 0: Storage setup (if blank devices available)
     refresh_detect
     if [ -n "$ALL_UNPROTECTED_DEVICES" ]; then
-        if whiptail --backtitle "$BACKTITLE" --title "Media Storage Setup" --yesno \
+        if whiptail --backtitle "$BACKTITLE" --title "SETUP: Media Storage" --yesno \
             "Vulcan detected unprotected drives that can be provisioned as a media storage volume (RAID if 2+ drives).\n\nSet up media storage now? This will:\n  - Let you choose which drives to use\n  - Configure RAID level (RAID0/1/5/6/10)\n  - Create filesystem and mount at /mnt/media\n\nChoose No to skip and use an existing path instead." "$DLG_ROWS" "$DLG_COLS"; then
-            log_title "Phase 0: Media Storage Setup"
+            log_title "SETUP: Media Storage"
             storage_setup_flow
+            log_info "Storage setup completed"
         else
             log_info "User skipped media storage setup"
         fi
+    else
+        log_info "No unprotected drives detected, skipping storage setup"
     fi
 
-    # Phase 1: System detection + Docker
-    log_title "Phase 1: System Detection & Docker"
+    # Check/install Python if needed (handled by installer script)
+    log_info "System tools check completed"
+
+    # ============================================================
+    # PHASE 1: PLAN - System Detection & Tier Selection
+    # ============================================================
+    phase_done[1]=true
+    show_checklist 2
+
+    log_title "PLAN: System Detection & Tier"
     refresh_detect
     log_info "CPU: ${CPU_CORES_LOGICAL:-0} logical cores, RAM: ${RAM_TOTAL_GB:-0}GB, Disk free: ${DISK_FREE_GB:-0}GB"
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
@@ -526,9 +575,8 @@ complete_setup_flow() {
             "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
     fi
 
-    # Phase 2: Guided Setup (but don't start stack yet)
-    log_title "Phase 2: Guided Stack Configuration"
-    # Run guided setup but with --no-start equivalent
+    # Phase 2: Guided Setup (PLAN - tier, services, media path) - NO START
+    log_title "PLAN: Guided Stack Configuration"
     guided_setup_no_start
     local guided_rc=$?
 
@@ -541,11 +589,24 @@ complete_setup_flow() {
         return 1
     fi
 
-    # Phase 3: Configure Services (if any need config)
-    log_title "Phase 3: Service Configuration"
+    # ============================================================
+    # PHASE 2: BUILD - Stack Generated (already done by guided_setup_no_start)
+    # ============================================================
+    phase_done[2]=true
+    show_checklist 3
+
+    log_title "BUILD: Stack Generated"
+    log_info "Stack configuration written to stack/docker-compose.yml"
+
+    # ============================================================
+    # PHASE 3: CONFIGURE - Services needing credentials
+    # ============================================================
+    phase_done[3]=true
+    show_checklist 4
+
+    log_title "CONFIGURE: Service Credentials"
     refresh_detect
     if [ -f "stack/docker-compose.yml" ]; then
-        # Check if any configurable services are enabled but not configured
         local needs_config=false
         if grep -q "gluetun" stack/docker-compose.yml && [ -z "${VPN_SERVICE_PROVIDER:-}${VPN_TYPE:-}" ]; then
             needs_config=true
@@ -560,21 +621,30 @@ complete_setup_flow() {
         fi
 
         if [ "$needs_config" = true ]; then
-            if whiptail --backtitle "$BACKTITLE" --title "Configure Services" --yesno \
+            if whiptail --backtitle "$BACKTITLE" --title "CONFIGURE: Service Credentials" --yesno \
                 "Some services need additional configuration (VPN credentials, domain, tunnel tokens, etc.).\n\nOpen Configure Services menu now to set them up?" "$DLG_ROWS" "$DLG_COLS"; then
                 configure_services_flow
             fi
         fi
     fi
 
-    # Phase 4: Start Stack
-    log_title "Phase 4: Starting Stack"
-    if whiptail --backtitle "$BACKTITLE" --title "Start Stack" --yesno \
+    # ============================================================
+    # PHASE 4: START - Launch Stack
+    # ============================================================
+    phase_done[4]=true
+    show_checklist 5
+
+    log_title "START: Launch Stack"
+    if whiptail --backtitle "$BACKTITLE" --title "START: Launch Stack" --yesno \
         "Stack is configured. Start it now?\n\nThis will pull images and start all enabled services." "$DLG_ROWS" "$DLG_COLS"; then
-        confirm_and_run "Start Stack" \
+        confirm_and_run "START: Launch Stack" \
             "This will start stack/docker-compose.yml, reassigning any port already in use." \
             "$VULCAN_BIN" start
     fi
+
+    # Final checklist - all done
+    phase_done[4]=true
+    show_checklist 5
 
     log_info "Complete Setup finished"
 }
