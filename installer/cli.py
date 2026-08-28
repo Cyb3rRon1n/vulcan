@@ -781,6 +781,7 @@ def start():
         tier=None,
         media_path=None,
         vpn=None,
+        cloudflared=None,
         sabnzbd=None,
         recyclarr=None,
         homepage=None,
@@ -1405,7 +1406,7 @@ def run_install(
         panel.advance()
 
         config = _gather_generation_config(
-            info, tier, media_path, vpn, sabnzbd, recyclarr, homepage,
+            info, tier, media_path, vpn, cloudflared, sabnzbd, recyclarr, homepage,
             homepage_private, metube, downtify, netdata, vaultwarden, dashy,
             dashy_private, pihole, sportarr, tracearr, threadfin, gpu,
             puid, pgid, timezone, non_interactive, previous,
@@ -1718,6 +1719,7 @@ def _gather_generation_config(
     tier: str | None,
     media_path: str | None,
     vpn: bool | None,
+    cloudflared: bool | None,
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
