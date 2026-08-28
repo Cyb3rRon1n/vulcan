@@ -1537,6 +1537,21 @@ _guided_setup_customize_services() {
     # Build final joined list
     local joined=""
     local item
+
+    # Auto-enable dependencies before building final list
+    # cloudflared requires traefik
+    if [[ -n "${SELECTED_MAP[cloudflared]:-}" ]] && [[ -z "${SELECTED_MAP[traefik]:-}" ]]; then
+        SELECTED_MAP[traefik]=1
+    fi
+    # authelia requires traefik
+    if [[ -n "${SELECTED_MAP[authelia]:-}" ]] && [[ -z "${SELECTED_MAP[traefik]:-}" ]]; then
+        SELECTED_MAP[traefik]=1
+    fi
+    # crowdsec requires traefik
+    if [[ -n "${SELECTED_MAP[crowdsec]:-}" ]] && [[ -z "${SELECTED_MAP[traefik]:-}" ]]; then
+        SELECTED_MAP[traefik]=1
+    fi
+
     for item in "${!SELECTED_MAP[@]}"; do
         joined="${joined:+$joined,}$item"
     done
