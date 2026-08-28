@@ -1267,6 +1267,7 @@ guided_setup_no_start() {
 
     return "$rc"
 
+
 # --- Guided Setup ------------------------------------------------------
 #
 # The main guided setup that includes the option to start the stack.
