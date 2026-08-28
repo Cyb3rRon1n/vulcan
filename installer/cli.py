@@ -2104,6 +2104,22 @@ def _gather_generation_config(
             enable_vpn = vpn
 
         if enable_vpn:
+            # Prompt for VPN credentials if not already provided
+            if vpn is None and not non_interactive:
+                console.print("\n[bold]Gluetun VPN Configuration[/bold]")
+                console.print("You'll need your VPN provider's credentials. See:")
+                console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
+
+                vpn_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
+                vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
+
+                if vpn_type == "wireguard":
+                    wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
+                    wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
+                else:
+                    openvpn_user = typer.prompt("OpenVPN Username", default="")
+                    openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
+
             enabled_optional.add("gluetun")
 
     if custom_services_selected is None:

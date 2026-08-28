@@ -208,6 +208,13 @@ class GenerationConfig:
     port_overrides: dict[str, int] = field(default_factory=dict)
     homepage_private: bool = False
     dashy_private: bool = False
+    # VPN (gluetun) configuration
+    vpn_service_provider: str | None = None
+    vpn_type: str | None = None
+    wireguard_private_key: str | None = None
+    wireguard_addresses: str | None = None
+    openvpn_user: str | None = None
+    openvpn_password: str | None = None
 
 
 def resolve_ports(config: GenerationConfig) -> dict[str, int]:

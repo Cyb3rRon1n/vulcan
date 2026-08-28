@@ -180,9 +180,10 @@ confirm_and_run() {
 
     echo
     if [ "$status" -eq 0 ]; then
-        echo "Done."
+        echo "✓ Done."
     else
-        echo "Failed (exit $status) - see output above."
+        echo "✗ Failed (exit $status) - see output above."
+        echo "  Tip: Check 'docker compose -f stack/docker-compose.yml logs <service>' for details."
     fi
 
     # Guided Setup's own success path flows straight into the Setup
@@ -1041,6 +1042,51 @@ guided_setup_no_start() {
     else
         _guided_setup_quick_toggles
     fi
+
+    # If gluetun (VPN) was selected, prompt for credentials now
+    if [[ " ${TOGGLE_FLAGS[@]} " =~ " --vpn " ]]; then
+        if [ -z "${VPN_SERVICE_PROVIDER:-}" ] || [ -z "${VPN_TYPE:-}" ]; then
+            if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno 
+                "Gluetun VPN was selected but no VPN credentials were provided.
+
+You must provide VPN credentials for the stack to start successfully.
+
+Would you like to configure VPN credentials now?" "$DLG_ROWS" "$DLG_COLS"; then
+                VPN_SERVICE_PROVIDER=$(whiptail --backtitle "$BACKTITLE" --title "VPN Provider" 
+                    --inputbox "VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)" "$DLG_ROWS" "$DLG_COLS" "" 
+                    3>&1 1>&2 2>&3) || return
+                VPN_TYPE=$(whiptail --backtitle "$BACKTITLE" --title "VPN Type" 
+                    --radiolist "Select VPN type:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" 
+                    "wireguard" "WireGuard (recommended)" "ON" 
+                    "openvpn" "OpenVPN" "OFF" 
+                    3>&1 1>&2 2>&3) || return
+                
+                if [ "$VPN_TYPE" = "wireguard" ]; then
+                    WIREGUARD_PRIVATE_KEY=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Key" 
+                        --passwordbox "WireGuard Private Key" "$DLG_ROWS" "$DLG_COLS" "" 
+                        3>&1 1>&2 2>&3) || return
+                    WIREGUARD_ADDRESSES=$(whiptail --backtitle "$BACKTITLE" --title "WireGuard Addresses" 
+                        --inputbox "WireGuard Addresses (e.g. 10.0.0.2/24)" "$DLG_ROWS" "$DLG_COLS" "" 
+                        3>&1 1>&2 2>&3) || return
+                else
+                    OPENVPN_USER=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN User" 
+                        --inputbox "OpenVPN Username" "$DLG_ROWS" "$DLG_COLS" "" 
+                        3>&1 1>&2 2>&3) || return
+                    OPENVPN_PASSWORD=$(whiptail --backtitle "$BACKTITLE" --title "OpenVPN Password" 
+                        --passwordbox "OpenVPN Password" "$DLG_ROWS" "$DLG_COLS" "" 
+                        3>&1 1>&2 2>&3) || return
+                fi
+                
+                export VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES OPENVPN_USER OPENVPN_PASSWORD
+            else
+                whiptail --backtitle "$BACKTITLE" --title "VPN Required" --msgbox 
+                    "Gluetun requires VPN credentials to function. Disabling VPN for this installation." 
+                    "$DLG_ROWS" "$DLG_COLS"
+                TOGGLE_FLAGS=( "${TOGGLE_FLAGS[@]/--vpn/--no-vpn}" )
+            fi
+        fi
+    fi
+
 
     PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
         --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" "$DLG_ROWS" "$DLG_COLS" "$default_puid_value" \
