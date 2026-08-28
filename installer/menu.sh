@@ -225,6 +225,7 @@ main_menu() {
             "pull-images"          "6. Pull Images → prep for offline start later"
             "backup-stack"         "7. Backup Stack → archive config/compose/env to backups/"
             "restore-stack"        "8. Restore Stack → from most recent backup"
+            "stack-status"         "9. Stack Status → show running/healthy/failed containers"
 
             # STORAGE
             "storage-setup"        "9. Media Storage Setup → provision blank drives as media storage"
@@ -289,6 +290,9 @@ main_menu() {
                 ;;
             restore-stack)
                 restore_stack_flow
+                ;;
+            stack-status)
+                stack_status_flow
                 ;;
             storage-setup)
                 storage_setup_flow
@@ -516,8 +520,17 @@ complete_setup_flow() {
     # Phase 2: Guided Setup (but don't start stack yet)
     log_title "Phase 2: Guided Stack Configuration"
     # Run guided setup but with --no-start equivalent
-    # We'll call the guided setup logic directly but suppress the final start
     guided_setup_no_start
+    local guided_rc=$?
+
+    if [ $guided_rc -ne 0 ]; then
+        log_error "Guided setup failed or was cancelled (exit $guided_rc)"
+        if whiptail --backtitle "$BACKTITLE" --title "Setup Incomplete" --yesno \
+            "Guided setup was cancelled or failed. Storage may have been provisioned.\n\nReturn to main menu to retry or clean up?" "$DLG_ROWS" "$DLG_COLS"; then
+            return 1
+        fi
+        return 1
+    fi
 
     # Phase 3: Configure Services (if any need config)
     log_title "Phase 3: Service Configuration"
@@ -555,6 +568,88 @@ complete_setup_flow() {
     fi
 
     log_info "Complete Setup finished"
+}
+
+# --- Stack Status -------------------------------------------------------
+#
+# Shows real-time container status with health checks.
+stack_status_flow() {
+
+    refresh_detect
+
+    if [ ! -f "stack/docker-compose.yml" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Stack Status" \
+            --msgbox "No stack found. Run Guided Setup or Complete Setup first." "$DLG_ROWS" "$DLG_COLS"
+        return 0
+    fi
+
+    local compose_file="stack/docker-compose.yml"
+
+    # Get container status using docker compose ps --format json
+    local status_output
+    status_output=$(docker compose -f "$compose_file" ps --format json 2>/dev/null || echo "")
+
+    if [ -z "$status_output" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Stack Status" \
+            --msgbox "No containers found for this stack. Run 'Start Stack' to begin." "$DLG_ROWS" "$DLG_COLS"
+        return 0
+    fi
+
+    # Parse JSON output and build status table
+    local -a status_lines=()
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        local name image status health ports
+        name=$(echo "$line" | jq -r '.Name // .Service // "unknown"')
+        image=$(echo "$line" | jq -r '.Image // "unknown"')
+        status=$(echo "$line" | jq -r '.State // "unknown"')
+        health=$(echo "$line" | jq -r '.Health // "none"')
+        ports=$(echo "$line" | jq -r '.Publishers // [] | map(.URL) | join(", ")')
+
+        local status_icon
+        case "$status" in
+            running)
+                if [ "$health" = "healthy" ]; then
+                    status_icon="✓"
+                elif [ "$health" = "unhealthy" ]; then
+                    status_icon="✗"
+                elif [ "$health" = "starting" ]; then
+                    status_icon="⟳"
+                else
+                    status_icon="●"
+                fi
+                ;;
+            exited|dead) status_icon="✗" ;;
+            created) status_icon="○" ;;
+            restarting) status_icon="⟳" ;;
+            *) status_icon="?" ;;
+        esac
+
+        local health_display=""
+        [ "$health" != "none" ] && [ "$health" != "null" ] && health_display=" ($health)"
+
+        local port_display=""
+        [ -n "$ports" ] && [ "$ports" != "null" ] && [ "$ports" != "[]" ] && port_display=" → $ports"
+
+        status_lines+=("$status_icon $name$health_display$port_display")
+    done <<< "$status_output"
+
+    if [ ${#status_lines[@]} -eq 0 ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Stack Status" \
+            --msgbox "No containers found." "$DLG_ROWS" "$DLG_COLS"
+        return 0
+    fi
+
+    # Build scrollable msgbox content
+    local msg="Stack Status (from docker compose ps):\n\n"
+    for line in "${status_lines[@]}"; do
+        msg+="$line\n"
+    done
+    msg+="\nLegend: ✓ healthy ● running ⟳ starting/restarting ✗ failed/unhealthy ○ created\n\n"
+    msg+="Tip: Run 'docker compose -f stack/docker-compose.yml logs <service>' for details."
+
+    whiptail --backtitle "$BACKTITLE" --title "Stack Status" \
+        --msgbox "$msg" "$DLG_ROWS" "$DLG_COLS" --scrolltext
 }
 
 # --- Media Storage Teardown ------------------------------------------
@@ -603,92 +698,97 @@ storage_teardown_flow() {
 # and restart affected services.
 configure_services_flow() {
 
-    refresh_detect
-
-    if [ ! -f "stack/docker-compose.yml" ]; then
-        whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
-            --msgbox "No stack found. Run Guided Setup first." "$DLG_ROWS" "$DLG_COLS"
-        return 0
-    fi
-
-    # Check which services needing config are enabled
-    local -a config_items=()
-    local -a config_descriptions=()
-
-    # Load current .env to see what's already set
-    local env_file="stack/.env"
-    if [ -f "$env_file" ]; then
-        # shellcheck disable=SC1090
-        source "$env_file"
-    fi
-
-    # gluetun - needs VPN credentials
-    if grep -q "gluetun" stack/docker-compose.yml; then
-        local status="NOT CONFIGURED"
-        [ -n "${VPN_SERVICE_PROVIDER:-}" ] && [ -n "${VPN_TYPE:-}" ] && [ -n "${WIREGUARD_PRIVATE_KEY:-}${OPENVPN_USER:-}${OPENVPN_PASSWORD:-}" ] && status="CONFIGURED"
-        config_items+=("gluetun" "Gluetun VPN - $status (needs VPN provider credentials)")
-    fi
-
-    # cloudflared - needs tunnel token
-    if grep -q "cloudflared" stack/docker-compose.yml; then
-        local status="NOT CONFIGURED"
-        [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ] && status="CONFIGURED"
-        config_items+=("cloudflared" "Cloudflare Tunnel - $status (needs tunnel token from Cloudflare Zero Trust)")
-    fi
-
-    # tailscale - needs auth key
-    if grep -q "tailscale" stack/docker-compose.yml; then
-        local status="NOT CONFIGURED"
-        [ -n "${TAILSCALE_AUTHKEY:-}" ] && status="CONFIGURED"
-        config_items+=("tailscale" "Tailscale - $status (needs auth key from Tailscale admin console)")
-    fi
-
-    # traefik - needs domain (handled in guided setup, but check DNS)
-    if grep -q "traefik" stack/docker-compose.yml; then
-        local status="NOT CONFIGURED"
-        [ -n "${DOMAIN:-}" ] && status="DOMAIN SET"
-        config_items+=("traefik" "Traefik - $status (needs domain + DNS A records pointing to this host)")
-    fi
-
-    # authelia - needs admin user (done in guided setup)
-    if grep -q "authelia" stack/docker-compose.yml; then
-        local status="CONFIGURED"
-        [ ! -f "stack/config/authelia/users_database.yml" ] && status="NOT CONFIGURED"
-        config_items+=("authelia" "Authelia SSO - $status (admin user created during setup)")
-    fi
-
-    # pihole - needs admin password
-    if grep -q "pihole" stack/docker-compose.yml; then
-        local status="NOT CONFIGURED"
-        [ -n "${PIHOLE_PASSWORD:-}" ] && status="CONFIGURED"
-        config_items+=("pihole" "Pi-hole - $status (needs admin password)")
-    fi
-
-    if [ ${#config_items[@]} -eq 0 ]; then
-        whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
-            --msgbox "No configurable services found in the current stack." "$DLG_ROWS" "$DLG_COLS"
-        return 0
-    fi
-
-    # Build menu
-    local -a menu_items=()
-    for ((i=0; i<${#config_items[@]}; i+=2)); do
-        menu_items+=("${config_items[i]}" "${config_items[i+1]}")
-    done
-    menu_items+=("done" "Done - return to main menu")
-
     while true; do
+        refresh_detect
+
+        if [ ! -f "stack/docker-compose.yml" ]; then
+            whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
+                --msgbox "No stack found. Run Guided Setup first." "$DLG_ROWS" "$DLG_COLS"
+            return 0
+        fi
+
+        # Load current .env to see what's already set
+        local env_file="stack/.env"
+        if [ -f "$env_file" ]; then
+            # shellcheck disable=SC1090
+            source "$env_file"
+        fi
+
+        # Check which services needing config are enabled
+        local -a config_items=()
+
+        # gluetun - needs VPN credentials
+        if grep -q "gluetun" stack/docker-compose.yml; then
+            local status="NOT CONFIGURED"
+            [ -n "${VPN_SERVICE_PROVIDER:-}" ] && [ -n "${VPN_TYPE:-}" ] && [ -n "${WIREGUARD_PRIVATE_KEY:-}${OPENVPN_USER:-}${OPENVPN_PASSWORD:-}" ] && status="CONFIGURED"
+            config_items+=("gluetun" "Gluetun VPN - $status (needs VPN provider credentials)")
+        fi
+
+        # cloudflared - needs tunnel token
+        if grep -q "cloudflared" stack/docker-compose.yml; then
+            local status="NOT CONFIGURED"
+            [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ] && status="CONFIGURED"
+            config_items+=("cloudflared" "Cloudflare Tunnel - $status (needs tunnel token from Cloudflare Zero Trust)")
+        fi
+
+        # tailscale - needs auth key
+        if grep -q "tailscale" stack/docker-compose.yml; then
+            local status="NOT CONFIGURED"
+            [ -n "${TAILSCALE_AUTHKEY:-}" ] && status="CONFIGURED"
+            config_items+=("tailscale" "Tailscale - $status (needs auth key from Tailscale admin console)")
+        fi
+
+        # traefik - needs domain (handled in guided setup, but check DNS)
+        if grep -q "traefik" stack/docker-compose.yml; then
+            local status="NOT CONFIGURED"
+            [ -n "${DOMAIN:-}" ] && status="DOMAIN SET"
+            config_items+=("traefik" "Traefik - $status (needs domain + DNS A records pointing to this host)")
+        fi
+
+        # authelia - needs admin user (done in guided setup)
+        if grep -q "authelia" stack/docker-compose.yml; then
+            local status="CONFIGURED"
+            [ ! -f "stack/config/authelia/users_database.yml" ] && status="NOT CONFIGURED"
+            config_items+=("authelia" "Authelia SSO - $status (admin user created during setup)")
+        fi
+
+        # pihole - needs admin password
+        if grep -q "pihole" stack/docker-compose.yml; then
+            local status="NOT CONFIGURED"
+            [ -n "${PIHOLE_PASSWORD:-}" ] && status="CONFIGURED"
+            config_items+=("pihole" "Pi-hole - $status (needs admin password)")
+        fi
+
+        if [ ${#config_items[@]} -eq 0 ]; then
+            whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
+                --msgbox "No configurable services found in the current stack." "$DLG_ROWS" "$DLG_COLS"
+            return 0
+        fi
+
+        # Build menu
+        local -a menu_items=()
+        for ((i=0; i<${#config_items[@]}; i+=2)); do
+            menu_items+=("${config_items[i]}" "${config_items[i+1]}")
+        done
+        menu_items+=("refresh" "⟳ Refresh Status - re-check all services")
+        menu_items+=("done" "Done - return to main menu")
+
         local choice
         choice=$(whiptail --backtitle "$BACKTITLE" --title "Configure Services" \
-            --menu "Select a service to view setup instructions:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            --menu "Select a service to configure (shows CONFIGURED/NOT CONFIGURED):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
             "${config_items[@]}" \
             3>&1 1>&2 2>&3) || return 0
 
         [ "$choice" = "done" ] && break
 
+        if [ "$choice" = "refresh" ]; then
+            continue  # Loop will re-run with fresh .env
+        fi
+
         case "$choice" in
             gluetun)
-                whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Setup" --msgbox \
+                if ! prompt_edit_then_restart "gluetun" \
+                    "Gluetun VPN Setup" \
                     "Gluetun needs your VPN provider credentials in stack/.env:\n\n\
 1. Edit stack/.env and set:\n\
    VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n\
@@ -697,44 +797,47 @@ For WireGuard:\n\
    WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\n\
 For OpenVPN:\n\
    OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\n\
-Full provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n\n\
-After editing .env: docker compose -f stack/docker-compose.yml up -d gluetun" \
-                    "$DLG_ROWS" "$DLG_COLS"
+Full provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers"; then
+                    continue
+                fi
                 ;;
             cloudflared)
-                whiptail --backtitle "$BACKTITLE" --title "Cloudflare Tunnel Setup" --msgbox \
+                if ! prompt_edit_then_restart "cloudflared" \
+                    "Cloudflare Tunnel Setup" \
                     "Cloudflare Tunnel needs a tunnel token from Cloudflare Zero Trust:\n\n\
 1. Go to https://one.dash.cloudflare.com → Access → Tunnels\n\
 2. Create a tunnel → Copy the token (starts with ey...)\n\
 3. Edit stack/.env and set:\n\
    CLOUDFLARE_TUNNEL_TOKEN=<your_token>\n\n\
-4. docker compose -f stack/docker-compose.yml up -d cloudflared\n\n\
-Note: Tunnel must have public hostnames configured for your services." \
-                    "$DLG_ROWS" "$DLG_COLS"
+Note: Tunnel must have public hostnames configured for your services."; then
+                    continue
+                fi
                 ;;
             tailscale)
-                whiptail --backtitle "$BACKTITLE" --title "Tailscale Setup" --msgbox \
+                if ! prompt_edit_then_restart "tailscale" \
+                    "Tailscale Setup" \
                     "Tailscale needs an auth key:\n\n\
 1. Go to https://login.tailscale.com/admin/settings/keys\n\
 2. Generate an auth key (reusable, ephemeral, pre-authorized)\n\
 3. Edit stack/.env and set:\n\
    TAILSCALE_AUTHKEY=<your_auth_key>\n\n\
-4. docker compose -f stack/docker-compose.yml up -d tailscale\n\n\
-Optional: TAILSCALE_HOSTNAME=<custom_name>" \
-                    "$DLG_ROWS" "$DLG_COLS"
+Optional: TAILSCALE_HOSTNAME=<custom_name>"; then
+                    continue
+                fi
                 ;;
             traefik)
-                whiptail --backtitle "$BACKTITLE" --title "Traefik Domain Setup" --msgbox \
+                if ! prompt_edit_then_restart "traefik" \
+                    "Traefik Domain Setup" \
                     "Traefik needs a domain with DNS pointing to this host:\n\n\
 1. Own a domain (e.g. example.com)\n\
 2. Create DNS A records pointing to this host's public IP:\n\
    *.example.com → YOUR_PUBLIC_IP\n\
 3. Edit stack/.env and set:\n\
    DOMAIN=example.com\n\n\
-4. For real Let's Encrypt certs (optional):\n\
-   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)\n\n\
-5. docker compose -f stack/docker-compose.yml up -d traefik" \
-                    "$DLG_ROWS" "$DLG_COLS"
+3. For real Let's Encrypt certs (optional):\n\
+   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)"; then
+                    continue
+                fi
                 ;;
             authelia)
                 whiptail --backtitle "$BACKTITLE" --title "Authelia SSO Setup" --msgbox \
@@ -747,17 +850,63 @@ Access: https://authelia.${DOMAIN:-yourdomain.com}" \
                     "$DLG_ROWS" "$DLG_COLS"
                 ;;
             pihole)
-                whiptail --backtitle "$BACKTITLE" --title "Pi-hole Setup" --msgbox \
+                if ! prompt_edit_then_restart "pihole" \
+                    "Pi-hole Setup" \
                     "Pi-hole needs an admin password:\n\n\
 1. Edit stack/.env and set:\n\
    PIHOLE_PASSWORD=<your_admin_password>\n\n\
-2. docker compose -f stack/docker-compose.yml up -d pihole\n\n\
-3. Access: http://<host_ip>:8083/admin (or https://pihole.${DOMAIN:-yourdomain.com} if Traefik+domain)\n\n\
-Default login: admin / your_password" \
-                    "$DLG_ROWS" "$DLG_COLS"
+Default login: admin / your_password"; then
+                    continue
+                fi
                 ;;
         esac
     done
+}
+
+# Helper: Show instructions, then offer to restart service after user edits .env
+prompt_edit_then_restart() {
+    local service="$1"
+    local title="$2"
+    local instructions="$3"
+
+    while true; do
+        whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
+            "$instructions\n\n\
+After editing .env, choose an option below:" "$DLG_ROWS" "$DLG_COLS"
+
+        local action
+        action=$(whiptail --backtitle "$BACKTITLE" --title "$title" \
+            --menu "What would you like to do?" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+            "edit" "I've edited .env - restart $service now" \
+            "recheck" "⟳ Re-check status (reload .env)" \
+            "back" "Return to service menu" \
+            3>&1 1>&2 2>&3) || return 1
+
+        case "$action" in
+            edit)
+                # Reload .env and restart the service
+                if [ -f "stack/.env" ]; then
+                    # shellcheck disable=SC1090
+                    source "stack/.env"
+                fi
+                if docker compose -f stack/docker-compose.yml up -d "$service" 2>/dev/null; then
+                    whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
+                        "$service restarted successfully.\n\nRe-checking status..." "$DLG_ROWS" "$DLG_COLS"
+                else
+                    whiptail --backtitle "$BACKTITLE" --title "$title - Error" --msgbox \
+                        "Failed to restart $service. Check logs:\n  docker compose -f stack/docker-compose.yml logs $service" "$DLG_ROWS" "$DLG_COLS"
+                fi
+                ;;
+            recheck)
+                continue  # Loop will re-check status
+                ;;
+            back)
+                return 1
+                ;;
+        esac
+    done
+
+    return 0
 }
 
 # --- Restore --------------------------------------------------------
