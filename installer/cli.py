@@ -1112,6 +1112,10 @@ def main(
     non_interactive: bool = typer.Option(False, "--non-interactive"),
     yes: bool = typer.Option(False, "--yes"),
     vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
+    cloudflared: bool | None = typer.Option(
+        None, "--cloudflared/--no-cloudflared",
+        help="Cloudflare Tunnel for secure remote access - requires Cloudflare account and tunnel token"
+    ),
     sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
     recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
     homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
@@ -1226,6 +1230,7 @@ def main(
         non_interactive=non_interactive,
         yes=yes,
         vpn=vpn,
+        cloudflared=cloudflared,
         sabnzbd=sabnzbd,
         recyclarr=recyclarr,
         homepage=homepage,
@@ -1263,6 +1268,7 @@ def run_install(
     non_interactive: bool,
     yes: bool,
     vpn: bool | None,
+    cloudflared: bool | None,
     sabnzbd: bool | None,
     recyclarr: bool | None,
     homepage: bool | None,
@@ -2073,6 +2079,26 @@ def _gather_generation_config(
 
         if enable_vpn:
             enabled_optional.add("gluetun")
+
+    if custom_services_selected is None:
+
+        console.print("\n[bold]Infrastructure[/bold]")
+
+        cloudflared_default = "cloudflared" in previous["enabled_optional"] if previous else False
+
+        if cloudflared is None:
+
+            enable_cloudflared = cloudflared_default if non_interactive else typer.confirm(
+                "Enable Cloudflare Tunnel? Requires a Cloudflare account and tunnel token. "
+                "See https://github.com/cloudflare/cloudflared for setup.",
+                default=cloudflared_default
+            )
+
+        else:
+            enable_cloudflared = cloudflared
+
+        if enable_cloudflared:
+            enabled_optional.add("cloudflared")
 
     if custom_services_selected is None:
 
