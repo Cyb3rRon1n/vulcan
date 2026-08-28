@@ -603,6 +603,15 @@ services:
       - ./config/seerr:/app/config
     ports:
       - "{{ ports['seerr'] }}:5055"
+{% if 'jellyfin' in enabled %}
+    depends_on:
+      jellyfin:
+        condition: service_healthy
+      radarr:
+        condition: service_started
+      sonarr:
+        condition: service_started
+{% endif %}
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
