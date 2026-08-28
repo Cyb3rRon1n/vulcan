@@ -1071,11 +1071,15 @@ guided_setup_no_start() {
         "This will generate stack/docker-compose.yml and .env with your choices. Stack will NOT be started." \
         "${vulcan_cmd[@]}"
 
-    log_info "Guided Setup (no start) completed"
+log_info "Guided Setup (no start) completed"
 }
 
 # --- Guided Setup ------------------------------------------------------
-
+#
+# The main guided setup that includes the option to start the stack.
+# Calls guided_setup_no_start (which generates the stack) and then
+# optionally starts it based on user choice.
+guided_setup() {
     # --- Welcome screen (Security Onion pattern) ---
     if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
         "\n\n\n\nWelcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
@@ -1266,24 +1270,6 @@ guided_setup_no_start() {
     fi
 
     return "$rc"
-
-
-# --- Guided Setup ------------------------------------------------------
-#
-# The main guided setup that includes the option to start the stack.
-# Calls guided_setup_no_start (which generates the stack) and then
-# optionally starts it based on user choice.
-guided_setup() {
-    guided_setup_no_start
-
-    # If stack was generated successfully and user chose --start, the
-    # START_FLAG logic in guided_setup_no_start already handled it.
-    # But for the standalone guided_setup, we need the --start prompt.
-    if [ "$START_FLAG" = "--start" ]; then
-        confirm_and_run "Start Stack" \
-            "This will start stack/docker-compose.yml, reassigning any port already in use." \
-            "$VULCAN_BIN" start
-    fi
 }
 
 # Quick path: tier's own default services, plus the same individual
