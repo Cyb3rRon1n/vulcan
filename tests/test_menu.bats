@@ -937,6 +937,43 @@ setup() {
     [[ "$output" == *"--media-path /mnt/old-media"* ]]
 }
 
+@test "flag arrays are guarded with set -u-safe count expansion, not scalar -n" {
+
+    # Regression (found live 2026-08-28): menu.sh runs `set -uo pipefail`,
+    # and guided_setup_no_start built its vulcan command with
+    # `[ -n "$SERVICES_FLAG" ]` - which reads "${SERVICES_FLAG[0]}" and is
+    # unbound when the array is empty (the customize=No path), aborting the
+    # whole script with "SERVICES_FLAG: unbound variable". Guard on the array
+    # count instead. These assertions pin the real function body, so a
+    # reintroduction of the scalar `[ -n "$VAR" ]` pattern is caught here.
+    run bash -c "
+        grep -n '\[ -n \"\\\$SERVICES_FLAG\" \]\|\[ -n \"\\\$DOMAIN_FLAGS\" \]\|\[ -n \"\\\$TOGGLE_FLAGS\" \]' '$MENU_SH'
+    "
+    [ "$status" -eq 1 ]
+
+    run bash -c "
+        awk '/guided_setup_no_start\(\)/,/^}/' '$MENU_SH' | grep -q '\[ \"\${#SERVICES_FLAG\[@\]}\" -gt 0 \]'
+    "
+    [ "$status" -eq 0 ]
+}
+
+@test "flag arrays are expanded as arrays, keeping the --services list intact" {
+
+    # SERVICES_FLAG holds (--services "<joined>") - a 2-element array - so it
+    # must be expanded as an array: `"${SERVICES_FLAG[@]}"`. The old
+    # `--services "$SERVICES_FLAG"` expanded "${SERVICES_FLAG[0]}" = lone
+    # "--services", dropping the actual service list and duplicating the flag.
+    run bash -c "
+        awk '/guided_setup_no_start\(\)/,/^}/' '$MENU_SH' | grep -E -- '--services \"\\\$SERVICES_FLAG\"'
+    "
+    [ "$status" -eq 1 ]
+
+    run bash -c "
+        awk '/guided_setup_no_start\(\)/,/^}/' '$MENU_SH' | grep -q 'vulcan_cmd+=(\"\${SERVICES_FLAG\[@\]}\")'
+    "
+    [ "$status" -eq 0 ]
+}
+
 @test "every field menu.sh references from 'vulcan detect' is actually emitted by it" {
 
     cli_py="$BATS_TEST_DIRNAME/../installer/cli.py"

@@ -1157,9 +1157,12 @@ guided_setup_no_start() {
     vulcan_cmd+=(--pgid "$PGID")
     vulcan_cmd+=(--timezone "$TIMEZONE")
 
-    [ -n "$SERVICES_FLAG" ] && vulcan_cmd+=(--services "$SERVICES_FLAG")
-    [ -n "$DOMAIN_FLAGS" ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
-    [ -n "$TOGGLE_FLAGS" ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
+    # set -u trap: the *_FLAG arrays are empty by default, and `[ -n "$VAR" ]`
+    # reads "${VAR[0]}" -> unbound. Guard on the count (as lines 1291/1309 do)
+    # and expand SERVICES_FLAG as an array (it's (--services "$joined")).
+    [ "${#SERVICES_FLAG[@]}" -gt 0 ] && vulcan_cmd+=("${SERVICES_FLAG[@]}")
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
+    [ "${#TOGGLE_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
 
     confirm_and_run "Generate Stack" \
         "This will generate stack/docker-compose.yml and .env with your choices. Stack will NOT be started." \
