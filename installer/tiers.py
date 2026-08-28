@@ -49,6 +49,8 @@ _LIGHT_SERVICES = [
     ServiceDefinition("netdata", "Netdata", optional=True, category="Monitoring"),
     ServiceDefinition("vaultwarden", "Vaultwarden", optional=True, category="Security"),
     ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True, category="Infrastructure"),
+    ServiceDefinition("portainer", "Portainer", optional=True, category="Utilities"),
+    ServiceDefinition("adguardhome", "AdGuard Home", optional=True, category="Infrastructure"),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

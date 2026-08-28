@@ -86,12 +86,14 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "seerr"],
-    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
+    "Events (Calendar)": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "recyclarr", "sportarr"],
+    "System": ["uptime-kuma", "tracearr", "netdata", "watchtower", "vaultwarden", "portainer"],
+    "Network": ["traefik", "gluetun", "tailscale", "cloudflared", "pihole", "adguardhome"],
+    "Files & Media Management": ["filebrowser", "homepage", "dashy", "jellyfin", "seerr"],
+    "Media Processing": ["radarr", "sonarr", "lidarr", "readarr", "bazarr", "recyclarr", "decluttarr", "maintainerr", "flaresolverr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
-    "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
     "Security": ["authelia", "crowdsec", "vaultwarden"],
-    "Infrastructure": ["traefik", "filebrowser"],
+    "Infrastructure": ["traefik", "gluetun", "tailscale", "cloudflared", "pihole", "adguardhome", "portainer"],
     "Live TV": ["threadfin"],
 }
 
@@ -119,6 +121,18 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "sportarr": 1867,
     "tracearr": 3002,
     "threadfin": 34400,
+    "portainer": 9000,
+    "adguardhome": 3000,
+    "recyclarr": 9898,
+    "decluttarr": 9899,
+    "flaresolverr": 8191,
+    "netdata": 19999,
+    "watchtower": 8080,
+    "gluetun": 8888,
+    "tailscale": 41641,
+    "cloudflared": 8080,
+    "dashy": 4000,
+    "crowdsec": 8080,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
     # api.insecure security note), so it has no non-routed fallback
@@ -153,9 +167,24 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
-    "sportarr": "Sports PVR -自动monitors leagues, downloads events, organizes into your media library",
+    "sportarr": "Sports PVR - monitors leagues, downloads events, organizes into your media library",
     "tracearr": "Real-time stream analytics for Jellyfin/Plex/Emby (Tautulli/Jellystat replacement)",
     "threadfin": "M3U/IPTV proxy - emulates HDHomeRun tuner for Jellyfin/Plex/Emby live TV",
+    "portainer": "Container management UI - deploy, monitor, and manage Docker containers",
+    "adguardhome": "Network-wide ad blocking & DNS filtering with per-client stats",
+    "recyclarr": "TRaSH Guides sync for Radarr/Sonarr",
+    "decluttarr": "Download queue cleanup for Radarr/Sonarr",
+    "flaresolverr": "CAPTCHA solver for indexers",
+    "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
+    "watchtower": "Automatic container updates",
+    "gluetun": "VPN client for WireGuard/OpenVPN",
+    "tailscale": "Private network mesh VPN",
+    "cloudflared": "Cloudflare Tunnel for secure remote access",
+    "decluttarr": "Download queue cleanup for Radarr/Sonarr",
+    "flaresolverr": "CAPTCHA solver for indexers",
+    "crowdsec": "Intrusion protection for your services",
+    "homepage": "Homarr dashboard - customizable start page for all your services",
+    "dashy": "Dashy dashboard - beautiful, customizable service dashboard",
 }
 
 
