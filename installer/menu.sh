@@ -222,6 +222,81 @@ _warn_docker_if_needed() {
     fi
 }
 
+# Ask the shared config questions (media path, tier, service selection,
+# PUID/PGID/TZ) for both guided flows, filling in previous-install or
+# detected defaults. Sets the MEDIA_PATH/TIER/PUID/PGID/TIMEZONE and
+# SERVICES_FLAG/DOMAIN_FLAGS/TOGGLE_FLAGS globals. Returns 1 if the user
+# bails from any dialog, else 0.
+_guided_ask_config() {
+    local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
+
+    if [ -n "$PREVIOUS_TIER" ]; then
+        default_media_path="$PREVIOUS_MEDIA_PATH"
+        default_tier="$PREVIOUS_TIER"
+        default_puid_value="$PREVIOUS_PUID"
+        default_pgid_value="$PREVIOUS_PGID"
+        default_tz_value="$PREVIOUS_TIMEZONE"
+    else
+        default_media_path="${STORAGE_MOUNT:-$HOME/media}"
+        default_tier="$RECOMMENDED_TIER"
+        default_puid_value="$DEFAULT_PUID"
+        default_pgid_value="$DEFAULT_PGID"
+        default_tz_value="$DEFAULT_TIMEZONE"
+    fi
+
+    MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
+        --inputbox "Where should your media library live?" "$DLG_ROWS" "$DLG_COLS" "$default_media_path" \
+        3>&1 1>&2 2>&3) || return 1
+    [ -z "$MEDIA_PATH" ] && return 1
+
+    local light_on medium_on heavy_on
+    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
+    case "$default_tier" in
+        light) light_on="ON" ;;
+        medium) medium_on="ON" ;;
+        heavy) heavy_on="ON" ;;
+    esac
+
+    TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
+        --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
+        "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+        "light"  "Light - low-resource baseline" "$light_on" \
+        "medium" "Medium - the common case" "$medium_on" \
+        "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
+        3>&1 1>&2 2>&3) || return 1
+
+    customize=false
+    if whiptail --backtitle "$BACKTITLE" --title "Services" \
+        --yesno "Customize the full service list?\n\nYes = pick from every service (Traefik/Authelia, CrowdSec, Tailscale, Decluttarr, Maintainerr, ...).\nNo = the tier's usual services plus the toggles on the next screen." \
+        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
+        customize=true
+    fi
+
+    SERVICES_FLAG=()
+    DOMAIN_FLAGS=()
+    TOGGLE_FLAGS=()
+
+    if [ "$customize" = true ]; then
+        _guided_setup_customize_services
+    else
+        _guided_setup_quick_toggles
+    fi
+
+    PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" "$DLG_ROWS" "$DLG_COLS" "$default_puid_value" \
+        3>&1 1>&2 2>&3) || return 1
+
+    PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
+        --inputbox "PGID - group ID the containers run as" "$DLG_ROWS" "$DLG_COLS" "$default_pgid_value" \
+        3>&1 1>&2 2>&3) || return 1
+
+    TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
+        --inputbox "Timezone (e.g. America/New_York, Europe/London)" "$DLG_ROWS" "$DLG_COLS" "$default_tz_value" \
+        3>&1 1>&2 2>&3) || return 1
+
+    return 0
+}
+
 # --- Main Menu -------------------------------------------------------
 #
 # Every item is always shown, DockSTARTer-style, rather than hidden or
@@ -1026,60 +1101,7 @@ guided_setup_no_start() {
 
     log_title "Phase 2: Configuration"
 
-    local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
-
-    if [ -n "$PREVIOUS_TIER" ]; then
-        default_media_path="$PREVIOUS_MEDIA_PATH"
-        default_tier="$PREVIOUS_TIER"
-        default_puid_value="$PREVIOUS_PUID"
-        default_pgid_value="$PREVIOUS_PGID"
-        default_tz_value="$PREVIOUS_TIMEZONE"
-    else
-        default_media_path="${STORAGE_MOUNT:-$HOME/media}"
-        default_tier="$RECOMMENDED_TIER"
-        default_puid_value="$DEFAULT_PUID"
-        default_pgid_value="$DEFAULT_PGID"
-        default_tz_value="$DEFAULT_TIMEZONE"
-    fi
-
-    MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
-        --inputbox "Where should your media library live?" "$DLG_ROWS" "$DLG_COLS" "$default_media_path" \
-        3>&1 1>&2 2>&3) || return
-    [ -z "$MEDIA_PATH" ] && return
-
-    local light_on medium_on heavy_on
-    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
-    case "$default_tier" in
-        light) light_on="ON" ;;
-        medium) medium_on="ON" ;;
-        heavy) heavy_on="ON" ;;
-    esac
-
-    TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
-        --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
-        "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-        "light"  "Light - low-resource baseline" "$light_on" \
-        "medium" "Medium - the common case" "$medium_on" \
-        "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
-        3>&1 1>&2 2>&3) || return
-
-    local customize=false
-
-    if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list?\n\nYes = pick from every service (Traefik/Authelia, CrowdSec, Tailscale, Decluttarr, Maintainerr, ...).\nNo = the tier's usual services plus the toggles on the next screen." \
-        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
-        customize=true
-    fi
-
-    SERVICES_FLAG=()
-    DOMAIN_FLAGS=()
-    TOGGLE_FLAGS=()
-
-    if [ "$customize" = true ]; then
-        _guided_setup_customize_services
-    else
-        _guided_setup_quick_toggles
-    fi
+    _guided_ask_config || return
 
     # If gluetun (VPN) was selected, prompt for credentials now
     if [[ " ${TOGGLE_FLAGS[@]} " =~ " --vpn " ]]; then
@@ -1120,19 +1142,6 @@ guided_setup_no_start() {
             fi
         fi
     fi
-
-
-    PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" "$DLG_ROWS" "$DLG_COLS" "$default_puid_value" \
-        3>&1 1>&2 2>&3) || return
-
-    PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PGID - group ID the containers run as" "$DLG_ROWS" "$DLG_COLS" "$default_pgid_value" \
-        3>&1 1>&2 2>&3) || return
-
-    TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
-        --inputbox "Timezone (e.g. America/New_York, Europe/London)" "$DLG_ROWS" "$DLG_COLS" "$default_tz_value" \
-        3>&1 1>&2 2>&3) || return
 
     # Build and run the vulcan command (without --start)
     local vulcan_cmd=("$VULCAN_BIN" --non-interactive --yes)
@@ -1179,72 +1188,7 @@ guided_setup() {
 
     log_title "Phase 2: Configuration"
 
-    local default_media_path default_tier default_puid_value default_pgid_value default_tz_value
-
-    if [ -n "$PREVIOUS_TIER" ]; then
-        default_media_path="$PREVIOUS_MEDIA_PATH"
-        default_tier="$PREVIOUS_TIER"
-        default_puid_value="$PREVIOUS_PUID"
-        default_pgid_value="$PREVIOUS_PGID"
-        default_tz_value="$PREVIOUS_TIMEZONE"
-    else
-        default_media_path="${STORAGE_MOUNT:-$HOME/media}"
-        default_tier="$RECOMMENDED_TIER"
-        default_puid_value="$DEFAULT_PUID"
-        default_pgid_value="$DEFAULT_PGID"
-        default_tz_value="$DEFAULT_TIMEZONE"
-    fi
-
-    MEDIA_PATH=$(whiptail --backtitle "$BACKTITLE" --title "Media Library" \
-        --inputbox "Where should your media library live?" "$DLG_ROWS" "$DLG_COLS" "$default_media_path" \
-        3>&1 1>&2 2>&3) || return
-    [ -z "$MEDIA_PATH" ] && return
-
-    local light_on medium_on heavy_on
-    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
-    case "$default_tier" in
-        light) light_on="ON" ;;
-        medium) medium_on="ON" ;;
-        heavy) heavy_on="ON" ;;
-    esac
-
-    TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
-        --radiolist "Detected: $CPU_CORES_LOGICAL logical cores, ${RAM_TOTAL_GB}GB RAM, ${DISK_FREE_GB}GB free.\n${RECOMMENDED_TIER_EXPLANATION}" \
-        "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-        "light"  "Light - low-resource baseline" "$light_on" \
-        "medium" "Medium - the common case" "$medium_on" \
-        "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
-        3>&1 1>&2 2>&3) || return
-
-    local customize=false
-
-    if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list?\n\nYes = pick from every service (Traefik/Authelia, CrowdSec, Tailscale, Decluttarr, Maintainerr, ...).\nNo = the tier's usual services plus the toggles on the next screen." \
-        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
-        customize=true
-    fi
-
-    SERVICES_FLAG=()
-    DOMAIN_FLAGS=()
-    TOGGLE_FLAGS=()
-
-    if [ "$customize" = true ]; then
-        _guided_setup_customize_services
-    else
-        _guided_setup_quick_toggles
-    fi
-
-    PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PUID - user ID the containers run as (matters for file ownership on your media library)" "$DLG_ROWS" "$DLG_COLS" "$default_puid_value" \
-        3>&1 1>&2 2>&3) || return
-
-    PGID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
-        --inputbox "PGID - group ID the containers run as" "$DLG_ROWS" "$DLG_COLS" "$default_pgid_value" \
-        3>&1 1>&2 2>&3) || return
-
-    TIMEZONE=$(whiptail --backtitle "$BACKTITLE" --title "Timezone" \
-        --inputbox "IANA timezone name (e.g. America/New_York)" "$DLG_ROWS" "$DLG_COLS" "$default_tz_value" \
-        3>&1 1>&2 2>&3) || return
+    _guided_ask_config || return
 
     START_FLAG="--no-start"
     if whiptail --backtitle "$BACKTITLE" --title "Start Now" \
