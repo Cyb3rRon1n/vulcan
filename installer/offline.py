@@ -31,30 +31,44 @@ from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 
 
+def _load_pyproject(project_root: Path) -> dict:
+    """pyproject.toml as a dict, or {} when missing or unparseable."""
+
+    pyproject = Path(project_root) / "pyproject.toml"
+
+    if not pyproject.exists():
+        return {}
+
+    try:
+
+        with open(pyproject, "rb") as f:
+            return tomllib.load(f)
+
+    except (tomllib.TOMLDecodeError, OSError):
+        return {}
+
+
 def runtime_dependencies(project_root: Path = Path(".")) -> list[str]:
     """Vulcan's runtime dependency names from [project].dependencies in
     pyproject.toml - the source of truth, not a hardcoded copy, so a dep
     bump there is picked up automatically. Returns [] if pyproject is
     missing or unparseable."""
 
-    pyproject = Path(project_root) / "pyproject.toml"
+    return list(_load_pyproject(project_root).get("project", {}).get("dependencies", []) or [])
 
-    if not pyproject.exists():
-        return []
 
-    try:
+def build_requires(project_root: Path = Path(".")) -> list[str]:
+    """The PEP 517 build backend from [build-system].requires - what
+    `pip install -e .` needs under build isolation. Bundled alongside the
+    runtime deps so the offline box can also build vulcan itself with
+    --no-index, not just install its deps. Returns [] if pyproject is
+    missing or unparseable."""
 
-        with open(pyproject, "rb") as f:
-            data = tomllib.load(f)
-
-    except (tomllib.TOMLDecodeError, OSError):
-        return []
-
-    return list(data.get("project", {}).get("dependencies", []) or [])
+    return list(_load_pyproject(project_root).get("build-system", {}).get("requires", []) or [])
 
 
 def _pip_download_args(
-    deps: list[str], wheel_dir: Path, platform: str | None, py_abi: str
+    specs: list[str], wheel_dir: Path, platform: str | None, py_abi: str
 ) -> list[str]:
     """Build the `pip download` argv. platform=None means "current machine"
     (build for the box you're on); an explicit platform tag cross-builds
@@ -74,7 +88,7 @@ def _pip_download_args(
             "--abi", py_abi,
         ]
 
-    args += deps
+    args += specs
     return args
 
 
@@ -85,6 +99,15 @@ def _venv_pip(venv_dir: Path) -> list[str]:
         return [str(venv_dir / "bin" / "python"), "-m", "pip"]
 
     return [sys.executable, "-m", "pip"]
+
+
+# hatchling's PEP 660 editable-build hook pulls editables in as an extra
+# build requirement (via get_requires_for_build_editable) even though it's
+# not in [build-system].requires - pip discovers it lazily at build time,
+# so `pip download` never sees it. Without it an offline `pip install -e .`
+# fails the editable build. Ceiling: hatchling-specific; if the build
+# backend changes, re-check the editable hook's own requirements.
+_EDITABLE_BUILD_EXTRAS = ["editables"]
 
 
 def bundle_dependencies(
@@ -108,11 +131,18 @@ def bundle_dependencies(
     if not deps:
         return {"success": False, "error": "no runtime dependencies found in pyproject.toml", "wheel_dir": None}
 
+    # The editable install of vulcan itself (`pip install -e .`) builds
+    # under PEP 517 build isolation, which fetches the backend from the
+    # index - so the build-system requires (+ the editable-hook extra) are
+    # bundled into the same wheelhouse, and the offline box's own editable
+    # install finds them with the same --no-index --find-links call.
+    specs = build_requires(project_root) + _EDITABLE_BUILD_EXTRAS + deps
+
     wheel_dir = dest_dir / "wheels"
     wheel_dir.mkdir(parents=True, exist_ok=True)
 
     result = subprocess.run(
-        _pip_download_args(deps, wheel_dir, platform, py_abi),
+        _pip_download_args(specs, wheel_dir, platform, py_abi),
         capture_output=True,
         text=True,
     )

@@ -2024,6 +2024,17 @@ def _gather_generation_config(
 
     panel = panel if panel is not None else _NoOpPanel(console)
 
+    # Read VPN env vars unconditionally - GenerationConfig consumes them
+    # on every path (below), so leaving them unbound when Gluetun is off
+    # (incl. custom --services mode, which skips the prompt sections)
+    # crashes with UnboundLocalError instead of passing None.
+    vpn_service_provider = os.environ.get("VPN_SERVICE_PROVIDER")
+    vpn_type = os.environ.get("VPN_TYPE")
+    wireguard_private_key = os.environ.get("WIREGUARD_PRIVATE_KEY")
+    wireguard_addresses = os.environ.get("WIREGUARD_ADDRESSES")
+    openvpn_user = os.environ.get("OPENVPN_USER")
+    openvpn_password = os.environ.get("OPENVPN_PASSWORD")
+
     if previous is not None:
 
         # A plan loaded via --from-plan has no generated_at (deliberately
@@ -2656,10 +2667,6 @@ def _gather_generation_config(
 
     if enable_threadfin:
         enabled_optional.add("threadfin")
-
-
-
-
 
     # Same reasoning and same opt-out-by-default question as Homepage's
     # own homepage_private above, asked independently - enabling both

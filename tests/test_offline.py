@@ -3,6 +3,7 @@ import tarfile
 from unittest.mock import patch
 
 from installer.offline import (
+    build_requires,
     bundle_dependencies,
     extract_bundle,
     install_from_wheelhouse,
@@ -36,6 +37,7 @@ def test_bundle_dependencies_success(tmp_path):
 
     with patch("installer.offline.runtime_dependencies",
                return_value=["typer", "rich"]), \
+         patch("installer.offline.build_requires", return_value=["hatchling"]), \
          patch("installer.offline.subprocess.run") as mock_run:
 
         mock_run.return_value.returncode = 0
@@ -45,6 +47,26 @@ def test_bundle_dependencies_success(tmp_path):
     assert result["success"] is True
     assert result["error"] is None
     assert result["wheel_dir"].endswith("wheels")
+    # build backend + editable-hook extra downloaded into the same
+    # wheelhouse, so the offline box's own `pip install -e .` (build
+    # isolation) can resolve them.
+    argv = mock_run.call_args.args[0]
+    assert "hatchling" in argv
+    assert "editables" in argv
+
+
+def test_build_requires_parses_pyproject(tmp_path):
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[build-system]\nrequires = [\"hatchling\"]\n"
+    )
+
+    assert build_requires(tmp_path) == ["hatchling"]
+
+
+def test_build_requires_missing_pyproject_is_empty(tmp_path):
+
+    assert build_requires(tmp_path) == []
 
 
 def test_bundle_dependencies_subprocess_failure(tmp_path):
