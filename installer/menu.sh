@@ -202,6 +202,26 @@ confirm_and_run() {
     return "$status"
 }
 
+# --- Shared guided-setup helpers -------------------------------------
+#
+# guided_setup and guided_setup_no_start used to carry identical Welcome and
+# Docker-warning blocks (the Welcome with a \n\n\n\n spacing hack). Both now
+# call these two helpers instead.
+
+# Warm welcome; precedes system detection. 0 = continue, 1 = bail.
+_guided_welcome() {
+    whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
+        "Welcome to Vulcan Setup!\n\nVulcan will detect your hardware and recommend a\nconfiguration sized to your machine.\n\nKeyboard:\n  Arrows move, Enter selects, Tab switches buttons\n\nBegin setup?" "$DLG_ROWS" "$DLG_COLS"
+}
+
+# Warn once if Docker isn't fully ready. No-op when it is.
+_warn_docker_if_needed() {
+    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
+        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
+            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan install/start it for you (--yes implied)." "$DLG_ROWS" "$DLG_COLS"
+    fi
+}
+
 # --- Main Menu -------------------------------------------------------
 #
 # Every item is always shown, DockSTARTer-style, rather than hidden or
@@ -553,11 +573,7 @@ complete_setup_flow() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    _warn_docker_if_needed
 
     # Phase 2: Guided Setup (PLAN - tier, services, media path) - NO START
     log_title "PLAN: Guided Stack Configuration"
@@ -994,9 +1010,7 @@ uninstall_flow() {
 # Used by Complete Setup linear flow.
 guided_setup_no_start() {
 
-    # --- Welcome screen (Security Onion pattern) ---
-    if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
-        "\n\n\n\nWelcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
+    if ! _guided_welcome; then
         return 0
     fi
     log_title "Starting Guided Setup"
@@ -1008,11 +1022,7 @@ guided_setup_no_start() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready, showing warning"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    _warn_docker_if_needed
 
     log_title "Phase 2: Configuration"
 
@@ -1056,7 +1066,7 @@ guided_setup_no_start() {
     local customize=false
 
     if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+        --yesno "Customize the full service list?\n\nYes = pick from every service (Traefik/Authelia, CrowdSec, Tailscale, Decluttarr, Maintainerr, ...).\nNo = the tier's usual services plus the toggles on the next screen." \
         "$DLG_ROWS" "$DLG_COLS" --defaultno; then
         customize=true
     fi
@@ -1153,9 +1163,7 @@ log_info "Guided Setup (no start) completed"
 # Calls guided_setup_no_start (which generates the stack) and then
 # optionally starts it based on user choice.
 guided_setup() {
-    # --- Welcome screen (Security Onion pattern) ---
-    if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
-        "\n\n\n\nWelcome to the Vulcan Setup!\n\nVulcan will detect your hardware and recommend the best\nconfiguration for a self-hosted media stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" "$DLG_ROWS" "$DLG_COLS"; then
+    if ! _guided_welcome; then
         return 0
     fi
     log_title "Starting Guided Setup"
@@ -1167,11 +1175,7 @@ guided_setup() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready, showing warning"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    _warn_docker_if_needed
 
     log_title "Phase 2: Configuration"
 
@@ -1215,7 +1219,7 @@ guided_setup() {
     local customize=false
 
     if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+        --yesno "Customize the full service list?\n\nYes = pick from every service (Traefik/Authelia, CrowdSec, Tailscale, Decluttarr, Maintainerr, ...).\nNo = the tier's usual services plus the toggles on the next screen." \
         "$DLG_ROWS" "$DLG_COLS" --defaultno; then
         customize=true
     fi
