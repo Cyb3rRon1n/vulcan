@@ -594,8 +594,6 @@ complete_setup_flow() {
     log_title "Complete Setup"
     log_info "Starting complete linear setup flow"
 
-    # Track completed phases
-    local -a phase_done=(false false false false false)  # setup, plan, build, config, start
     local phase_names=("SETUP (system tools)" "PLAN (tier, services)" "BUILD (generate stack)" "CONFIGURE (vpn, domain, etc.)" "START (launch stack)")
 
     # Helper: show progress checklist
@@ -625,13 +623,9 @@ complete_setup_flow() {
             3>&1 1>&2 2>&3 >/dev/null || true
     }
 
-    log_title "Complete Setup"
-    log_info "Starting complete linear setup flow"
-
     # ============================================================
     # PHASE 0: SETUP - System tools
     # ============================================================
-    phase_done[0]=true
     show_checklist 1
 
     log_info "System tools check completed"
@@ -639,7 +633,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 1: PLAN - System Detection & Tier Selection
     # ============================================================
-    phase_done[1]=true
     show_checklist 2
 
     log_title "PLAN: System Detection & Tier"
@@ -667,7 +660,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 2: BUILD - Stack Generated (already done by guided_setup_no_start)
     # ============================================================
-    phase_done[2]=true
     show_checklist 3
 
     log_title "BUILD: Stack Generated"
@@ -676,7 +668,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 3: CONFIGURE - Services needing credentials
     # ============================================================
-    phase_done[3]=true
     show_checklist 4
 
     log_title "CONFIGURE: Service Credentials"
@@ -706,7 +697,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 4: START - Launch Stack
     # ============================================================
-    phase_done[4]=true
     show_checklist 5
 
     log_title "START: Launch Stack"
@@ -718,7 +708,6 @@ complete_setup_flow() {
     fi
 
     # Final checklist - all done
-    phase_done[4]=true
     show_checklist 5
 
     log_info "Complete Setup finished"
