@@ -47,7 +47,12 @@ Vulcan assumes internet access by default, but moving a stack to a machine that 
 |---|---|
 | `vulcan export [--output PATH]` | Bundles already-pulled images into a tarball (`exports/`) |
 | `vulcan import [FILE]` | Loads images from that tarball on another machine |
+| `vulcan export-bundle [--output PATH] [--platform TAG]` | Builds a wheelhouse of Vulcan's own Python deps (from `pyproject.toml`, for the current arch, or `--platform` to cross-build) and packages it with a `requirements.txt` into `exports/` |
+| `vulcan install-bundle [FILE]` | Untars an `export-bundle` tarball and `pip install --no-index --find-links` from it — no network |
+| `./install --bundle FILE` | Builds the `.venv` entirely from an `export-bundle` tarball on first run — a fully offline bootstrap |
 
 Install Docker ahead of time on a machine with no connection (Vulcan's automatic install needs one); Phase 0 detects an already-installed Docker and skips the install step regardless.
 
 `vulcan export` packages a stack's already-pulled images (run `vulcan pull` first) into a single tarball under `exports/`; `vulcan import` loads that tarball's images on a different machine — one that's never been online at all, unlike `vulcan pull`, which still needs a live connection on the same machine it's run on. Neither needs confirmation, and `import` defaults to the most recent file in `exports/` if you don't pass one, the same convenience `restore` already offers for backups.
+
+`vulcan export-bundle` closes the *other* half of a first boot on a disconnected box: Vulcan's own Python dependencies, which `pip install` would otherwise pull from PyPI. Run it on any machine with a connection (pass `--platform manylinux2014_aarch64` to build for an ARM box from an x86 one — the compiled `psutil`/`rpds-py` wheels are arch-specific, so build for the target arch), carry the tarball to the offline machine, and `vulcan install-bundle` it, or hand it straight to the first-run bootstrap with `./install --bundle FILE` to bring the venv up with zero network. Docker itself still needs to be present — either pre-installed or via the `--offline` manual-install path — since the bundle carries only Vulcan's Python deps, not host packages.

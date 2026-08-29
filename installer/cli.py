@@ -60,6 +60,13 @@ from installer.post_install import (
     verify_stack_running,
 )
 from installer.deps import ensure_system_deps
+from installer.offline import (
+    bundle_dependencies,
+    extract_bundle,
+    install_from_wheelhouse,
+    package_bundle,
+    runtime_dependencies,
+)
 from installer.preflight import (
     check_network_conflicts,
     check_ports_available,
@@ -289,12 +296,43 @@ def detect_shell():
 
 @app.command()
 def preflight(
-    fix: bool = typer.Option(False, "--fix", help="Install what's missing (needs root for Docker/packages).")
+    fix: bool = typer.Option(False, "--fix", help="Install what's missing (needs root for Docker/packages)."),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="No network path to package mirrors - report-only (implies no --fix), with "
+        "per-tool remediation for what to bring onto this machine instead."
+    ),
 ):
     """Phase 0: check (or with --fix, install) the system packages and
     Docker setup a first run needs. Idempotent - safe to re-run."""
 
-    report = ensure_system_ready(fix=fix)
+    report = ensure_system_ready(fix=fix, offline=offline)
+
+    if report["offline_rows"] is not None:
+
+        console.print(
+            "[yellow]Offline mode - nothing will be fetched from the network. "
+            "Here's what this machine still needs:[/yellow]"
+        )
+
+        present = [row["name"] for row in report["offline_rows"] if row["present"]]
+        missing = [row for row in report["offline_rows"] if not row["present"]]
+
+        if present:
+            console.print(f"[green]Already present:[/green] {', '.join(present)}")
+
+        if missing:
+            console.print("[red]Missing:[/red]")
+            for row in missing:
+                console.print(f"  [red]- {row['name']}[/red]  {row['remediation']}")
+            console.print(
+                "\nBring these onto this machine (or install them on a connected box "
+                "first), or re-run without --offline once a connection exists."
+            )
+        else:
+            console.print("[green]Everything needed is already present.[/green]")
+
+        raise typer.Exit(code=0 if not missing else 1)
 
     for step in report["did"]:
         console.print(f"[green]✓[/green] {step}")
@@ -1130,6 +1168,74 @@ def import_command(
         raise typer.Exit(code=1)
 
     console.print(f"[green]Images loaded from {chosen}.[/green]")
+
+
+@app.command(name="export-bundle")
+def export_bundle_command(
+    output: str | None = typer.Option(
+        None, "--output", help="Directory for the offline bundle; defaults into exports/"
+    ),
+    platform: str | None = typer.Option(
+        None,
+        "--platform",
+        help="Target platform tag (e.g. manylinux2014_aarch64) to cross-build for another arch. "
+        "Omit to build for this machine.",
+    ),
+):
+    """
+    Build a self-contained offline bundle of Vulcan's own Python deps with
+    `pip download`, for a machine with no internet access. Run this on a
+    connected box (or for the exact target arch with --platform), carry the
+    tarball across, then `vulcan install-bundle <file>` on the offline box.
+    """
+
+    dest = Path(output) if output is not None else Path("exports")
+    dest.mkdir(parents=True, exist_ok=True)
+
+    result = bundle_dependencies(dest, platform=platform)
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    version = __version__
+    arch_label = platform or "current"
+    packaged = package_bundle(dest, arch_label, version, runtime_dependencies())
+
+    if not packaged["success"]:
+        console.print(f"[red]{packaged['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Offline bundle written to {packaged['bundle_path']}[/green]")
+    console.print("[yellow]Carry this tarball to the offline machine and run "
+                  "`vulcan install-bundle <file>`[/yellow]")
+
+
+@app.command(name="install-bundle")
+def install_bundle_command(
+    bundle_file: str = typer.Argument(..., help="Path to the tarball from `vulcan export-bundle`"),
+):
+    """
+    Untar an offline bundle and `pip install --no-index --find-links` from it
+    into the current environment - works with no internet access.
+    """
+
+    dest = Path("exports") / "installed"
+    extracted = extract_bundle(bundle_file, dest)
+
+    if not extracted["success"]:
+        console.print(f"[red]{extracted['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    installed = install_from_wheelhouse(
+        Path(extracted["wheel_dir"]), runtime_dependencies()
+    )
+
+    if not installed["success"]:
+        console.print(f"[red]{installed['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Wheels installed from the offline bundle.[/green]")
 
 
 @app.command()

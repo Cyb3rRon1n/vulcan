@@ -55,9 +55,39 @@ fi
 
 if [ ! -d "$VENV_DIR" ] || ! "${RUN_AS[@]}" "$VENV_DIR/bin/python" -c "import installer.cli" &>/dev/null; then
     echo "Setting up Vulcan (first run)..."
+
+    # --bundle <file>: build the venv with no network. Extract vulcan's
+    # wheelhouse + requirements.txt produced by `vulcan export-bundle` on a
+    # connected box and pip install the deps from it, then install vulcan
+    # itself with --no-deps (its runtime deps are already present).
+    BUNDLE_FILE=""
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--bundle" ]; then
+            shift
+            BUNDLE_FILE="${1:-}"
+            break
+        fi
+        shift
+    done
+
     "${RUN_AS[@]}" python3 -m venv "$VENV_DIR"
-    "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-    "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet -e "$SCRIPT_DIR"
+
+    if [ -n "$BUNDLE_FILE" ]; then
+        if [ ! -f "$BUNDLE_FILE" ]; then
+            echo "Bundle not found: $BUNDLE_FILE" >&2
+            exit 1
+        fi
+        echo "Installing Vulcan from offline bundle: $BUNDLE_FILE"
+        BUNDLE_DIR="$SCRIPT_DIR/exports/bundle-offline"
+        rm -rf "$BUNDLE_DIR"
+        "${RUN_AS[@]}" mkdir -p "$BUNDLE_DIR"
+        "${RUN_AS[@]}" tar -xzf "$BUNDLE_FILE" -C "$BUNDLE_DIR"
+        "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet --no-index --find-links "$BUNDLE_DIR/wheels" -r "$BUNDLE_DIR/requirements.txt"
+        "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet --no-deps -e "$SCRIPT_DIR"
+    else
+        "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
+        "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet -e "$SCRIPT_DIR"
+    fi
 fi
 
 # --- Phase 0: system packages + Docker (one privileged pass) ---------
