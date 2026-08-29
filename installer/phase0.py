@@ -22,7 +22,7 @@ once, up front, as root, instead of mid-wizard with scattered sudo.
 import getpass
 import os
 
-from installer.deps import ensure_system_deps
+from installer.deps import ensure_system_deps, offline_preflight
 from installer.detect import detect_docker, detect_os
 from installer.docker_setup import (
     add_user_to_docker_group,
@@ -44,12 +44,20 @@ def _docker_fully_ready(state: dict) -> bool:
     )
 
 
-def ensure_system_ready(fix: bool, user: str | None = None) -> dict:
+def ensure_system_ready(fix: bool, user: str | None = None, offline: bool = False) -> dict:
     """See module docstring. `fix=False` only reports. `fix=True` installs
     what's missing; if a step needs root and we are not root, nothing is
-    done and `needs_root` is True."""
+    done and `needs_root` is True. `offline=True` forces report-only
+    (nothing here can be installed without a network path to the package
+    mirrors regardless of `fix`) and adds `report["offline_rows"]` -
+    per-tool present/remediation rows from offline_preflight(), so a
+    disconnected box gets exactly what to bring in rather than a bare
+    package-name list."""
 
     user = user or os.environ.get("SUDO_USER") or getpass.getuser()
+
+    if offline:
+        fix = False
 
     report = {
         "ready": False,
@@ -58,6 +66,7 @@ def ensure_system_ready(fix: bool, user: str | None = None) -> dict:
         "missing": [],
         "did": [],
         "group_added": False,
+        "offline_rows": None,
     }
 
     is_root = os.geteuid() == 0
@@ -86,6 +95,11 @@ def ensure_system_ready(fix: bool, user: str | None = None) -> dict:
 
     # --- Docker ----------------------------------------------------------
     state = detect_docker()
+
+    if offline:
+        report["offline_rows"] = offline_preflight(
+            state["docker_installed"], state["docker_running"], state["docker_compose_v2"]
+        )
 
     if not _docker_fully_ready(state):
 

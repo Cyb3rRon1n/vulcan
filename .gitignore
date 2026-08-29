@@ -46,6 +46,11 @@ env/
 *.swp
 *.swo
 
+# Agent tooling state (opencode/claude plan + index dirs) - session-local,
+# never committed.
+.omo/
+.serena/
+
 # ==========================
 # Operating System
 # ==========================
