@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from installer.generate import (
-    ADMIN_ONLY_SERVICES,
     TEMPLATES_DIR,
     WALKTHROUGH_URL,
     WEB_FACING_SERVICES,

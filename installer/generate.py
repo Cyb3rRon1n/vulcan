@@ -131,7 +131,6 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "gluetun": 8888,
     "tailscale": 41641,
     "cloudflared": 8080,
-    "dashy": 4000,
     "crowdsec": 8080,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
@@ -175,13 +174,10 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "recyclarr": "TRaSH Guides sync for Radarr/Sonarr",
     "decluttarr": "Download queue cleanup for Radarr/Sonarr",
     "flaresolverr": "CAPTCHA solver for indexers",
-    "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "watchtower": "Automatic container updates",
     "gluetun": "VPN client for WireGuard/OpenVPN",
     "tailscale": "Private network mesh VPN",
     "cloudflared": "Cloudflare Tunnel for secure remote access",
-    "decluttarr": "Download queue cleanup for Radarr/Sonarr",
-    "flaresolverr": "CAPTCHA solver for indexers",
     "crowdsec": "Intrusion protection for your services",
     "homepage": "Homarr dashboard - customizable start page for all your services",
     "dashy": "Dashy dashboard - beautiful, customizable service dashboard",
