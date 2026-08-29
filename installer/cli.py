@@ -32,7 +32,6 @@ from installer.docker_setup import (
 )
 from installer.generate import (
     STACK_DIR,
-    WALKTHROUGH_URL,
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
@@ -2119,22 +2118,22 @@ def _gather_generation_config(
                     console.print("You'll need your VPN provider's credentials. See:")
                     console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
 
-                    vpn_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
+                    vpn_service_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
                     vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
 
                     if vpn_type == "wireguard":
-                        wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
+                        # hide_input only when stdin is a TTY; CliRunner uses a pipe which breaks getpass
+                        wireguard_private_key = typer.prompt(
+                            "WireGuard Private Key",
+                            hide_input=sys.stdin.isatty()
+                        )
                         wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
                     else:
                         openvpn_user = typer.prompt("OpenVPN Username", default="")
-                        openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
-                else:
-                    vpn_service_provider = vpn_service_provider
-                    vpn_type = vpn_type
-                    wireguard_private_key = wireguard_private_key
-                    wireguard_addresses = wireguard_addresses
-                    openvpn_user = os.environ.get("OPENVPN_USER")
-                    openvpn_password = os.environ.get("OPENVPN_PASSWORD")
+                        openvpn_password = typer.prompt(
+                            "OpenVPN Password",
+                            hide_input=sys.stdin.isatty()
+                        )
 
             enabled_optional.add("gluetun")
 
@@ -2401,15 +2400,6 @@ def _gather_generation_config(
 
     if enable_threadfin:
         enabled_optional.add("threadfin")
-
-    pihole_enabled = (
-        "pihole" in enabled_optional if custom_services_selected is None
-        else "pihole" in custom_services_selected
-    )
-
-
-
-
 
     # Same reasoning and same opt-out-by-default question as Homepage's
     # own homepage_private above, asked independently - enabling both
