@@ -4368,3 +4368,36 @@ def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     assert config.enabled_optional == {"recyclarr"}
+
+
+def test_preflight_reports_ready_and_exits_zero():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": True, "needs_root": False, "needs_reboot": False,
+        "missing": [], "did": [], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight"])
+
+    assert result.exit_code == 0
+    assert "ready" in result.output.lower()
+
+
+def test_preflight_fix_needs_root_hints_sudo_and_exits_one():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": False, "needs_root": True, "needs_reboot": False,
+        "missing": ["docker"], "did": [], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight", "--fix"])
+
+    assert result.exit_code == 1
+    assert "sudo ./install" in result.output
+
+
+def test_preflight_fix_reboot_prints_message_exits_zero():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": False, "needs_root": False, "needs_reboot": True,
+        "missing": [], "did": ["installed Docker"], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight", "--fix"])
+
+    assert result.exit_code == 0
+    assert "reboot" in result.output.lower()
