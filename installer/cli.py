@@ -8,6 +8,7 @@ from rich.console import Console
 
 from installer import __version__
 from installer.auth import hash_authelia_password
+from installer.configure import configure_pending
 from installer.detect import (
     SystemInfo,
     describe_media_redundancy,
@@ -359,6 +360,34 @@ def urls_shell():
     config = _config_from_previous_state(previous)
 
     print(render_stack_summary(config, detect_host_ip()))
+
+
+@app.command()
+def configure():
+    """
+    Fill in credentials for services in the already-built stack (VPN
+    provider + key, Cloudflare tunnel token, Tailscale auth key, Pi-hole
+    admin password). Run after `vulcan build` / a Guided Setup that
+    generated the stack but left credentials blank.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        console.print("[red]No stack found. Run `vulcan build` first.[/red]")
+        raise typer.Exit(code=1)
+
+    config = _config_from_previous_state(previous)
+    result = configure_pending(config, non_interactive=False)
+
+    if result["written"]:
+        console.print(f"[green]Wrote:[/green] {', '.join(result['written'])}")
+
+    if result["still_blank"]:
+        console.print(f"[yellow]Still blank:[/yellow] {', '.join(result['still_blank'])}")
+
+    if not result["written"] and not result["still_blank"]:
+        console.print("[green]All enabled services already have their credentials.[/green]")
 
 
 @app.command(name="install-summary")
@@ -1451,7 +1480,7 @@ def run_install(
     # start is always explicit (--start/--no-start) in the menu path,
     # which is the only path that activates the panel - so the "Start
     # stack" phase only exists when it will actually run.
-    phases = ["Detect system", "Storage setup", "Configure stack", "Generate stack"]
+    phases = ["Detect system", "Storage setup", "Configure stack", "Generate stack", "Configure services"]
     if start is not False:
         phases.append("Start stack")
 
@@ -1527,7 +1556,26 @@ def run_install(
             on_phase=panel.advance, panel=panel
         )
 
-        # Task 8 inserts the configure step here.
+        # Phase 6 - Configure: fill in the credentials enabled services
+        # need but don't have yet (VPN key, tunnel token, ...). Env vars
+        # (set by the menu or exported by the user) + --domain seed the
+        # answers; anything still blank gets prompted interactively, or
+        # left for `vulcan configure` on a non-interactive run.
+        vpn_answers = {
+            "VPN_SERVICE_PROVIDER": os.environ.get("VPN_SERVICE_PROVIDER", ""),
+            "VPN_TYPE": os.environ.get("VPN_TYPE", ""),
+            "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", ""),
+            "WIREGUARD_ADDRESSES": os.environ.get("WIREGUARD_ADDRESSES", ""),
+            "OPENVPN_USER": os.environ.get("OPENVPN_USER", ""),
+            "OPENVPN_PASSWORD": os.environ.get("OPENVPN_PASSWORD", ""),
+            "DOMAIN": config.domain or "",
+        }
+
+        configure_pending(
+            config, non_interactive,
+            answers={k: v for k, v in vpn_answers.items() if v}
+        )
+        panel.advance()
 
         if start is None:
             start = False if non_interactive else typer.confirm(
@@ -2140,24 +2188,11 @@ def _gather_generation_config(
 
         if enable_vpn:
 
-            # Credentials already came from the environment above (set by
-            # the menu, or exported by the user). Only prompt when a real
-            # interactive run left them blank.
-            if vpn is None and not non_interactive and (not vpn_service_provider or not vpn_type):
-                console.print("\n[bold]Gluetun VPN Configuration[/bold]")
-                console.print("You'll need your VPN provider's credentials. See:")
-                console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
-
-                vpn_service_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
-                vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
-
-                if vpn_type == "wireguard":
-                    wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
-                    wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
-                else:
-                    openvpn_user = typer.prompt("OpenVPN Username", default="")
-                    openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
-
+            # Credentials (provider, key, ...) are no longer gathered here -
+            # Phase 6 (`configure_pending`) fills them in after the stack is
+            # built, from env vars or an interactive walkthrough. The
+            # os.environ reads above still seed GenerationConfig so
+            # write_stack can put real values / placeholders in .env.
             enabled_optional.add("gluetun")
 
     if custom_services_selected is None:

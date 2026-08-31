@@ -19,9 +19,6 @@ import typer
 from installer.generate import STACK_DIR, enabled_service_keys
 
 
-console = None  # set by cli.py when it imports; falls back to typer.echo
-
-
 # service -> (env keys it needs, one-line hint shown before prompting).
 # Keys must match templates/env.j2 exactly - this walkthrough only fills
 # real .env vars. Deliberately no "traefik" (DOMAIN is a build-time
