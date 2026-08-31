@@ -2,8 +2,8 @@
 Phase 6 - Configure. After a stack is built (stack/docker-compose.yml +
 .env written) and before it's started, walk the user through the
 credentials the enabled services need but don't have yet: VPN provider
-+ key (gluetun), base domain (traefik), tunnel token (cloudflared),
-auth key (tailscale), admin passwords (pihole/adguardhome).
++ key (gluetun), tunnel token (cloudflared), auth key (tailscale),
+admin password (pihole).
 
 Writes stack/.env and stops. No validation - Phase 7 (start) surfaces a
 bad VPN key or an unresolved domain clearly enough, and a DNS/uptime
@@ -22,18 +22,21 @@ from installer.generate import STACK_DIR, enabled_service_keys
 console = None  # set by cli.py when it imports; falls back to typer.echo
 
 
-# service -> (env keys it needs, one-line hint shown before prompting)
+# service -> (env keys it needs, one-line hint shown before prompting).
+# Keys must match templates/env.j2 exactly - this walkthrough only fills
+# real .env vars. Deliberately no "traefik" (DOMAIN is a build-time
+# --domain flag baked into compose labels, not an .env var) and no
+# "adguardhome" (its admin password is set through its own web UI on
+# first run, no env var exists).
 _CREDENTIALS: dict[str, tuple[list[str], str]] = {
     "gluetun": (
         ["VPN_SERVICE_PROVIDER", "VPN_TYPE", "WIREGUARD_PRIVATE_KEY", "WIREGUARD_ADDRESSES"],
         "Your VPN provider's WireGuard details. Providers: "
         "https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers",
     ),
-    "traefik": (["DOMAIN"], "Base domain with DNS A records pointing at this host (blank to skip)."),
-    "cloudflared": (["CLOUDFLARE_TUNNEL_TOKEN"], "Tunnel token from Cloudflare Zero Trust (starts 'ey...')."),
-    "tailscale": (["TAILSCALE_AUTHKEY"], "Reusable auth key from the Tailscale admin console."),
-    "pihole": (["PIHOLE_PASSWORD"], "Admin password for the Pi-hole web UI."),
-    "adguardhome": (["ADGUARDHOME_PASSWORD"], "Admin password for the AdGuard Home web UI."),
+    "cloudflared": (["TUNNEL_TOKEN"], "Tunnel token from the Cloudflare Zero Trust dashboard (Networks > Tunnels)."),
+    "tailscale": (["TS_AUTHKEY"], "Reusable auth key from https://login.tailscale.com/admin/settings/keys"),
+    "pihole": (["PIHOLE_WEBPASSWORD"], "Admin password for the Pi-hole web UI."),
 }
 
 # treated as "not really set" - the generate.py placeholder values
@@ -41,10 +44,9 @@ _PLACEHOLDERS = {"", "changeme", "changeme-please"}
 
 # Keys that are genuinely fine to leave blank - their absence alone never
 # makes a service "pending". WIREGUARD_ADDRESSES: some providers (e.g.
-# Mullvad) assign it server-side. DOMAIN: "blank to skip" per its own hint,
-# and it normally comes from --domain, not this walkthrough. They're still
-# written when an answer is supplied and the service is pending anyway.
-_OPTIONAL_KEYS = {"WIREGUARD_ADDRESSES", "DOMAIN"}
+# Mullvad) assign it server-side. Still written when an answer is supplied
+# and the service is pending on one of its other keys anyway.
+_OPTIONAL_KEYS = {"WIREGUARD_ADDRESSES"}
 
 
 def _read_env() -> dict[str, str]:

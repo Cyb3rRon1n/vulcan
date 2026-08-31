@@ -53,9 +53,9 @@ def test_configure_pending_reports_still_blank(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("PUID=1000\n")
 
     result = configure_pending(
-        _cfg(custom_services={"traefik", "cloudflared"}, enabled_optional=set()),
+        _cfg(custom_services={"cloudflared"}, enabled_optional=set()),
         non_interactive=True,
         answers={},
     )
 
-    assert "CLOUDFLARE_TUNNEL_TOKEN" in result["still_blank"]
+    assert "TUNNEL_TOKEN" in result["still_blank"]
