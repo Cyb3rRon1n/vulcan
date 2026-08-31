@@ -89,7 +89,7 @@ def test_enabled_service_keys_medium_without_gluetun():
 
     assert keys == {
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-        "jellyseerr", "bazarr", "flaresolverr", "filebrowser"
+        "seerr", "bazarr", "flaresolverr", "filebrowser"
     }
 
 
@@ -139,7 +139,7 @@ def test_render_compose_light_only_includes_light_services():
     for name in ("jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent"):
         assert f"container_name: {name}" in output
 
-    for name in ("jellyseerr", "bazarr", "flaresolverr", "gluetun"):
+    for name in ("seerr", "bazarr", "flaresolverr", "gluetun"):
         assert f"container_name: {name}" not in output
 
 
@@ -150,7 +150,7 @@ def test_render_compose_medium_without_gluetun_gives_qbittorrent_its_own_ports()
     assert 'network_mode: "service:gluetun"' not in output
     assert "container_name: gluetun" not in output
 
-    qbittorrent_block = output.split("qbittorrent:", 1)[1].split("jellyseerr:", 1)[0]
+    qbittorrent_block = output.split("qbittorrent:", 1)[1].split("seerr:", 1)[0]
     assert "8080:8080" in qbittorrent_block
 
 
@@ -160,7 +160,7 @@ def test_render_compose_medium_with_gluetun_routes_qbittorrent_through_it():
 
     assert "container_name: gluetun" in output
 
-    qbittorrent_block = output.split("qbittorrent:", 1)[1].split("jellyseerr:", 1)[0]
+    qbittorrent_block = output.split("qbittorrent:", 1)[1].split("seerr:", 1)[0]
     assert 'network_mode: "service:gluetun"' in qbittorrent_block
     assert "ports:" not in qbittorrent_block
 
@@ -178,7 +178,7 @@ def test_render_compose_medium_with_sabnzbd_uses_remapped_port():
 
     assert "container_name: sabnzbd" in output
 
-    sabnzbd_block = output.split("sabnzbd:", 1)[1].split("jellyseerr:", 1)[0]
+    sabnzbd_block = output.split("sabnzbd:", 1)[1].split("seerr:", 1)[0]
     assert '"8081:8080"' in sabnzbd_block
     assert "${MEDIA_PATH}:/data" in sabnzbd_block
 
@@ -264,7 +264,7 @@ def test_render_compose_medium_with_recyclarr_uses_pinned_image_and_user():
 
     assert "container_name: recyclarr" in output
 
-    recyclarr_block = output.split("recyclarr:", 1)[1].split("jellyseerr:", 1)[0]
+    recyclarr_block = output.split("recyclarr:", 1)[1].split("seerr:", 1)[0]
     assert "image: ghcr.io/recyclarr/recyclarr:8" in recyclarr_block
     assert 'user: "${PUID}:${PGID}"' in recyclarr_block
     assert "PUID=${PUID}" not in recyclarr_block
@@ -281,7 +281,7 @@ def test_render_compose_medium_with_decluttarr_mounts_config():
 
     output = render_compose(make_config("medium", {"decluttarr"}))
 
-    decluttarr_block = _service_block(output, "decluttarr", "jellyseerr")
+    decluttarr_block = _service_block(output, "decluttarr", "seerr")
     assert "image: ghcr.io/manimatter/decluttarr:latest" in decluttarr_block
     assert "./config/decluttarr/config.yaml:/app/config/config.yaml" in decluttarr_block
 
@@ -297,7 +297,7 @@ def test_render_compose_medium_with_maintainerr_mounts_media_and_config():
 
     output = render_compose(make_config("medium", {"maintainerr"}))
 
-    maintainerr_block = _service_block(output, "maintainerr", "jellyseerr")
+    maintainerr_block = _service_block(output, "maintainerr", "seerr")
     assert "image: ghcr.io/maintainerr/maintainerr:latest" in maintainerr_block
     assert 'user: "${PUID}:${PGID}"' in maintainerr_block
     assert "./config/maintainerr:/opt/data" in maintainerr_block
@@ -313,7 +313,7 @@ def test_render_compose_maintainerr_uses_port_override():
 
     output = render_compose(make_config("medium", {"maintainerr"}, port_overrides={"maintainerr": 7246}))
 
-    maintainerr_block = _service_block(output, "maintainerr", "jellyseerr")
+    maintainerr_block = _service_block(output, "maintainerr", "seerr")
     assert '"7246:6246"' in maintainerr_block
 
 
@@ -429,7 +429,7 @@ def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_s
         "radarr": 7878,
         "sonarr": 8989,
         "prowlarr": 9696,
-        "jellyseerr": 5055,
+        "seerr": 5055,
         "bazarr": 6767,
         "lidarr": 8686,
         "readarr": 8787,
@@ -463,7 +463,7 @@ def test_render_compose_qbittorrent_routed_when_gluetun_disabled():
         make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
     )
 
-    qbittorrent_block = _service_block(output, "qbittorrent", "jellyseerr")
+    qbittorrent_block = _service_block(output, "qbittorrent", "seerr")
     assert "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.media.example.com`)" in qbittorrent_block
     assert "traefik.http.services.qbittorrent.loadbalancer.server.port=8080" in qbittorrent_block
 
@@ -476,7 +476,7 @@ def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
         )
     )
 
-    qbittorrent_block = _service_block(output, "qbittorrent", "jellyseerr")
+    qbittorrent_block = _service_block(output, "qbittorrent", "seerr")
     assert "traefik" not in qbittorrent_block
 
     # every other enabled service still gets routed
@@ -489,7 +489,7 @@ def test_render_compose_sabnzbd_uses_internal_port_not_remapped_host_port():
         make_config("heavy", enabled_optional={"traefik", "sabnzbd"}, domain="media.example.com")
     )
 
-    sabnzbd_block = _service_block(output, "sabnzbd", "jellyseerr")
+    sabnzbd_block = _service_block(output, "sabnzbd", "seerr")
     assert "traefik.http.services.sabnzbd.loadbalancer.server.port=8080" in sabnzbd_block
     assert "loadbalancer.server.port=8081" not in sabnzbd_block
 
@@ -1010,7 +1010,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
     "downtify", "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
-    "jellyseerr", "flaresolverr", "traefik", "cloudflared", "crowdsec",
+    "seerr", "flaresolverr", "traefik", "cloudflared", "crowdsec",
     "dashy", "watchtower",
 }
 
@@ -1265,7 +1265,7 @@ def test_render_homepage_services_every_tile_has_a_real_description():
         make_config(
             "heavy",
             custom_services={
-                "jellyfin", "jellyseerr", "radarr", "sonarr", "lidarr", "readarr",
+                "jellyfin", "seerr", "radarr", "sonarr", "lidarr", "readarr",
                 "prowlarr", "bazarr", "qbittorrent", "sabnzbd", "uptime-kuma",
                 "authelia", "traefik"
             },
@@ -1438,7 +1438,7 @@ def test_render_homepage_services_output_is_valid_yaml():
             "heavy",
             custom_services={
                 "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
+                "sabnzbd", "seerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
             }
         ),
         host_ip=None
@@ -1506,7 +1506,7 @@ def test_render_dashy_config_output_is_valid_yaml():
             "heavy",
             custom_services={
                 "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-                "sabnzbd", "jellyseerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
+                "sabnzbd", "seerr", "bazarr", "lidarr", "readarr", "uptime-kuma"
             }
         ),
         host_ip=None
@@ -1545,7 +1545,7 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert env_path.read_text() == render_env(config)
 
     for key in ("jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
-                "jellyseerr", "bazarr", "flaresolverr", "filebrowser"):
+                "seerr", "bazarr", "flaresolverr", "filebrowser"):
         assert (output_dir / "config" / key).is_dir()
 
     assert (media_path / "downloads").is_dir()
@@ -2982,7 +2982,7 @@ def test_render_authelia_configuration_rbac_rules_for_admin_only_services():
         make_config(
             "heavy",
             custom_services={"authelia", "traefik", "radarr", "sonarr", "prowlarr",
-                              "jellyfin", "jellyseerr"},
+                              "jellyfin", "seerr"},
             domain="media.example.com"
         ),
         host_ip="192.168.1.100"
@@ -2997,7 +2997,7 @@ def test_render_authelia_configuration_rbac_rules_for_admin_only_services():
         assert f"{svc}.media.example.com" in rule_domains
 
     # Media services should NOT have rules (fall through to default_policy)
-    for svc in ("jellyfin", "jellyseerr"):
+    for svc in ("jellyfin", "seerr"):
         assert f"{svc}.media.example.com" not in rule_domains
 
     # All rules should require admin group
