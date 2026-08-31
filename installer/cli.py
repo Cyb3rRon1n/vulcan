@@ -64,6 +64,7 @@ from installer.preflight import (
     format_network_conflicts,
     format_port_conflicts,
 )
+from installer.phase0 import ensure_system_ready
 from installer.panel import RunPanel, _NoOpPanel, progress_panel
 from installer.self_update import update_vulcan_self
 from installer.storage import (
@@ -272,6 +273,42 @@ def detect_shell():
     # to be piped/eval-ed, not read as formatted terminal output.
     for key, value in fields.items():
         print(f"{key}={_shell_quote(str(value))}")
+
+
+@app.command()
+def preflight(
+    fix: bool = typer.Option(False, "--fix", help="Install what's missing (needs root for Docker/packages).")
+):
+    """Phase 0: check (or with --fix, install) the system packages and
+    Docker setup a first run needs. Idempotent - safe to re-run."""
+
+    report = ensure_system_ready(fix=fix)
+
+    for step in report["did"]:
+        console.print(f"[green]✓[/green] {step}")
+
+    if report["needs_reboot"]:
+        console.print(
+            "\n[yellow]Docker was layered via rpm-ostree (atomic OS). Reboot, "
+            "then run ./install again - it will pick up from here.[/yellow]\n"
+            "  sudo systemctl reboot"
+        )
+        raise typer.Exit(code=0)
+
+    if report["needs_root"]:
+        console.print(
+            "\n[red]Phase 0 needs root to install Docker / system packages.[/red]\n"
+            "  sudo ./install"
+        )
+        raise typer.Exit(code=1)
+
+    if report["ready"]:
+        console.print("[green]System is ready.[/green]")
+        raise typer.Exit(code=0)
+
+    console.print("\n[red]Still missing:[/red] " + ", ".join(report["missing"]))
+    console.print("Run  ./install  (or  sudo vulcan preflight --fix ) to install these.")
+    raise typer.Exit(code=1)
 
 
 def _config_from_previous_state(previous: dict) -> GenerationConfig:
