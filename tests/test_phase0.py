@@ -11,6 +11,22 @@ DOCKER_ABSENT = {
     "docker_installed": False, "docker_running": False,
     "docker_accessible": False, "docker_compose_v2": False,
 }
+DOCKER_GROUP_ONLY = {
+    "docker_installed": True, "docker_running": True,
+    "docker_accessible": False, "docker_compose_v2": True,
+}
+DOCKER_STOPPED = {
+    "docker_installed": True, "docker_running": False,
+    "docker_accessible": False, "docker_compose_v2": True,
+}
+DOCKER_NO_COMPOSE = {
+    "docker_installed": True, "docker_running": True,
+    "docker_accessible": True, "docker_compose_v2": False,
+}
+
+_DEPS_OK = {
+    "success": True, "packages": [], "installed": [], "missing_after": [], "needs_reboot": False,
+}
 
 
 def test_report_only_when_everything_present():
@@ -71,3 +87,77 @@ def test_fix_short_circuits_on_rpm_ostree_reboot():
 
     assert report["needs_reboot"] is True
     assert report["ready"] is False
+
+
+def test_fix_group_only_adds_user_when_root():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=dict(DOCKER_GROUP_ONLY)), \
+        patch("installer.phase0.os.geteuid", return_value=0), \
+        patch("installer.phase0.install_docker") as install_docker, \
+        patch("installer.phase0.start_docker_service") as start_docker_service, \
+        patch("installer.phase0.add_user_to_docker_group", return_value={"success": True, "error": None}) as add_group, \
+        patch("installer.phase0.check_docker_ready", return_value={"docker_running": True, "docker_compose_v2": True}):
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    add_group.assert_called_once_with("sentinel")
+    install_docker.assert_not_called()
+    start_docker_service.assert_not_called()
+    assert report["group_added"] is True
+
+
+def test_fix_group_only_needs_root_when_not_root():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=dict(DOCKER_GROUP_ONLY)), \
+        patch("installer.phase0.os.geteuid", return_value=1000), \
+        patch("installer.phase0.add_user_to_docker_group") as add_group:
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    assert report["needs_root"] is True
+    add_group.assert_not_called()
+    assert report["did"] == []
+
+
+def test_fix_starts_service_then_adds_group_when_stopped():
+    calls = []
+
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=dict(DOCKER_STOPPED)), \
+        patch("installer.phase0.os.geteuid", return_value=0), \
+        patch("installer.phase0.install_docker") as install_docker, \
+        patch("installer.phase0.start_docker_service", side_effect=lambda *a: calls.append("start")), \
+        patch("installer.phase0.add_user_to_docker_group", side_effect=lambda u: calls.append("group") or {"success": True, "error": None}), \
+        patch("installer.phase0.check_docker_ready", return_value={"docker_running": True, "docker_compose_v2": True}):
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    assert calls == ["start", "group"]
+    install_docker.assert_not_called()
+    assert report["group_added"] is True
+
+
+def test_fix_compose_v2_only_when_root():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_NO_COMPOSE), \
+        patch("installer.phase0.os.geteuid", return_value=0), \
+        patch("installer.phase0.ensure_compose_v2") as ensure_compose_v2, \
+        patch("installer.phase0.add_user_to_docker_group") as add_group:
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    ensure_compose_v2.assert_called_once()
+    add_group.assert_not_called()
+    assert report["group_added"] is False
+
+
+def test_fix_compose_v2_only_needs_root_when_not_root():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_NO_COMPOSE), \
+        patch("installer.phase0.os.geteuid", return_value=1000), \
+        patch("installer.phase0.ensure_compose_v2") as ensure_compose_v2:
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    assert report["needs_root"] is True
+    ensure_compose_v2.assert_not_called()
