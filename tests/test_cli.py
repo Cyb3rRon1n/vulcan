@@ -1198,131 +1198,33 @@ def test_start_reassigns_conflicting_port_with_no_prompt(tmp_path):
     )
 
 
-def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
+def test_run_install_asserts_docker_and_exits_when_not_ready(tmp_path):
+    """After the Phase-0 move, run_install does not install Docker - it
+    asserts and points at ./install."""
 
     media_path = str(tmp_path / "media")
+    down = make_system_info(docker_running=False, docker_compose_v2=False)
 
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False,
-        os_id="fedora"
-    )
-
-    parent = MagicMock()
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ), patch(
-        "installer.cli.install_docker",
-        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
-    ) as mock_install, patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ) as mock_add_group, patch(
-        "installer.cli.ensure_compose_v2"
-    ) as mock_compose, patch(
+    with patch("installer.cli.detect_system", return_value=down), patch(
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
     ), patch(
-        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ):
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False,
+                      "docker_accessible": False, "docker_compose_v2": False}
+    ), patch("installer.cli.install_docker") as mock_install, patch(
+        "installer.cli.start_docker_service"
+    ) as mock_start:
 
-        parent.attach_mock(mock_install, "install_docker")
-        parent.attach_mock(mock_start, "start_docker_service")
-        parent.attach_mock(mock_add_group, "add_user_to_docker_group")
-        parent.attach_mock(mock_compose, "ensure_compose_v2")
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain",
-                "--tier", "light",
-                "--media-path", media_path,
-                "--puid", "1000",
-                "--pgid", "1000",
-                "--timezone", "UTC",
-                "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-
-    mock_install.assert_called_once()
-    mock_start.assert_called_once()
-    mock_add_group.assert_called_once()
-    mock_compose.assert_called_once()
-
-    call_order = [call[0] for call in parent.mock_calls]
-    assert call_order == [
-        "install_docker", "start_docker_service", "add_user_to_docker_group", "ensure_compose_v2"
-    ]
-
-
-def test_docker_bootstrap_unsupported_distro_exits_cleanly(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False,
-        os_id="gentoo"
-    )
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.install_plan_for", return_value=None
-    ), patch(
-        "installer.cli.install_docker"
-    ) as mock_install:
-
-        result = runner.invoke(
-            app,
-            ["--tier", "light", "--media-path", media_path, "--non-interactive", "--yes"]
-        )
+        result = runner.invoke(app, [
+            "--tier", "light", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--start"
+        ])
 
     assert result.exit_code == 1
-    assert "No known automatic install method" in result.output
+    assert "./install" in result.output
     mock_install.assert_not_called()
-
-
-def test_docker_bootstrap_offline_skips_install_attempt(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False
-    )
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.install_plan_for"
-    ) as mock_plan, patch(
-        "installer.cli.install_docker"
-    ) as mock_install:
-
-        result = runner.invoke(
-            app,
-            [
-                "--tier", "light", "--media-path", media_path,
-                "--non-interactive", "--yes", "--offline"
-            ]
-        )
-
-    assert result.exit_code == 1
-    assert "No internet access" in result.output
-    mock_plan.assert_not_called()
-    mock_install.assert_not_called()
+    mock_start.assert_not_called()
 
 
 def test_interactive_full_run_with_prompts(tmp_path):
@@ -1393,122 +1295,6 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
     assert result.exit_code == 0, result.output
     assert "PUID/PGID set which user/group ID" in result.output
     mock_write_stack.assert_called_once()
-
-
-def test_docker_installed_but_not_running_starts_service(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_running = make_system_info(docker_running=False, docker_compose_v2=False)
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_running
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ), patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ), patch(
-        "installer.cli.install_docker"
-    ) as mock_install, patch(
-        "installer.cli.detect_disk",
-        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
-    ), patch(
-        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ):
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain", "--tier", "light", "--media-path", media_path,
-                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-    mock_start.assert_called_once()
-    mock_install.assert_not_called()
-
-
-def test_ensure_docker_ready_adds_group_when_daemon_up_but_inaccessible():
-    """docker_running=True, docker_accessible=False (daemon up, user not
-    in the docker group): _ensure_docker_ready adds the user to the
-    group and does NOT try to (re)start the service."""
-
-    from installer.cli import _ensure_docker_ready
-
-    info = make_system_info(docker_accessible=False)
-
-    with patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ) as mock_group, patch(
-        "installer.cli.install_docker"
-    ) as mock_install, patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": True,
-            "docker_accessible": True, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ):
-
-        result_info, group_just_added = _ensure_docker_ready(
-            info, non_interactive=True, yes=True
-        )
-
-    mock_group.assert_called_once()
-    mock_start.assert_not_called()
-    mock_install.assert_not_called()
-    assert group_just_added is True
-
-
-def test_docker_running_but_missing_compose_v2(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    no_compose = make_system_info(docker_compose_v2=False)
-
-    with patch(
-        "installer.cli.detect_system", return_value=no_compose
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": True, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.ensure_compose_v2"
-    ) as mock_compose, patch(
-        "installer.cli.detect_disk",
-        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
-    ), patch(
-        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ):
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain", "--tier", "light", "--media-path", media_path,
-                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-    mock_compose.assert_called_once()
 
 
 def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):

@@ -62,6 +62,20 @@ def test_fix_installs_docker_then_starts_then_adds_group_in_order():
     assert report["group_added"] is True
 
 
+def test_fix_unsupported_distro_reports_missing_and_does_not_install():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_ABSENT), \
+        patch("installer.phase0.os.geteuid", return_value=0), \
+        patch("installer.phase0.install_plan_for", return_value=None), \
+        patch("installer.phase0.install_docker") as install_docker:
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    install_docker.assert_not_called()
+    assert report["ready"] is False
+    assert any("no automatic install" in m for m in report["missing"])
+
+
 def test_fix_needs_root_when_not_root_and_docker_missing():
     with patch("installer.phase0.ensure_system_deps", return_value={
         "success": True, "packages": [], "installed": [], "missing_after": [], "needs_reboot": False,
