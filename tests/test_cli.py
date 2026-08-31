@@ -1463,6 +1463,46 @@ def test_non_interactive_vpn_off_generates_stack_without_crashing(tmp_path):
     assert config.vpn_type is None
 
 
+def test_run_install_calls_configure_between_build_and_start(tmp_path):
+    media_path = str(tmp_path / "media")
+    calls = []
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli._build", side_effect=lambda *a, **k: calls.append("build") or READY_WRITE_RESULT), \
+        patch("installer.cli.configure_pending", side_effect=lambda *a, **k: calls.append("configure") or {"written": [], "still_blank": []}), \
+        patch("installer.cli._start", side_effect=lambda *a, **k: calls.append("start")):
+
+        result = runner.invoke(app, [
+            "--tier", "medium", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--start"
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["build", "configure", "start"]
+
+
+def test_gather_config_does_not_prompt_for_wireguard_key(tmp_path):
+    """VPN credential prompts moved to Phase 6 - service selection must not
+    ask for a key anymore."""
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli._build", return_value=READY_WRITE_RESULT), patch(
+        "installer.cli.configure_pending", return_value={"written": [], "still_blank": []}
+    ), patch("installer.cli._start"):
+
+        result = runner.invoke(app, [
+            "--plain", "--media-path", media_path,
+            "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+        ], input="\ny\n" + "\n" * 20)
+
+    assert "WireGuard Private Key" not in result.output
+
+
 def test_prints_all_three_tier_compositions_when_interactively_choosing(tmp_path):
 
     media_path = str(tmp_path / "media")
