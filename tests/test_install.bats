@@ -34,6 +34,7 @@ teardown() {
 if [ "$1" = "-c" ]; then
     exit 1
 fi
+# Phase 0 preflight (and any later `-m installer ...`) -> succeed
 exit 0
 EOF
     chmod +x "$INSTALL_DIR/.venv/bin/python"
@@ -73,6 +74,7 @@ EOF
     cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "-c" ]; then exit 1; fi
+# Phase 0 preflight (and any later `-m installer ...`) -> succeed
 exit 0
 EOF
     chmod +x "$INSTALL_DIR/.venv/bin/python"
@@ -114,6 +116,48 @@ EOF
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m venv"* ]]
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"pip"*"-e $INSTALL_DIR"* ]]
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m installer"* ]]
+}
+
+@test "install runs preflight --fix and re-execs under sudo when it needs root" {
+
+    # healthy venv so the bootstrap goes straight to preflight
+    cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then exit 0; fi          # import check passes
+# `-m installer preflight --fix` -> pretend it needs root
+if [ "$2" = "installer" ] && [ "$3" = "preflight" ]; then
+    echo "Phase 0 needs root"
+    echo "  sudo ./install"
+    exit 1
+fi
+# any later `-m installer ...` (the real app) -> succeed
+exit 0
+EOF
+    chmod +x "$INSTALL_DIR/.venv/bin/python"
+
+    cat > "$INSTALL_DIR/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then printf '3.11\n'; fi
+exit 0
+EOF
+    cat > "$INSTALL_DIR/bin/id" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "-u" ] && { echo 1000; exit 0; }
+exec /usr/bin/id "$@"
+EOF
+    cat > "$INSTALL_DIR/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+printf 'sudo %s\n' "$*" >> "$RUNLOG"
+exit 0
+EOF
+    chmod +x "$INSTALL_DIR/bin/python3" "$INSTALL_DIR/bin/id" "$INSTALL_DIR/bin/sudo"
+
+    RUNLOG="$INSTALL_DIR/run.log"
+    run env PATH="$INSTALL_DIR/bin:$PATH" RUNLOG="$RUNLOG" bash "$INSTALL_DIR/install" --plain version
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Vulcan needs root once"* ]]
+    [[ "$(cat "$RUNLOG")" == *"sudo "*"install"*"--plain version"* ]]
 }
 
 @test "a healthy venv (import succeeds) skips the re-bootstrap" {
