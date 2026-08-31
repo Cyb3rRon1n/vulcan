@@ -1439,6 +1439,43 @@ def test_docker_installed_but_not_running_starts_service(tmp_path):
     mock_install.assert_not_called()
 
 
+def test_ensure_docker_ready_adds_group_when_daemon_up_but_inaccessible():
+    """docker_running=True, docker_accessible=False (daemon up, user not
+    in the docker group): _ensure_docker_ready adds the user to the
+    group and does NOT try to (re)start the service."""
+
+    from installer.cli import _ensure_docker_ready
+
+    info = make_system_info(docker_accessible=False)
+
+    with patch(
+        "installer.cli.start_docker_service"
+    ) as mock_start, patch(
+        "installer.cli.add_user_to_docker_group",
+        return_value={"success": True, "error": None}
+    ) as mock_group, patch(
+        "installer.cli.install_docker"
+    ) as mock_install, patch(
+        "installer.cli.detect_docker",
+        return_value={
+            "docker_installed": True, "docker_running": True,
+            "docker_accessible": True, "docker_compose_v2": True
+        }
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ):
+
+        result_info, group_just_added = _ensure_docker_ready(
+            info, non_interactive=True, yes=True
+        )
+
+    mock_group.assert_called_once()
+    mock_start.assert_not_called()
+    mock_install.assert_not_called()
+    assert group_just_added is True
+
+
 def test_docker_running_but_missing_compose_v2(tmp_path):
 
     media_path = str(tmp_path / "media")
@@ -1563,6 +1600,38 @@ def test_non_interactive_medium_with_explicit_vpn_flag(tmp_path):
     config = mock_write_stack.call_args[0][0]
     assert config.enabled_optional == {"gluetun"}
     assert "fill in your VPN credentials" in result.output
+
+
+def test_non_interactive_vpn_off_generates_stack_without_crashing(tmp_path):
+    """Regression: the six VPN credential locals were only bound inside
+    `if enable_vpn:`, so a non-interactive run with VPN off (the default)
+    raised UnboundLocalError while building GenerationConfig."""
+
+    media_path = str(tmp_path / "media")
+
+    with patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            [
+                "--tier", "medium", "--media-path", media_path,
+                "--non-interactive", "--yes", "--no-vpn"
+            ]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert "gluetun" not in config.enabled_optional
+    assert config.vpn_service_provider is None
+    assert config.vpn_type is None
 
 
 def test_prints_all_three_tier_compositions_when_interactively_choosing(tmp_path):

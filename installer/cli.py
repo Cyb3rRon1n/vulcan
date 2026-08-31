@@ -1433,7 +1433,7 @@ def _ensure_docker_ready(
     group_just_added = False
     panel = panel if panel is not None else _NoOpPanel(console)
 
-    if info.docker_installed and info.docker_running and info.docker_compose_v2:
+    if info.docker_installed and info.docker_running and info.docker_accessible and info.docker_compose_v2:
 
         panel.note("[green]Docker is ready.[/green]")
         return info, group_just_added
@@ -1496,6 +1496,23 @@ def _ensure_docker_ready(
             ensure_compose_v2(info.os_id)
             group_just_added = True
 
+    elif info.docker_running and not info.docker_accessible:
+
+        console.print(
+            "Docker is running, but your user isn't in the 'docker' group "
+            "yet - that's why it looked unavailable."
+        )
+
+        if yes or typer.confirm("Add your user to the docker group now?"):
+
+            group_result = add_user_to_docker_group(getpass.getuser())
+
+            if not group_result["success"]:
+                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
+                return info, group_just_added
+
+            group_just_added = True
+
     elif not info.docker_running:
 
         console.print("Docker is installed but not running.")
@@ -1529,6 +1546,7 @@ def _ensure_docker_ready(
     docker_state = detect_docker()
     info.docker_installed = docker_state["docker_installed"]
     info.docker_running = docker_state["docker_running"]
+    info.docker_accessible = docker_state.get("docker_accessible", True)
     info.docker_compose_v2 = docker_state["docker_compose_v2"]
 
     if group_just_added:
@@ -1541,6 +1559,11 @@ def _ensure_docker_ready(
         readiness = check_docker_ready(use_group_workaround=True)
         info.docker_running = readiness["docker_running"]
         info.docker_compose_v2 = readiness["docker_compose_v2"]
+
+        # The group add + `sg docker` workaround is what makes Docker
+        # reachable for the rest of this run; a plain socket check would
+        # still fail on this process's stale login-time group list.
+        info.docker_accessible = readiness["docker_running"]
 
     return info, group_just_added
 
@@ -2075,6 +2098,18 @@ def _gather_generation_config(
 
     enabled_optional = set()
 
+    # Bound here, before any branch, so every path into GenerationConfig
+    # below has them - they used to be assigned only inside the
+    # `if enable_vpn:` block, which meant a VPN-off run (the default in
+    # --non-interactive, and every --no-vpn menu path) raised
+    # UnboundLocalError building the config.
+    vpn_service_provider = os.environ.get("VPN_SERVICE_PROVIDER")
+    vpn_type = os.environ.get("VPN_TYPE")
+    wireguard_private_key = os.environ.get("WIREGUARD_PRIVATE_KEY")
+    wireguard_addresses = os.environ.get("WIREGUARD_ADDRESSES")
+    openvpn_user = os.environ.get("OPENVPN_USER")
+    openvpn_password = os.environ.get("OPENVPN_PASSWORD")
+
     if custom_services_selected is None:
 
         console.print("\n[bold]Downloads & Network[/bold]")        # Defaults to True (opt-out, not opt-in) on a fresh install -
@@ -2104,37 +2139,24 @@ def _gather_generation_config(
             enable_vpn = vpn
 
         if enable_vpn:
-            # Read VPN credentials from environment if set (by TUI), otherwise prompt
-            vpn_service_provider = os.environ.get("VPN_SERVICE_PROVIDER")
-            vpn_type = os.environ.get("VPN_TYPE")
-            wireguard_private_key = os.environ.get("WIREGUARD_PRIVATE_KEY")
-            wireguard_addresses = os.environ.get("WIREGUARD_ADDRESSES")
-            openvpn_user = os.environ.get("OPENVPN_USER")
-            openvpn_password = os.environ.get("OPENVPN_PASSWORD")
 
-            # Prompt for VPN credentials if not already provided via environment
-            if vpn is None and not non_interactive:
-                if not vpn_service_provider or not vpn_type:
-                    console.print("\n[bold]Gluetun VPN Configuration[/bold]")
-                    console.print("You'll need your VPN provider's credentials. See:")
-                    console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
+            # Credentials already came from the environment above (set by
+            # the menu, or exported by the user). Only prompt when a real
+            # interactive run left them blank.
+            if vpn is None and not non_interactive and (not vpn_service_provider or not vpn_type):
+                console.print("\n[bold]Gluetun VPN Configuration[/bold]")
+                console.print("You'll need your VPN provider's credentials. See:")
+                console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
 
-                    vpn_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
-                    vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
+                vpn_service_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
+                vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
 
-                    if vpn_type == "wireguard":
-                        wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
-                        wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
-                    else:
-                        openvpn_user = typer.prompt("OpenVPN Username", default="")
-                        openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
+                if vpn_type == "wireguard":
+                    wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
+                    wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
                 else:
-                    vpn_service_provider = vpn_service_provider
-                    vpn_type = vpn_type
-                    wireguard_private_key = wireguard_private_key
-                    wireguard_addresses = wireguard_addresses
-                    openvpn_user = os.environ.get("OPENVPN_USER")
-                    openvpn_password = os.environ.get("OPENVPN_PASSWORD")
+                    openvpn_user = typer.prompt("OpenVPN Username", default="")
+                    openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
 
             enabled_optional.add("gluetun")
 

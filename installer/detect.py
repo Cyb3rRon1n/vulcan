@@ -21,7 +21,7 @@ from pathlib import Path
 
 import psutil
 
-from installer.shell import run_ok
+from installer.shell import run_ok, run_result
 from installer.storage import list_blank_unprotected_devices
 
 
@@ -48,6 +48,12 @@ class SystemInfo:
     os_id: str | None
     os_pretty_name: str | None
     os_is_atomic: bool
+
+    # Daemon is up but this user can't reach the socket (not in the
+    # docker group). Distinct from docker_running=False (daemon down):
+    # the fix is a group add, not a service start. Defaults True so a
+    # SystemInfo built without it behaves exactly as before.
+    docker_accessible: bool = True
 
 
 def detect_cpu() -> dict:
@@ -491,12 +497,26 @@ def detect_docker() -> dict:
         return {
             "docker_installed": False,
             "docker_running": False,
+            "docker_accessible": False,
             "docker_compose_v2": False
         }
 
+    info_rc, info_err = run_result(["docker", "info"])
+
+    running = info_rc == 0
+    accessible = running
+
+    # `docker info` failing with EACCES on the socket means the daemon
+    # is up and this user just isn't in the docker group - "running but
+    # not accessible", whose fix is a group add, not a service start.
+    if not running and "permission denied" in info_err.lower():
+        running = True
+        accessible = False
+
     return {
         "docker_installed": True,
-        "docker_running": run_ok(["docker", "info"]),
+        "docker_running": running,
+        "docker_accessible": accessible,
         "docker_compose_v2": run_ok(["docker", "compose", "version"])
     }
 
