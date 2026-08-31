@@ -799,19 +799,25 @@ def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
     display_names = {service.key: service.display_name for service in ALL_SERVICES}
 
     lines = []
+    # A service can appear in more than one _HOMEPAGE_GROUPS bucket
+    # (radarr in Events + Media Processing, gluetun in Network +
+    # Infrastructure, ...), and homepage/dashy are emitted explicitly
+    # below as well as sitting in a group - list each exactly once.
+    seen: set[str] = set()
 
     if "homepage" in enabled:
         lines.append(f"  Homepage (dashboard): {_service_href('homepage', config, host_ip)}")
+        seen.add("homepage")
 
     if "dashy" in enabled:
         lines.append(f"  Dashy (dashboard): {_service_href('dashy', config, host_ip)}")
+        seen.add("dashy")
 
-    lines.extend(
-        f"  {display_names[key]}: {_service_href(key, config, host_ip)}"
-        for keys in _HOMEPAGE_GROUPS.values()
-        for key in keys
-        if key in enabled
-    )
+    for keys in _HOMEPAGE_GROUPS.values():
+        for key in keys:
+            if key in enabled and key not in seen:
+                lines.append(f"  {display_names[key]}: {_service_href(key, config, host_ip)}")
+                seen.add(key)
 
     return "\n".join(lines)
 

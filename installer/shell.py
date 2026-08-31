@@ -56,6 +56,26 @@ def run_ok(command: list[str], timeout: int = 10) -> bool:
         return False
 
 
+def run_result(command: list[str], timeout: int = 10) -> tuple[int, str]:
+    """Like run_ok(), but returns (returncode, stderr text) so a caller
+    can tell *why* a command failed - e.g. a permission error on the
+    docker socket ("running, you're just not in the group") is not the
+    same as the daemon being down."""
+
+    try:
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=timeout
+        )
+
+        return result.returncode, (result.stderr or b"").decode("utf-8", "replace")
+
+    except (subprocess.SubprocessError, OSError) as error:
+        return 1, str(error)
+
+
 def run_streaming(command: list[str], on_line) -> int:
     """
     Run a command with its stdout+stderr merged into a single stream,

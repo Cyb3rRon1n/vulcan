@@ -676,6 +676,7 @@ def test_detect_docker_when_not_installed():
     assert result == {
         "docker_installed": False,
         "docker_running": False,
+        "docker_accessible": False,
         "docker_compose_v2": False
     }
 
@@ -686,7 +687,7 @@ def test_detect_docker_when_installed_and_running():
         "installer.detect.shutil.which", return_value="/usr/bin/docker"
     ), patch(
         "installer.shell.subprocess.run",
-        return_value=MagicMock(returncode=0)
+        return_value=MagicMock(returncode=0, stderr=b"")
     ):
 
         result = detect_docker()
@@ -694,6 +695,7 @@ def test_detect_docker_when_installed_and_running():
     assert result == {
         "docker_installed": True,
         "docker_running": True,
+        "docker_accessible": True,
         "docker_compose_v2": True
     }
 
@@ -704,7 +706,7 @@ def test_detect_docker_when_installed_but_daemon_not_running():
         "installer.detect.shutil.which", return_value="/usr/bin/docker"
     ), patch(
         "installer.shell.subprocess.run",
-        return_value=MagicMock(returncode=1)
+        return_value=MagicMock(returncode=1, stderr=b"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?")
     ):
 
         result = detect_docker()
@@ -712,7 +714,36 @@ def test_detect_docker_when_installed_but_daemon_not_running():
     assert result == {
         "docker_installed": True,
         "docker_running": False,
+        "docker_accessible": False,
         "docker_compose_v2": False
+    }
+
+
+def test_detect_docker_when_daemon_up_but_user_lacks_socket_permission():
+    """Daemon is running; this user just isn't in the docker group, so
+    `docker info` gets EACCES on the socket. That is 'running but not
+    accessible' - not 'not running' - so the remedy is a group add, not
+    a service start."""
+
+    def fake_run(command, **kwargs):
+        if command[:2] == ["docker", "info"]:
+            return MagicMock(
+                returncode=1,
+                stderr=b"permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock",
+            )
+        return MagicMock(returncode=0, stderr=b"")
+
+    with patch(
+        "installer.detect.shutil.which", return_value="/usr/bin/docker"
+    ), patch("installer.shell.subprocess.run", side_effect=fake_run):
+
+        result = detect_docker()
+
+    assert result == {
+        "docker_installed": True,
+        "docker_running": True,
+        "docker_accessible": False,
+        "docker_compose_v2": True
     }
 
 
