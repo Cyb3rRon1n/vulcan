@@ -32,7 +32,6 @@ from installer.docker_setup import (
 )
 from installer.generate import (
     STACK_DIR,
-    WALKTHROUGH_URL,
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
@@ -2423,11 +2422,6 @@ def _gather_generation_config(
 
     if enable_threadfin:
         enabled_optional.add("threadfin")
-
-    pihole_enabled = (
-        "pihole" in enabled_optional if custom_services_selected is None
-        else "pihole" in custom_services_selected
-    )
 
 
 

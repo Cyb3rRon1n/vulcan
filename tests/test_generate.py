@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from installer.generate import (
-    ADMIN_ONLY_SERVICES,
     TEMPLATES_DIR,
     WALKTHROUGH_URL,
     WEB_FACING_SERVICES,
@@ -320,7 +319,9 @@ def test_render_compose_maintainerr_uses_port_override():
 def test_render_compose_heavy_includes_all_new_services():
 
     output = render_compose(
-        make_config("heavy", enabled_optional={"lidarr", "readarr", "traefik", "homepage"})
+        make_config("heavy", enabled_optional={
+            "lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"
+        })
     )
 
     for name in ("lidarr", "readarr", "traefik", "homepage", "uptime-kuma", "watchtower"):
@@ -419,7 +420,7 @@ def test_render_compose_domain_adds_routing_labels_to_every_directly_networked_s
     output = render_compose(
         make_config(
             "heavy",
-            enabled_optional={"traefik", "lidarr", "readarr", "homepage"},
+            enabled_optional={"traefik", "lidarr", "readarr", "homepage", "uptime-kuma"},
             domain="media.example.com"
         )
     )
@@ -1002,6 +1003,7 @@ FIVE_CAP_SERVICES = {
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
+    "sportarr", "threadfin", "tracearr",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1031,6 +1033,15 @@ SPECIAL_CAP_SERVICES = {
         "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID",
         "SYS_PTRACE", "SYS_ADMIN",
     ],
+    # AdGuard Home's binary carries file-based cap_net_bind_service/cap_net_raw
+    # (dropped ALL blocks the exec), and its first-run data-dir setup needs
+    # DAC_OVERRIDE once ALL is dropped - all three verified live against the
+    # real image under cap_drop: ALL + no-new-privileges.
+    "adguardhome": ["NET_BIND_SERVICE", "NET_RAW", "DAC_OVERRIDE"],
+    # Portainer runs as root and only needs the ownership fixup for its
+    # bind-mounted /data (no root->PUID drop, so no SETGID/SETUID) -
+    # verified live against a real bind mount under cap_drop: ALL.
+    "portainer": ["CHOWN", "DAC_OVERRIDE", "FOWNER"],
 }
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
@@ -1075,7 +1086,7 @@ def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
 
 def test_every_service_has_cap_drop_all():
     """
-    Regression lock, all 30 services: this pass covers every service known
+    Regression lock, all 35 services: this pass covers every service known
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
@@ -1536,7 +1547,7 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     result = write_stack(config, output_dir=output_dir)
 
     assert result["success"] is True
-    assert any("Jellyseerr" in w for w in result["warnings"])
+    assert any("Seerr" in w for w in result["warnings"])
 
     compose_path = output_dir / "docker-compose.yml"
     env_path = output_dir / ".env"
@@ -2288,7 +2299,7 @@ def test_write_stack_uptime_kuma_reference_lists_enabled_services(tmp_path):
         puid=1000,
         pgid=1000,
         timezone="UTC",
-        enabled_optional=set()
+        enabled_optional={"uptime-kuma"}
     )
 
     with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
@@ -2312,7 +2323,7 @@ def test_write_stack_uptime_kuma_reference_uses_traefik_domain(tmp_path):
         puid=1000,
         pgid=1000,
         timezone="UTC",
-        enabled_optional={"traefik"},
+        enabled_optional={"traefik", "uptime-kuma"},
         domain="media.example.com"
     )
 
