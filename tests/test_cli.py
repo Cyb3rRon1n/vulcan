@@ -717,6 +717,47 @@ def test_full_non_interactive_run_generates_stack_without_starting(tmp_path):
     mock_run_docker.assert_not_called()
 
 
+def test_build_succeeds_with_docker_down(tmp_path):
+    media_path = str(tmp_path / "media")
+    down = make_system_info(docker_running=False, docker_compose_v2=False)
+
+    with patch("installer.cli.detect_system", return_value=down), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write, patch(
+        "installer.cli.run_docker_command"
+    ) as mock_docker:
+
+        result = runner.invoke(app, [
+            "--tier", "light", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--no-start"
+        ])
+
+    assert result.exit_code == 0, result.output
+    mock_write.assert_called_once()
+    mock_docker.assert_not_called()
+
+
+def test_build_command_generates_without_starting(tmp_path):
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write, patch(
+        "installer.cli.run_docker_command"
+    ) as mock_docker:
+
+        result = runner.invoke(app, [
+            "build", "--tier", "medium", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn"
+        ])
+
+    assert result.exit_code == 0, result.output
+    mock_write.assert_called_once()
+    mock_docker.assert_not_called()
+
+
 def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
 
     media_path = str(tmp_path / "media")
