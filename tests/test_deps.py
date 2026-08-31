@@ -44,12 +44,12 @@ def test_ensure_system_deps_all_present_short_circuits():
     assert plan["packages"] == []
     assert plan["success"] is True
     assert plan["missing_after"] == []
-    assert plan["already_present"] == ["python3", "whiptail", "mdadm"]
+    assert plan["already_present"] == ["python3", "whiptail", "mdadm", "git"]
 
 
 def test_ensure_system_deps_installs_missing_and_rechecks():
 
-    present = {"python3": True, "whiptail": True, "mdadm": False}
+    present = {"python3": True, "whiptail": True, "mdadm": False, "git": True}
 
     def fake_which(binary):
         return "/usr/bin/x" if present.get(binary) else None
@@ -81,4 +81,15 @@ def test_ensure_system_deps_unknown_distro_reports_missing():
         plan = ensure_system_deps()
 
     assert plan["success"] is False
-    assert plan["missing_after"] == ["python3", "whiptail", "mdadm"]
+    assert plan["missing_after"] == ["python3", "whiptail", "mdadm", "git"]
+
+
+def test_git_is_in_the_debian_install_plan_when_missing(monkeypatch):
+    from installer import deps
+
+    monkeypatch.setattr(deps, "detect_os", lambda: {"os_id": "ubuntu", "os_is_atomic": False})
+    monkeypatch.setattr(deps, "_tool_present", lambda tool: tool != "git")
+
+    plan = deps.ensure_system_deps(dry_run=True)
+
+    assert "git" in plan["packages"]
