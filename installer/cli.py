@@ -1,4 +1,3 @@
-import getpass
 import os
 import subprocess
 import sys
@@ -21,14 +20,13 @@ from installer.detect import (
     detect_system,
 )
 from installer.docker_setup import (
-    add_user_to_docker_group,
-    check_docker_ready,
-    ensure_compose_v2,
-    install_docker,
-    install_plan_for,
+    # install_docker / start_docker_service: Phase 0 (installer/phase0.py)
+    # owns Docker install/start/group now - kept in this namespace only so
+    # tests can patch them and assert run_install never installs Docker.
+    install_docker,  # noqa: F401
     prune_docker_artifacts,
     run_docker_command,
-    start_docker_service,
+    start_docker_service,  # noqa: F401
 )
 from installer.generate import (
     STACK_DIR,
@@ -1255,8 +1253,6 @@ def main(
         yes = True
         start = False
 
-    _ensure_system_deps(non_interactive=non_interactive)
-
     if not non_interactive and not plain:
 
         raise typer.Exit(code=_launch_menu())
@@ -1374,7 +1370,7 @@ def run_install(
     # start is always explicit (--start/--no-start) in the menu path,
     # which is the only path that activates the panel - so the "Start
     # stack" phase only exists when it will actually run.
-    phases = ["Detect system", "Storage setup", "Docker ready", "Configure stack", "Generate stack"]
+    phases = ["Detect system", "Storage setup", "Configure stack", "Generate stack"]
     if start is not False:
         phases.append("Start stack")
 
@@ -1432,14 +1428,8 @@ def run_install(
                                             panel.note(f"[green]Storage provisioned at {mount_point}[/green]")
         panel.advance()
 
-        info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline, panel)
-
-        if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
-            panel.finish(False)
-            console.print("[red]Docker isn't ready - can't continue.[/red]")
-            raise typer.Exit(code=1)
-
-        panel.advance()
+        group_just_added = False   # Phase 0 owns the group add now; kept for
+                                   # _start's use_group_workaround signature.
 
         config = _gather_generation_config(
             info, tier, media_path, vpn, cloudflared, sabnzbd, recyclarr, homepage,
@@ -1458,150 +1448,27 @@ def run_install(
         panel.finish(True)
 
 
-def _ensure_docker_ready(
-    info: SystemInfo,
-    non_interactive: bool,
-    yes: bool,
-    offline: bool = False,
-    panel: RunPanel | _NoOpPanel | None = None
-) -> tuple[SystemInfo, bool]:
+def _assert_docker_ready(info: SystemInfo) -> SystemInfo:
+    """Phase 0 (`./install` / `vulcan preflight --fix`) is responsible for
+    getting Docker ready. By the time run_install runs it either is, or we
+    stop here and point the user back at ./install."""
 
-    group_just_added = False
-    panel = panel if panel is not None else _NoOpPanel(console)
+    state = detect_docker()
+    info.docker_installed = state["docker_installed"]
+    info.docker_running = state["docker_running"]
+    info.docker_accessible = state.get("docker_accessible", True)
+    info.docker_compose_v2 = state["docker_compose_v2"]
 
-    if info.docker_installed and info.docker_running and info.docker_accessible and info.docker_compose_v2:
-
-        panel.note("[green]Docker is ready.[/green]")
-        return info, group_just_added
-
-    if not info.docker_installed:
-
-        if offline:
-
-            console.print(
-                "[red]No internet access - Docker must already be installed on this "
-                "machine, or install it from a machine that does have a connection: "
-                "https://docs.docker.com/engine/install/[/red]"
-            )
-
-            return info, group_just_added
-
-        plan = install_plan_for(info.os_id, info.os_is_atomic)
-
-        if plan is None:
-
-            console.print(
-                f"[red]No known automatic install method for '{info.os_id}'. "
-                "Install Docker manually: https://docs.docker.com/engine/install/[/red]"
-            )
-
-            return info, group_just_added
-
-        console.print(f"Docker will be installed via: {plan['description']}")
-
-        if yes or typer.confirm("Install Docker now?"):
-
-            result = install_docker(info.os_id, info.os_is_atomic)
-
-            if not result["success"]:
-
-                console.print(f"[red]Docker install failed: {result['error']}[/red]")
-                return info, group_just_added
-
-            if result["needs_reboot"]:
-
-                console.print(
-                    "[yellow]Docker was layered onto this system via rpm-ostree (this is "
-                    "an atomic/immutable OS - Bazzite, Silverblue, Kinoite, or similar). "
-                    "That only takes effect after a reboot.[/yellow]\n\n"
-                    "Reboot this machine now, then re-run this installer - it will detect "
-                    "Docker is installed and pick up from there (starting the service, "
-                    "adding your user to the docker group):\n"
-                    "  sudo systemctl reboot"
-                )
-                return info, group_just_added
-
-            start_docker_service()
-
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            ensure_compose_v2(info.os_id)
-            group_just_added = True
-
-    elif info.docker_running and not info.docker_accessible:
-
+    if not (info.docker_installed and info.docker_running
+            and info.docker_accessible and info.docker_compose_v2):
         console.print(
-            "Docker is running, but your user isn't in the 'docker' group "
-            "yet - that's why it looked unavailable."
+            "[red]Docker isn't ready.[/red] Run  ./install  again "
+            "(or  vulcan preflight --fix ) to install/start it and add your "
+            "user to the docker group, then retry."
         )
+        raise typer.Exit(code=1)
 
-        if yes or typer.confirm("Add your user to the docker group now?"):
-
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            group_just_added = True
-
-    elif not info.docker_running:
-
-        console.print("Docker is installed but not running.")
-
-        if yes or typer.confirm("Start the Docker service now?"):
-
-            start_docker_service()
-
-            # Real gap found live (sibling Anvil project) against a
-            # real Bazzite host: Docker installed by a *previous* run
-            # (the atomic-OS reboot-split case) never got its user
-            # added to the docker group, since that only happened
-            # alongside a fresh install above. The daemon starting
-            # cleanly doesn't mean this user can reach it -
-            # /var/run/docker.sock is root:docker.
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            group_just_added = True
-
-    elif not info.docker_compose_v2:
-
-        console.print("Docker Compose v2 isn't available.")
-
-        if yes or typer.confirm("Attempt to install Docker Compose v2 now?"):
-            ensure_compose_v2(info.os_id)
-
-    docker_state = detect_docker()
-    info.docker_installed = docker_state["docker_installed"]
-    info.docker_running = docker_state["docker_running"]
-    info.docker_accessible = docker_state.get("docker_accessible", True)
-    info.docker_compose_v2 = docker_state["docker_compose_v2"]
-
-    if group_just_added:
-
-        # A plain detect_docker() re-check right after adding this
-        # process's own user to the docker group would still see the
-        # stale group list inherited at this session's login - see
-        # check_docker_ready()'s own docstring for the real failure
-        # this fixes, confirmed live rather than assumed.
-        readiness = check_docker_ready(use_group_workaround=True)
-        info.docker_running = readiness["docker_running"]
-        info.docker_compose_v2 = readiness["docker_compose_v2"]
-
-        # The group add + `sg docker` workaround is what makes Docker
-        # reachable for the rest of this run; a plain socket check would
-        # still fail on this process's stale login-time group list.
-        info.docker_accessible = readiness["docker_running"]
-
-    return info, group_just_added
+    return info
 
 
 def _choose_raid_level(device_count: int) -> str | None:
@@ -2782,6 +2649,11 @@ def _generate_and_maybe_start(
         do_start = start
 
     if do_start:
+
+        # Phase 0 (./install / vulcan preflight --fix) owns getting Docker
+        # ready. Starting the stack is the first step that actually needs it -
+        # assert here and bail to ./install rather than install anything.
+        _assert_docker_ready(detect_system())
 
         result = _resolve_port_conflicts(config, result)
 
