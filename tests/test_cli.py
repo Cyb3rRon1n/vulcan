@@ -1214,7 +1214,9 @@ def test_run_install_asserts_docker_and_exits_when_not_ready(tmp_path):
                       "docker_accessible": False, "docker_compose_v2": False}
     ), patch("installer.cli.install_docker") as mock_install, patch(
         "installer.cli.start_docker_service"
-    ) as mock_start:
+    ) as mock_start, patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
 
         result = runner.invoke(app, [
             "--tier", "light", "--media-path", media_path,
