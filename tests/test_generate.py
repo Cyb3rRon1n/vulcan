@@ -162,6 +162,9 @@ def test_render_compose_medium_with_gluetun_routes_qbittorrent_through_it():
     qbittorrent_block = output.split("qbittorrent:", 1)[1].split("seerr:", 1)[0]
     assert 'network_mode: "service:gluetun"' in qbittorrent_block
     assert "ports:" not in qbittorrent_block
+    # Wait for gluetun's VPN to be up, not just its container to exist -
+    # otherwise runc can't attach qbittorrent to the shared netns.
+    assert "condition: service_healthy" in qbittorrent_block
 
 
 def test_render_compose_medium_without_sabnzbd_omits_it():
@@ -1021,7 +1024,7 @@ ZERO_CAP_SERVICES = {
 # monitoring) - each verified under cap_drop: ALL with that existing set,
 # not researched from a blank slate.
 SPECIAL_CAP_SERVICES = {
-    "gluetun": ["NET_ADMIN"],
+    "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
     "tailscale": ["NET_ADMIN", "NET_RAW"],
     "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
     "pihole": ["NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],

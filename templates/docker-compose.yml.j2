@@ -257,8 +257,14 @@ services:
       - ${MEDIA_PATH}:/data
 {% if 'gluetun' in enabled %}
     network_mode: "service:gluetun"
+    # service_healthy, not the default service_started: qBittorrent
+    # shares gluetun's network namespace, so if it starts before
+    # gluetun's VPN handshake finishes, runc fails to attach with a
+    # cryptic "namespace path ... no such file or directory". Waiting on
+    # gluetun's (image-defined) healthcheck removes that race.
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
 {% else %}
     ports:
       - "{{ ports['qbittorrent'] }}:8080"
@@ -766,12 +772,19 @@ services:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
     # Verified empirically (docker run --cap-drop=ALL against the real
-    # image, keeping this service's existing cap_add) - sufficient as-is,
-    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    # image). NET_ADMIN: the VPN tunnel. NET_RAW: gluetun's own
+    # healthcheck ICMP probe (without it, it logs "not permitted ...
+    # add NET_RAW" and falls back to slower DNS-over-UDP checks).
+    # DAC_OVERRIDE: gluetun runs as root but cap_drop: ALL removes it,
+    # so it can't write /tmp/gluetun/ip to cache its public IP
+    # ("persisting public ip address: ... permission denied"). Both
+    # were surfaced by a real connected run's logs, not guessed.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
+      - NET_RAW
+      - DAC_OVERRIDE
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
