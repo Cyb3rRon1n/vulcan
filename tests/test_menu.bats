@@ -1006,3 +1006,24 @@ setup() {
         }
     done
 }
+
+@test "_dlg_menu_items list-height leaves room for the box chrome (no title/border overflow)" {
+    # Regression: _dlg_menu_items returned ~45% of the raw terminal
+    # height while the box (_dlg_rows) is ~60% of it, so on any terminal
+    # shorter than ~53 lines the list overflowed the top border - no
+    # visible title, and a menu selection silently bounced back.
+    source "$MENU_SH"
+
+    for term in 20 24 30 40 50 80; do
+        tput() { [ "$1" = "lines" ] && echo "$term" || echo 80; }
+        export -f tput
+        rows=$(_dlg_rows)
+        items=$(_dlg_menu_items)
+        # whiptail needs list-height <= box-height - 8 (title/border/msg/buttons)
+        [ "$items" -le $(( rows - 8 )) ] || {
+            echo "term=$term rows=$rows items=$items -> overflows box by $(( items - (rows - 8) ))"
+            return 1
+        }
+        [ "$items" -ge 3 ]
+    done
+}

@@ -96,10 +96,19 @@ _dlg_cols() {
 }
 
 _dlg_menu_items() {
-    local total
+    # The --menu/--checklist/--radiolist list-height. It must leave room
+    # inside the DLG_ROWS-tall box for the title bar, top/bottom border,
+    # the (1-3 line) message and the button row - otherwise whiptail
+    # draws the list starting over the top border (no visible title) and
+    # on a short terminal bails out entirely, so a menu selection just
+    # bounces back with nothing drawn. Sized against DLG_ROWS, not raw
+    # terminal height, for exactly that reason.
+    local total rows items
     total=$(tput lines 2>/dev/null || echo 24)
-    local items=$(( total * 45 / 100 ))
-    [ "$items" -lt 5 ] && items=5
+    rows=$(( total * 60 / 100 ))
+    [ "$rows" -lt 10 ] && rows=10
+    items=$(( rows - 9 ))
+    [ "$items" -lt 3 ] && items=3
     echo "$items"
 }
 
