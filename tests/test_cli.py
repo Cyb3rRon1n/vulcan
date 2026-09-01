@@ -57,6 +57,68 @@ PREVIOUS_STATE = {
 }
 
 
+_DEFAULT_PROMPT_ANSWERS = {
+    "overwrite the existing": "y",
+    "Generate the stack": "y",
+    "Start the stack now": "n",
+}
+
+
+def respond_to_prompts(monkeypatch, mapping=None):
+    """Answer typer.prompt / typer.confirm calls by matching a substring of
+    the prompt text (case-insensitive) against `mapping` keys - first match
+    wins, unmatched prompts accept their own default.
+
+    Feeds answers by prompt text rather than by newline position, so adding
+    a service question or reordering the flow no longer breaks a test. The
+    prompt text is still echoed, so `... in result.output` wording
+    assertions keep working.
+    """
+    import typer
+
+    answers = {**_DEFAULT_PROMPT_ANSWERS, **(mapping or {})}
+
+    def _lookup(text):
+        low = str(text).lower()
+        for needle, value in answers.items():
+            if needle.lower() in low:
+                return value
+        return None
+
+    def fake_confirm(text, default=False, abort=False, **kwargs):
+        typer.echo(text)
+        value = _lookup(text)
+        if value is None:
+            result = bool(default)
+        else:
+            result = str(value).strip().lower() in ("y", "yes", "true", "1")
+        if abort and not result:
+            raise typer.Abort()
+        return result
+
+    def fake_prompt(text, default=None, type=None, **kwargs):
+        typer.echo(text)
+        value = _lookup(text)
+        if value is None or value == "":
+            if default is not None:
+                return default
+            value = value or ""
+        return int(value) if type is int else value
+
+    monkeypatch.setattr(typer, "confirm", fake_confirm)
+    monkeypatch.setattr(typer, "prompt", fake_prompt)
+
+
+# Docker/compose engine calls _start() and `vulcan start` make against the
+# host - stubbed so an interactive/start test can run the flow to completion
+# on a machine that may not have Docker or the generated compose file.
+_DOCKER_READY = {
+    "docker_installed": True, "docker_running": True,
+    "docker_accessible": True, "docker_compose_v2": True,
+}
+_NET_OK = {"ok": True, "errors": []}
+
+
 def test_detect_shell_output_is_eval_able_key_value(tmp_path):
     """
     installer/menu.sh's whiptail front end runs `eval "$(vulcan detect)"`
@@ -437,7 +499,7 @@ def test_non_interactive_rerun_uses_previous_state_when_flags_omitted(tmp_path):
     assert config.enabled_optional == {"gluetun"}
 
 
-def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
+def test_interactive_rerun_prompts_default_to_previous_values(tmp_path, monkeypatch):
 
     previous_state = {**PREVIOUS_STATE, "media_path": str(tmp_path / "previous-media")}
 
@@ -452,14 +514,11 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
 
-        # media path, tier, customize, gluetun confirm, sabnzbd confirm,
-        # recyclarr confirm, homepage confirm, metube confirm, downtify
-        # confirm, netdata confirm, vaultwarden confirm, dashy confirm,
-        # PUID, PGID, timezone all hit enter to accept their
-        # (previous-state-derived) defaults; the generate confirm has no
-        # default so needs an explicit "y", then decline the final start
-        # confirm with "n".
-        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ny\nn\n")
+        # Every prompt accepts its previous-state-derived default; the
+        # generate confirm is answered "y" and the start confirm "n" by
+        # respond_to_prompts' built-in defaults.
+        respond_to_prompts(monkeypatch)
+        result = runner.invoke(app, ["--plain"])
 
     assert result.exit_code == 0, result.output
     assert "Found an existing" in result.output
@@ -473,11 +532,12 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
     assert config.enabled_optional == {"gluetun"}
 
 
-def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
+def test_overwrite_confirmation_wording_when_stack_exists(tmp_path, monkeypatch):
 
     stack_dir = tmp_path / "stack"
     stack_dir.mkdir()
     (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    respond_to_prompts(monkeypatch, {"overwrite the existing": "n"})
 
     with patch(
         "installer.cli.STACK_DIR", stack_dir
@@ -498,7 +558,6 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -506,9 +565,10 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
     mock_write_stack.assert_not_called()
 
 
-def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
+def test_generate_confirmation_wording_when_no_stack_exists(tmp_path, monkeypatch):
 
     stack_dir = tmp_path / "stack"
+    respond_to_prompts(monkeypatch, {"Generate the stack": "n"})
 
     with patch(
         "installer.cli.STACK_DIR", stack_dir
@@ -529,7 +589,6 @@ def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -623,9 +682,10 @@ def test_non_interactive_heavy_with_no_gpu_flag_disables_it(tmp_path):
     assert config.gpu_vendor is None
 
 
-def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
+def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"hardware transcoding": "y"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="nvidia")
@@ -642,7 +702,6 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -652,9 +711,10 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
     assert config.gpu_vendor == "nvidia"
 
 
-def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
+def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
@@ -672,7 +732,6 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1270,7 +1329,7 @@ def test_run_install_asserts_docker_and_exits_when_not_ready(tmp_path):
     mock_start.assert_not_called()
 
 
-def test_interactive_full_run_with_prompts(tmp_path):
+def test_interactive_full_run_with_prompts(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
@@ -1278,6 +1337,10 @@ def test_interactive_full_run_with_prompts(tmp_path):
         disk_free_gb=600.0, ram_total_gb=16.0,
         cpu_cores_logical=6, cpu_cores_physical=6
     )
+
+    # Accept the recommended tier (medium for this hardware), decline every
+    # optional service, generate "y", decline the start prompt.
+    respond_to_prompts(monkeypatch, {"Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=info
@@ -1298,7 +1361,6 @@ def test_interactive_full_run_with_prompts(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\nn\n\n\nn\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1311,7 +1373,7 @@ def test_interactive_full_run_with_prompts(tmp_path):
     mock_run_docker.assert_not_called()
 
 
-def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
+def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
@@ -1319,6 +1381,8 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
         disk_free_gb=100.0, ram_total_gb=4.0,
         cpu_cores_logical=2, cpu_cores_physical=2
     )
+
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=info
@@ -1332,7 +1396,6 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--media-path", media_path, "--no-start"],
-            input="\nn\n\nn\nn\nn\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1340,13 +1403,17 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
     mock_write_stack.assert_called_once()
 
 
-def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
+def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
     heavy_capable = make_system_info(
         cpu_cores_logical=8, cpu_cores_physical=8, ram_total_gb=32.0, disk_free_gb=2000.0
     )
+
+    # Accept the tier prompt's default - which must be the recommendation
+    # (heavy) for this hardware.
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=heavy_capable
@@ -1365,7 +1432,6 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1374,9 +1440,16 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
     assert config.tier.name == "heavy"
 
 
-def test_invalid_tier_input_reprompts_until_valid(tmp_path):
+def test_invalid_tier_input_reprompts_until_valid(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+
+    # First tier answer is invalid ("nonsense"); the re-prompt ("Please
+    # enter 'light', 'medium', or 'heavy'") is answered "light".
+    respond_to_prompts(monkeypatch, {
+        "Which tier": "nonsense",
+        "Please enter 'light'": "light",
+    })
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1393,10 +1466,10 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="nonsense\nlight\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
+    assert "Please enter 'light', 'medium', or 'heavy'" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "light"
@@ -1810,9 +1883,10 @@ def test_non_interactive_regenerate_existing_heavy_stack_preserves_homepage(tmp_
     assert "homepage" in config.enabled_optional
 
 
-def test_homepage_question_shown_and_declined_at_light_tier(tmp_path):
+def test_homepage_question_shown_and_declined_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable Homepage dashboard": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1829,7 +1903,6 @@ def test_homepage_question_shown_and_declined_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\n\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1892,9 +1965,10 @@ def test_run_docker_command_failure_reported_cleanly(tmp_path):
     assert "Failed to start the stack" in result.output
 
 
-def test_media_path_prompted_when_not_passed(tmp_path):
+def test_media_path_prompted_when_not_passed(tmp_path, monkeypatch):
 
     prompted_path = str(tmp_path / "prompted-media")
+    respond_to_prompts(monkeypatch, {"Media library path": prompted_path})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1905,6 +1979,8 @@ def test_media_path_prompted_when_not_passed(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack, patch(
         "installer.cli.list_blank_unprotected_devices", return_value=[]
+    ), patch(
+        "installer.cli.list_unprotected_devices", return_value=[]
     ):
 
         result = runner.invoke(
@@ -1913,10 +1989,10 @@ def test_media_path_prompted_when_not_passed(tmp_path):
                 "--plain", "--tier", "light",
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input=f"{prompted_path}\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
+    assert "Media library path" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.media_path == prompted_path
@@ -2006,9 +2082,10 @@ def test_media_path_creation_failure_reported_cleanly():
     assert "Can't create media path" in result.output
 
 
-def test_declining_generate_confirm_aborts(tmp_path):
+def test_declining_generate_confirm_aborts(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Generate the stack": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -2025,7 +2102,6 @@ def test_declining_generate_confirm_aborts(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -4154,9 +4230,10 @@ def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):
     assert config.gpu_vendor == "amd"
 
 
-def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected(tmp_path):
+def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
@@ -4173,7 +4250,6 @@ def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -4181,9 +4257,10 @@ def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected
     assert mock_write_stack.call_args[0][0].gpu_vendor is None
 
 
-def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
+def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable SABnzbd": "y", "Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -4200,7 +4277,6 @@ def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\ny\n\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -4210,9 +4286,10 @@ def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
     assert config.enabled_optional == {"sabnzbd"}
 
 
-def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
+def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable Recyclarr": "y", "Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -4229,7 +4306,6 @@ def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\ny\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
