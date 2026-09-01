@@ -302,3 +302,24 @@ def test_format_port_conflicts_lists_every_conflicting_port():
     assert "80" in formatted
     assert "443" in formatted
     assert "traefik-old" in formatted
+
+
+def test_port_in_use_treats_eacces_as_free_not_occupied():
+    """An unprivileged process can't bind <1024 to probe it - that's a
+    PermissionError, not a real conflict. Regression: this made
+    `vulcan start` unusable for every non-root run with Traefik (80/443)."""
+    import errno
+    from unittest.mock import patch, MagicMock
+    from installer.preflight import _port_in_use
+
+    sock = MagicMock()
+    sock.bind.side_effect = PermissionError(errno.EACCES, "Permission denied")
+    sock.__enter__ = MagicMock(return_value=sock)
+    sock.__exit__ = MagicMock(return_value=False)
+
+    with patch("installer.preflight.socket.socket", return_value=sock):
+        assert _port_in_use(80) is False
+
+    sock.bind.side_effect = OSError(errno.EADDRINUSE, "Address already in use")
+    with patch("installer.preflight.socket.socket", return_value=sock):
+        assert _port_in_use(8096) is True
