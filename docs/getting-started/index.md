@@ -64,9 +64,6 @@ Pass `--auth-users` to add additional Authelia users at install time — useful 
 
 Format: `username:password:group` — group is either `admin` (full access) or `media` (Jellyfin + Seerr only). See [Optional Integrations](../integrations.md#auth-authelia) for full details.
 
-!!! note "`--offline` is currently CLI-only"
-    `--offline` skips the automatic Docker install attempt when there's no connection. The guided menu doesn't yet ask about it — a real, open gap, tracked in the [Roadmap](../roadmap.md). Use `--plain --offline` or `--non-interactive --offline` on a machine with no internet access.
-
 ## Next
 
 - Not sure which tier or services you need? See [Tiers & Custom Mode](../tiers.md).

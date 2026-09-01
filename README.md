@@ -52,7 +52,7 @@ Scripted use is also supported:
 ./install --tier medium --media-path /mnt/media --non-interactive --yes --start
 ```
 
-`--non-interactive` requires `--yes` and an explicit `--tier`/`--media-path`. `--start` is opt-in on every path: generating a stack never launches it without being asked or told. Use `--plain` for the plain-prompt flow (no whiptail). Use `--offline` to skip the Docker install attempt when there's no connection (CLI-only; a real gap tracked in ROADMAP.md).
+`--non-interactive` requires `--yes` and an explicit `--tier`/`--media-path`. `--start` is opt-in on every path: generating a stack never launches it without being asked or told. Use `--plain` for the plain-prompt flow (no whiptail).
 
 <p align="center">
   <img src="docs/images/screenshots/main-menu.svg" alt="Vulcan Main Menu example" style="max-width: 100%; width: 700px;"><br>
@@ -123,7 +123,7 @@ Commands reachable from the Main Menu (not CLI-only):
 | `sudo vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |
 
-Airgap/offline: `--offline` skips the Docker install attempt; `vulcan export`/`import` move a stack's images to a machine never online at all.
+Airgap/offline: `vulcan export`/`import` move a stack's images to a machine never online at all.
 
 Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →](https://cyb3rron1n.github.io/vulcan/maintenance/) (or [docs/maintenance.md](docs/maintenance.md)).
 
