@@ -61,7 +61,15 @@ if [ ! -d "$VENV_DIR" ] || ! "${RUN_AS[@]}" "$VENV_DIR/bin/python" -c "import in
 fi
 
 # --- Phase 0: system packages + Docker (one privileged pass) ---------
-if ! "${RUN_AS[@]}" "$VENV_DIR/bin/python" -m installer preflight --fix; then
+# NOT via "${RUN_AS[@]}": on the `exec sudo` re-exec below we are root
+# with SUDO_USER set, so RUN_AS would drop preflight back to the
+# unprivileged user and it could never satisfy its own needs_root check.
+# preflight must run with whatever privilege `install` itself has.
+# PYTHONDONTWRITEBYTECODE=1 so a root-run preflight leaves no root-owned
+# installer/__pycache__/*.pyc behind. (phase0.ensure_system_ready
+# defaults the docker-group user to $SUDO_USER, so it still targets the
+# real user.)
+if ! PYTHONDONTWRITEBYTECODE=1 "$VENV_DIR/bin/python" -m installer preflight --fix; then
     if [ "$(id -u)" -ne 0 ]; then
         echo
         echo "Vulcan needs root once to install:"
