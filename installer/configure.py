@@ -100,6 +100,23 @@ def pending_credentials(config) -> list[dict]:
     return pending
 
 
+def configured_credentials(config) -> list[str]:
+    """Enabled _CREDENTIALS services whose required keys are all really
+    set in stack/.env (no placeholders left) - the inverse of
+    pending_credentials, for showing 'already configured' status."""
+
+    enabled = enabled_service_keys(config)
+    env = _read_env()
+    done = []
+    for service, (keys, _hint) in _CREDENTIALS.items():
+        if service not in enabled:
+            continue
+        required = [k for k in keys if k not in _OPTIONAL_KEYS]
+        if required and all(_is_set(env, k) for k in required):
+            done.append(service)
+    return done
+
+
 def configure_pending(config, non_interactive: bool, answers: dict | None = None) -> dict:
     answers = answers or {}
     pending = pending_credentials(config)
@@ -126,4 +143,8 @@ def configure_pending(config, non_interactive: bool, answers: dict | None = None
     if updates:
         _write_env(updates)
 
-    return {"written": sorted(updates), "still_blank": still_blank}
+    return {
+        "written": sorted(updates),
+        "still_blank": still_blank,
+        "configured": configured_credentials(config),
+    }
