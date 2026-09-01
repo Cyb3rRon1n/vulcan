@@ -78,6 +78,12 @@ def ensure_system_ready(fix: bool, user: str | None = None) -> dict:
             report["did"].extend(f"installed {tool}" for tool in result["installed"])
             report["missing"].extend(result["missing_after"])
 
+    # Unknown distro family: deps_plan["packages"] is empty (nothing to
+    # install) but missing tools land in missing_after even in the dry
+    # run. Surface them so the run stops here instead of dying later on
+    # `whiptail: command not found`.
+    report["missing"].extend(deps_plan["missing_after"])
+
     # --- Docker ----------------------------------------------------------
     state = detect_docker()
 

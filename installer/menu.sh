@@ -604,28 +604,11 @@ complete_setup_flow() {
     show_checklist 4
 
     log_title "CONFIGURE: Service Credentials"
-    refresh_detect
-    if [ -f "stack/docker-compose.yml" ]; then
-        local needs_config=false
-        if grep -q "gluetun" stack/docker-compose.yml && [ -z "${VPN_SERVICE_PROVIDER:-}${VPN_TYPE:-}" ]; then
-            needs_config=true
-        elif grep -q "cloudflared" stack/docker-compose.yml && [ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
-            needs_config=true
-        elif grep -q "tailscale" stack/docker-compose.yml && [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
-            needs_config=true
-        elif grep -q "traefik" stack/docker-compose.yml && [ -z "${DOMAIN:-}" ]; then
-            needs_config=true
-        elif grep -q "pihole" stack/docker-compose.yml && [ -z "${PIHOLE_PASSWORD:-}" ]; then
-            needs_config=true
-        fi
 
-        if [ "$needs_config" = true ]; then
-            if whiptail --backtitle "$BACKTITLE" --title "CONFIGURE: Service Credentials" --yesno \
-                "Some services need additional configuration (VPN credentials, domain, tunnel tokens, etc.).\n\nOpen Configure Services menu now to set them up?" "$DLG_ROWS" "$DLG_COLS"; then
-                configure_services_flow
-            fi
-        fi
-    fi
+    # Phase 6: fill in credentials the enabled services still need -
+    # `vulcan configure` reads stack/.env and prompts only for what's
+    # actually missing (same call guided_setup uses).
+    "$VULCAN_BIN" configure || true
 
     # ============================================================
     # PHASE 4: START - Launch Stack

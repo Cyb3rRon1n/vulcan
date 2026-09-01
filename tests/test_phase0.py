@@ -76,6 +76,20 @@ def test_fix_unsupported_distro_reports_missing_and_does_not_install():
     assert any("no automatic install" in m for m in report["missing"])
 
 
+def test_unknown_distro_surfaces_missing_system_deps():
+    # deps.py can't map an unknown distro to packages, so the dry-run
+    # plan has packages=[] but missing_after populated - phase0 must
+    # still report those and not call the run ready.
+    with patch("installer.deps.detect_os", return_value={"os_id": "void", "os_is_atomic": False}), \
+        patch("installer.deps.shutil.which", return_value=None), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_READY):
+
+        report = phase0.ensure_system_ready(fix=True, user="sentinel")
+
+    assert report["ready"] is False
+    assert report["missing"]
+
+
 def test_fix_needs_root_when_not_root_and_docker_missing():
     with patch("installer.phase0.ensure_system_deps", return_value={
         "success": True, "packages": [], "installed": [], "missing_after": [], "needs_reboot": False,
