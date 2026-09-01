@@ -39,6 +39,10 @@ _CREDENTIALS: dict[str, tuple[list[str], str]] = {
 # treated as "not really set" - the generate.py placeholder values
 _PLACEHOLDERS = {"", "changeme", "changeme-please"}
 
+# Keys whose prompt input must not echo to the terminal - the inline
+# prompts these replaced used hide_input=True.
+_SECRET_KEYS = {"WIREGUARD_PRIVATE_KEY", "TUNNEL_TOKEN", "TS_AUTHKEY", "PIHOLE_WEBPASSWORD"}
+
 # Keys that are genuinely fine to leave blank - their absence alone never
 # makes a service "pending". WIREGUARD_ADDRESSES: some providers (e.g.
 # Mullvad) assign it server-side. Still written when an answer is supplied
@@ -109,7 +113,9 @@ def configure_pending(config, non_interactive: bool, answers: dict | None = None
                 updates[key] = answers[key]
             elif not non_interactive:
                 typer.echo(f"\n{item['service']}: {item['hint']}")
-                value = typer.prompt(key, default="", show_default=False)
+                value = typer.prompt(
+                    key, default="", show_default=False, hide_input=key in _SECRET_KEYS
+                )
                 if value:
                     updates[key] = value
                 else:

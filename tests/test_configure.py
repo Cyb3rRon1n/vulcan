@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from installer.configure import pending_credentials, configure_pending
 from installer.tiers import TIERS
 from installer.generate import GenerationConfig
@@ -59,3 +61,15 @@ def test_configure_pending_reports_still_blank(tmp_path, monkeypatch):
     )
 
     assert "TUNNEL_TOKEN" in result["still_blank"]
+
+
+def test_configure_pending_hides_input_for_secret_keys_only(tmp_path, monkeypatch):
+    monkeypatch.setattr("installer.configure.STACK_DIR", tmp_path)
+    (tmp_path / ".env").write_text("PUID=1000\n")
+
+    with patch("installer.configure.typer.prompt", return_value="") as prompt:
+        configure_pending(_cfg(enabled_optional={"gluetun"}), non_interactive=False, answers={})
+
+    kwargs_by_key = {call.args[0]: call.kwargs for call in prompt.call_args_list}
+    assert kwargs_by_key["WIREGUARD_PRIVATE_KEY"]["hide_input"] is True
+    assert kwargs_by_key["VPN_SERVICE_PROVIDER"]["hide_input"] is False
