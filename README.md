@@ -22,7 +22,7 @@
 
 **Deploy a self-hosted media homelab, sized to your hardware.** Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
 
-**Sudo required:** `./install` bootstraps a local virtual environment on first run, then re-execs itself with `sudo` to get Docker running if needed. Run `./install` as a non-root user with `sudo` available.
+**Sudo required:** run `./install` as a non-root user with `sudo` available. Before anything else it runs one **Phase 0** pass — installs `git`, `python3-venv`, `whiptail`, `mdadm`, and Docker Engine + `docker compose` on Ubuntu/Debian/Fedora/Arch, adds you to the `docker` group — and escalates to root **once** (prints a heads-up block, then `sudo`) if it needs to. On other distros it prints what to install by hand. `vulcan preflight [--fix]` runs Phase 0 on its own.
 
 ---
 
@@ -31,23 +31,25 @@
 ```bash
 git clone https://github.com/Cyb3rRon1n/vulcan.git
 cd vulcan
-sudo ./install
+./install
 ```
 
-`sudo ./install` bootstraps a local virtual environment, then opens a persistent **Main Menu** — Guided Setup (whiptail-driven), plus Update/Pull/Backup/Restore/Uninstall for an already-generated stack. Every item is always listed; picking a task before a stack exists gives a real "no stack found" message. **Guided Setup** walks you through:
+`./install` runs Phase 0 (system packages + Docker, one `sudo` escalation — see above), bootstraps a local virtual environment, then opens a persistent **Main Menu** — Guided Setup (whiptail-driven), plus Update/Pull/Backup/Restore/Uninstall for an already-generated stack. Every item is always listed; picking a task before a stack exists gives a real "no stack found" message. **Guided Setup** runs an explicit sequence:
 
-1. Detects your system
-2. Gets Docker ready if needed
-3. Recommends a tier
-4. Asks only what matters (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
-5. Generates a ready-to-run stack, with an option to start it
-
-Before starting, Vulcan checks that every needed port is free and refuses cleanly (naming the conflict) rather than letting Docker fail partway through. Once up, it prints the real URL for every service you enabled.
+1. **Preflight** — re-check Phase 0
+2. **Detect** hardware
+3. **Recommend** a tier
+4. **Shape** — pick the tier and services (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
+5. **Confirm** what's about to be generated
+6. **Build** (`vulcan build`) — writes `stack/docker-compose.yml` + `.env` and starts nothing; works even with Docker down
+7. **Configure** (`vulcan configure`) — prompts for the credentials the enabled services need (Gluetun VPN + WireGuard key, Cloudflare Tunnel `TUNNEL_TOKEN`, Tailscale `TS_AUTHKEY`, Pi-hole web password) and writes them into `stack/.env`
+8. **Start** (`vulcan start`) — needs Docker; checks every needed port is free and refuses cleanly (naming the conflict), then `docker compose up -d`, then a container-stayed-up check
+9. **Report** — the real URL for every service you enabled
 
 Scripted use is also supported:
 
 ```bash
-sudo ./install --tier medium --media-path /mnt/media --non-interactive --yes --start
+./install --tier medium --media-path /mnt/media --non-interactive --yes --start
 ```
 
 `--non-interactive` requires `--yes` and an explicit `--tier`/`--media-path`. `--start` is opt-in on every path: generating a stack never launches it without being asked or told. Use `--plain` for the plain-prompt flow (no whiptail). Use `--offline` to skip the Docker install attempt when there's no connection (CLI-only; a real gap tracked in ROADMAP.md).

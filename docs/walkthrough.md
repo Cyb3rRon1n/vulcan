@@ -16,6 +16,45 @@ enabled, right after the stack came up.
     not pixel-accurate captures of the real apps - the real UI you'll see
     will differ in layout and styling.
 
+## What `./install` does
+
+`./install` runs one **Phase 0** pass before anything else: it installs
+missing system packages (`git`, `python3-venv`, `whiptail`, `mdadm`) and
+Docker Engine + `docker compose` on Ubuntu/Debian/Fedora/Arch, adds your
+user to the `docker` group, and escalates to root **once** (a heads-up
+block, then `sudo`) if it needs to. On an unsupported distro it prints the
+packages to install by hand and stops. Phase 0 is also its own command:
+`vulcan preflight` reports, `vulcan preflight --fix` installs.
+
+After Phase 0 the guided run is an explicit sequence:
+
+1. **Preflight** - re-check Phase 0
+2. **Detect** hardware
+3. **Recommend** a tier
+4. **Shape** - pick the tier and services
+5. **Confirm** what's about to be generated
+6. **Build** (`vulcan build`) - write `stack/docker-compose.yml` + `.env`,
+   start nothing; works even with Docker down
+7. **Configure** (`vulcan configure`) - prompt for the credentials the
+   enabled services need (Gluetun VPN provider + WireGuard key, Cloudflare
+   Tunnel `TUNNEL_TOKEN`, Tailscale `TS_AUTHKEY`, Pi-hole web password) and
+   write them into `stack/.env`; not validated here
+8. **Start** (`vulcan start`) - needs Docker; port/network check, then
+   `docker compose up -d`, then a container-stayed-up check
+9. **Report** - every enabled service's real URL
+
+## AdGuard Home and port 53
+
+If you enabled AdGuard Home on Ubuntu, its DNS port `:53` collides with
+`systemd-resolved`. Disable the stub listener **before** starting the
+stack:
+
+```
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e '[Resolve]\nDNSStubListener=no' | sudo tee /etc/systemd/resolved.conf.d/adguard.conf
+sudo systemctl restart systemd-resolved
+```
+
 ## 1. Vaultwarden - do this first
 
 If you enabled it: visit it and create your account before touching

@@ -2,9 +2,9 @@
 
 ## Requirements
 
-- Linux (Ubuntu, Debian, Raspbian, Fedora, and Arch all have an automatic Docker install path; other distros need Docker installed manually first)
+- Linux. On Ubuntu, Debian, Fedora, and Arch, `./install` runs a **Phase 0** pass first that installs anything missing — `git`, `python3-venv`, `whiptail`, `mdadm`, and Docker Engine + `docker compose` — adds your user to the `docker` group, and escalates to root **once** (it prints a heads-up block, then calls `sudo`) if it needs to. On other distros it prints the exact packages to install by hand and stops.
 - Python 3.11+
-- Docker — installed and started automatically on supported distros if it isn't already there
+- Docker — installed and started by Phase 0 on the supported distros if it isn't already there
 
 ## Quick Start
 
@@ -14,13 +14,17 @@ cd vulcan
 ./install
 ```
 
-`./install` bootstraps a local virtual environment on first run, then opens on a persistent **Main Menu** — Guided Setup, plus Update/Pull/Backup/Restore/Uninstall for a stack you've already generated. Every item is always listed, DockSTARTer-style; picking a maintenance command before a stack exists gives you the same real "no stack found" message the CLI itself would. Picking **Guided Setup** walks you through:
+`./install` runs Phase 0 (system packages + Docker, one `sudo` escalation — see Requirements), bootstraps a local virtual environment on first run, then opens on a persistent **Main Menu** — Guided Setup, plus Update/Pull/Backup/Restore/Uninstall for a stack you've already generated. Every item is always listed, DockSTARTer-style; picking a maintenance command before a stack exists gives you the same real "no stack found" message the CLI itself would. Picking **Guided Setup** runs an explicit sequence:
 
-1. Detects your system
-2. Gets Docker ready if it isn't already
-3. Recommends a tier
-4. Asks only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
-5. Generates a ready-to-run stack, with the option to start it immediately
+1. **Preflight** — re-checks Phase 0 (also available on its own as `vulcan preflight [--fix]`)
+2. **Detect** your hardware
+3. **Recommend** a tier
+4. **Shape** — pick the tier and the services, answering only the questions that matter (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
+5. **Confirm** what's about to be generated
+6. **Build** (`vulcan build`) — writes `stack/docker-compose.yml` + `.env` and stops; never starts anything, succeeds even if Docker is down
+7. **Configure** (`vulcan configure`) — prompts for the credentials the enabled services need (Gluetun VPN provider + WireGuard key, Cloudflare Tunnel `TUNNEL_TOKEN`, Tailscale `TS_AUTHKEY`, Pi-hole web password) and writes them into `stack/.env`; it doesn't validate them
+8. **Start** (`vulcan start`) — needs Docker; checks ports/network, runs `docker compose up -d`, then verifies the containers stayed up
+9. **Report** — prints the real URL for every service you enabled
 
 Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
 
