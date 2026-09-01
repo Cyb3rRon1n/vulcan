@@ -20,8 +20,10 @@ exists.
 """
 
 import json
+import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -275,17 +277,40 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
 
         staged_config = Path(tmp) / "config"
 
-        # SQLite files are skipped here, not copied - each one gets a
-        # proper consistent snapshot written into place below instead
-        # of a possibly-torn raw copy.
-        shutil.copytree(
-            config_dir,
-            staged_config,
-            ignore=lambda directory, names: {
-                name for name in names
-                if (Path(directory) / name).is_file() and _is_sqlite_file(Path(directory) / name)
-            }
-        )
+        # SQLite files are skipped here (snapshotted below instead), and
+        # so is runtime junk a config backup shouldn't/can't carry:
+        # sockets and named pipes (qBittorrent's ipc-socket, netdata's
+        # fifo), and files this unprivileged process can't read (netdata
+        # runs with deep host access and leaves root-owned cache/lib
+        # trees). copytree still raises shutil.Error at the end if
+        # anything slipped through - downgrade that to a warning, a
+        # partial config backup beats no backup.
+        skipped_junk: list[str] = []
+
+        def _ignore(directory: str, names: list[str]) -> set[str]:
+            drop = set()
+            for name in names:
+                path = Path(directory) / name
+                try:
+                    st = path.lstat()
+                except OSError:
+                    drop.add(name)
+                    continue
+                mode = st.st_mode
+                if stat.S_ISSOCK(mode) or stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode):
+                    drop.add(name)
+                elif path.is_file() and _is_sqlite_file(path):
+                    drop.add(name)
+                elif path.is_file() and not os.access(path, os.R_OK):
+                    drop.add(name)
+                    skipped_junk.append(str(path.relative_to(config_dir)))
+            return drop
+
+        try:
+            shutil.copytree(config_dir, staged_config, ignore=_ignore)
+        except shutil.Error as error:
+            for src, _dst, _why in error.args[0]:
+                skipped_junk.append(str(Path(src).resolve().relative_to(config_dir.resolve())))
 
         for live_path in config_dir.rglob("*"):
 
@@ -315,6 +340,15 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
         warnings.append(
             "Could not safely snapshot while running, copied directly instead "
             f"(may be inconsistent if it was mid-write): {', '.join(unsafe_snapshots)}"
+        )
+
+    if skipped_junk:
+
+        shown = sorted(set(skipped_junk))
+        warnings.append(
+            "Skipped unreadable or non-regular files (runtime state, not "
+            f"config - safe to omit): {', '.join(shown[:8])}"
+            + (f" and {len(shown) - 8} more" if len(shown) > 8 else "")
         )
 
     return {
