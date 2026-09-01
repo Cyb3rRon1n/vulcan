@@ -571,11 +571,8 @@ complete_setup_flow() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    # Docker readiness is Phase 0's job (`./install` runs
+    # `vulcan preflight --fix` before this menu launches).
 
     # Phase 2: Guided Setup (PLAN - tier, services, media path) - NO START
     log_title "PLAN: Guided Stack Configuration"
@@ -1303,16 +1300,16 @@ guided_setup() {
     # untruncated list is on the Setup Complete screen via
     # `vulcan install-summary`. No --scrolltext: the buttons stay put.
     local width=$(( DLG_COLS - 6 ))
-    _rvline() { printf '%-.*s\n' "$width" "$1"; }
+    _rvline() { printf '%-.*s' "$width" "$1"; }
 
     local summary=""
-    summary+="$(_rvline "Tier:        $TIER")"
-    summary+="$(_rvline "Media Path:  $MEDIA_PATH")"
-    summary+="$(_rvline "PUID/PGID:   $PUID / $PGID")"
-    summary+="$(_rvline "Timezone:    $TIMEZONE")"
-    summary+="$(_rvline "Services:    $services_summary")"
-    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && summary+="$(_rvline "Domain/Auth: configured")"
-    summary+="$(_rvline "Auto-start:  $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")")"
+    summary+="$(_rvline "Tier:        $TIER")"$'\n'
+    summary+="$(_rvline "Media Path:  $MEDIA_PATH")"$'\n'
+    summary+="$(_rvline "PUID/PGID:   $PUID / $PGID")"$'\n'
+    summary+="$(_rvline "Timezone:    $TIMEZONE")"$'\n'
+    summary+="$(_rvline "Services:    $services_summary")"$'\n'
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && summary+="$(_rvline "Domain/Auth: configured")"$'\n'
+    summary+="$(_rvline "Auto-start:  $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")")"$'\n'
     summary+=$'\n'"Press TAB to select yes or no."
 
     if ! whiptail --backtitle "$BACKTITLE" --title "Review Settings" \
@@ -1339,6 +1336,7 @@ guided_setup() {
         confirm_and_run "Start Stack" \
             "Start stack/docker-compose.yml, reassigning any port already in use." \
             "$VULCAN_BIN" start
+        rc=$?
     fi
 
     if [ "$rc" -eq 0 ]; then
