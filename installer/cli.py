@@ -955,7 +955,6 @@ def build(
     auth_username: str | None = typer.Option(None, "--auth-username"),
     auth_password: str | None = typer.Option(None, "--auth-password"),
     auth_users: str | None = typer.Option(None, "--auth-users"),
-    offline: bool = typer.Option(False, "--offline")
 ):
     """
     Generate stack/docker-compose.yml + .env from your choices and stop -
@@ -997,7 +996,6 @@ def build(
         auth_username=auth_username,
         auth_password=auth_password,
         auth_users_raw=auth_users,
-        offline=offline
     )
 
 
@@ -1350,10 +1348,6 @@ def main(
         "implies --no-start --non-interactive --yes"
     ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
-    offline: bool = typer.Option(
-        False, "--offline",
-        help="No internet access on this machine - skip automatic Docker install if it's missing"
-    )
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -1400,7 +1394,6 @@ def main(
         auth_username=auth_username,
         auth_password=auth_password,
         auth_users_raw=auth_users,
-        offline=offline,
         dry_run=dry_run
     )
 
@@ -1438,7 +1431,6 @@ def run_install(
     auth_username: str | None = None,
     auth_password: str | None = None,
     auth_users_raw: str | None = None,
-    offline: bool = False,
     dry_run: bool = False
 ):
 
@@ -1538,8 +1530,15 @@ def run_install(
                                             panel.note(f"[green]Storage provisioned at {mount_point}[/green]")
         panel.advance()
 
-        group_just_added = False   # Phase 0 owns the group add now; kept for
-                                   # _start's use_group_workaround signature.
+        # Phase 0 adds the user to the docker group in a separate (root)
+        # process; this process's group list is still stale, but
+        # `./install`'s final `exec` goes through `runuser -u $SUDO_USER`,
+        # which builds a fresh group list from the DB - so by the time
+        # this code runs, the docker group is already effective. (A
+        # non-root `./install` where Phase 0 had nothing to do added no
+        # group, so nothing is stale either.) Kept for _start's
+        # use_group_workaround signature.
+        group_just_added = False
 
         config = _gather_generation_config(
             info, tier, media_path, vpn, cloudflared, sabnzbd, recyclarr, homepage,
@@ -1566,8 +1565,7 @@ def run_install(
             "VPN_TYPE": os.environ.get("VPN_TYPE", ""),
             "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", ""),
             "WIREGUARD_ADDRESSES": os.environ.get("WIREGUARD_ADDRESSES", ""),
-            "OPENVPN_USER": os.environ.get("OPENVPN_USER", ""),
-            "OPENVPN_PASSWORD": os.environ.get("OPENVPN_PASSWORD", ""),
+            # OpenVPN has no env.j2 keys yet - see follow-up
             "DOMAIN": config.domain or "",
         }
 

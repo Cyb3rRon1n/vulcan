@@ -30,14 +30,13 @@ Different from every command above — this updates *Vulcan's own checkout*, not
 
 ## Airgap / Offline Installs
 
-Vulcan assumes internet access by default, but two real gaps are covered:
+Vulcan assumes internet access by default, but moving a stack to a machine that has none is covered:
 
 | Command | What it does |
 |---|---|
-| `./install --plain --offline` | Skips the automatic Docker install attempt (CLI-only for now — the guided menu doesn't expose this yet, see the [Roadmap](roadmap.md)) |
 | `vulcan export [--output PATH]` | Bundles already-pulled images into a tarball (`exports/`) |
 | `vulcan import [FILE]` | Loads images from that tarball on another machine |
 
-`--offline` tells Vulcan not to attempt an automatic Docker install if Docker isn't found — installing it needs a connection Vulcan won't assume you have, so you'll get a link to the manual install docs instead. Docker being installed some other way ahead of time is unaffected either way.
+Install Docker ahead of time on a machine with no connection (Vulcan's automatic install needs one); Phase 0 detects an already-installed Docker and skips the install step regardless.
 
 `vulcan export` packages a stack's already-pulled images (run `vulcan pull` first) into a single tarball under `exports/`; `vulcan import` loads that tarball's images on a different machine — one that's never been online at all, unlike `vulcan pull`, which still needs a live connection on the same machine it's run on. Neither needs confirmation, and `import` defaults to the most recent file in `exports/` if you don't pass one, the same convenience `restore` already offers for backups.
