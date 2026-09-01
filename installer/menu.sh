@@ -66,6 +66,13 @@ compactbutton=white,red
 # guard was added.
 if ! declare -F whiptail >/dev/null; then
     whiptail() {
+        # Clear the real terminal first. Over SSH, leftover state from
+        # the previous command (a Rich live panel's final frame, a
+        # slow `vulcan detect`, a half-flushed escape sequence) can
+        # swallow newt's initial paint, so the dialog is "open" but
+        # invisible until a keypress forces a redraw. A clean screen
+        # right before every dialog removes that class of stall.
+        command tput clear >/dev/tty 2>/dev/null || true
         command whiptail --fullbuttons "$@"
     }
 fi

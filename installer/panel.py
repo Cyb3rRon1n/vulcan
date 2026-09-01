@@ -80,6 +80,17 @@ class RunPanel:
 
         clear_stream_sink()
         self._live.stop()
+
+        # Leave the terminal in a known-good state for whatever draws
+        # next (the whiptail menu, over SSH). Live.stop() with
+        # transient=False keeps the last frame but can leave the cursor
+        # hidden or a paint unflushed.
+        self._console.show_cursor(True)
+        try:
+            self._console.file.flush()
+        except (OSError, ValueError):
+            pass
+
         return False
 
     def _on_line(self, line: str) -> None:
