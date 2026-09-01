@@ -43,15 +43,18 @@ After Phase 0 the guided run is an explicit sequence:
    `docker compose up -d`, then a container-stayed-up check
 9. **Report** - every enabled service's real URL
 
-## AdGuard Home and port 53
+## DNS services and port 53
 
-If you enabled AdGuard Home on Ubuntu, its DNS port `:53` collides with
-`systemd-resolved`. Disable the stub listener **before** starting the
-stack:
+If you enabled **AdGuard Home** or **Pi-hole** (which runs with Unbound)
+on Ubuntu, their DNS port `:53` collides with `systemd-resolved`. The
+symptom: AdGuard/Unbound exits on start, and with Pi-hole you get a
+cryptic `namespace path ... no such file or directory` because Pi-hole
+shares Unbound's network namespace. Disable the stub listener **before**
+starting the stack:
 
 ```
 sudo mkdir -p /etc/systemd/resolved.conf.d
-echo -e '[Resolve]\nDNSStubListener=no' | sudo tee /etc/systemd/resolved.conf.d/adguard.conf
+printf '[Resolve]\nDNSStubListener=no\n' | sudo tee /etc/systemd/resolved.conf.d/no-stub.conf
 sudo systemctl restart systemd-resolved
 ```
 
