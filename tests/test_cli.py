@@ -833,6 +833,10 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
@@ -876,6 +880,10 @@ def test_start_success_prints_service_url_summary(tmp_path):
     ), patch(
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.detect_host_ip", return_value="192.168.1.50"
     ), patch(
@@ -1022,6 +1030,10 @@ def test_start_auto_remaps_port_and_retries(tmp_path):
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
@@ -1082,6 +1094,10 @@ def test_start_own_orphan_conflict_cleans_up_and_retries(tmp_path):
     ), patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
         "installer.cli.verify_stack_running",
@@ -1140,6 +1156,10 @@ def test_start_own_orphan_multiple_ports_cleans_up_once(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
@@ -1270,6 +1290,8 @@ def test_start_reassigns_conflicting_port_with_no_prompt(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
     ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
@@ -1838,9 +1860,9 @@ def test_non_interactive_fresh_install_defaults_homepage_enabled(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    # Gluetun now defaults on too (see the CLI's own real reasoning) -
-    # a fresh install with no flags at all gets both real defaults.
-    assert config.enabled_optional == {"homepage", "gluetun"}
+    # Homepage defaults on for a fresh install; Gluetun deliberately does
+    # not (commit ff25250 - "prevents gluetun failing without VPN config").
+    assert config.enabled_optional == {"homepage"}
 
 
 def test_non_interactive_regenerate_existing_heavy_stack_preserves_homepage(tmp_path):
@@ -1949,6 +1971,10 @@ def test_run_docker_command_failure_reported_cleanly(tmp_path):
     ), patch(
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
