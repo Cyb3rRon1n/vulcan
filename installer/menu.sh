@@ -88,9 +88,11 @@ _dlg_rows() {
 }
 
 _dlg_cols() {
+    # 72% (was 60%) so the longest --menu item descriptions fit inside
+    # the box instead of bleeding past the right border.
     local total
     total=$(tput cols 2>/dev/null || echo 80)
-    local cols=$(( total * 60 / 100 ))
+    local cols=$(( total * 72 / 100 ))
     [ "$cols" -lt 60 ] && cols=60
     echo "$cols"
 }
@@ -1085,7 +1087,7 @@ guided_setup_no_start() {
     fi
 
     # If gluetun (VPN) was selected, prompt for credentials now
-    if [[ " ${TOGGLE_FLAGS[@]} " =~ " --vpn " ]]; then
+    if [[ " ${TOGGLE_FLAGS[*]:-} " =~ " --vpn " ]]; then
         if [ -z "${VPN_SERVICE_PROVIDER:-}" ] || [ -z "${VPN_TYPE:-}" ]; then
             if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno \
                 $'Gluetun VPN was selected but no VPN credentials were provided.\n\nYou must provide VPN credentials for the stack to start successfully.\n\nWould you like to configure VPN credentials now?' "$DLG_ROWS" "$DLG_COLS"; then
@@ -1146,9 +1148,14 @@ guided_setup_no_start() {
     vulcan_cmd+=(--pgid "$PGID")
     vulcan_cmd+=(--timezone "$TIMEZONE")
 
-    [ -n "$SERVICES_FLAG" ] && vulcan_cmd+=(--services "$SERVICES_FLAG")
-    [ -n "$DOMAIN_FLAGS" ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
-    [ -n "$TOGGLE_FLAGS" ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
+    # Count guard, not `[ -n "$ARR" ]`: under `set -u`, "$SERVICES_FLAG"
+    # expands to "${SERVICES_FLAG[0]}" which is UNBOUND when the array is
+    # empty (the quick-toggles path never sets SERVICES_FLAG) and aborts
+    # the whole script. And SERVICES_FLAG is a 2-element array
+    # (--services <joined>), so it must expand with [@], not as a scalar.
+    [ "${#SERVICES_FLAG[@]}" -gt 0 ] && vulcan_cmd+=("${SERVICES_FLAG[@]}")
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
+    [ "${#TOGGLE_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
 
     confirm_and_run "Generate Stack" \
         "This will generate stack/docker-compose.yml and .env with your choices. Stack will NOT be started." \
