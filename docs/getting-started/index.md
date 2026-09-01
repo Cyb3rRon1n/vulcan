@@ -26,8 +26,6 @@ cd vulcan
 8. **Start** (`vulcan start`) — needs Docker; checks ports/network, runs `docker compose up -d`, then verifies the containers stayed up
 9. **Report** — prints the real URL for every service you enabled
 
-Before actually starting, Vulcan checks that every port your stack needs is genuinely free and refuses cleanly (naming the conflicting port) rather than letting Docker fail partway through. Once it's up, Vulcan prints the real URL for every service you enabled, so you're not left guessing ports.
-
 ## Non-interactive / scripted use
 
 ```bash
