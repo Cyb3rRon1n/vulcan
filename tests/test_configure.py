@@ -73,3 +73,17 @@ def test_configure_pending_hides_input_for_secret_keys_only(tmp_path, monkeypatc
     kwargs_by_key = {call.args[0]: call.kwargs for call in prompt.call_args_list}
     assert kwargs_by_key["WIREGUARD_PRIVATE_KEY"]["hide_input"] is True
     assert kwargs_by_key["VPN_SERVICE_PROVIDER"]["hide_input"] is False
+
+
+def test_configured_credentials_lists_fully_set_services(tmp_path, monkeypatch):
+    monkeypatch.setattr("installer.configure.STACK_DIR", tmp_path)
+    (tmp_path / ".env").write_text(
+        "VPN_SERVICE_PROVIDER=mullvad\nVPN_TYPE=wireguard\n"
+        "WIREGUARD_PRIVATE_KEY=realkey\nTUNNEL_TOKEN=changeme\n"
+    )
+    from installer.configure import configured_credentials
+
+    done = configured_credentials(_cfg(custom_services={"gluetun", "cloudflared"}))
+
+    assert "gluetun" in done          # all required keys set
+    assert "cloudflared" not in done  # TUNNEL_TOKEN still placeholder

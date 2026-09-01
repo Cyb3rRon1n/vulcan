@@ -378,6 +378,19 @@ def configure():
         raise typer.Exit(code=1)
 
     config = _config_from_previous_state(previous)
+
+    from installer.configure import pending_credentials, configured_credentials
+
+    already = configured_credentials(config)
+    pending = [item["service"] for item in pending_credentials(config)]
+
+    if already:
+        console.print(f"[green]Already configured:[/green] {', '.join(already)}")
+    if not pending:
+        console.print("[green]Nothing left to configure.[/green]")
+        return
+
+    console.print(f"[bold]Needs credentials:[/bold] {', '.join(pending)}")
     result = configure_pending(config, non_interactive=False)
 
     if result["written"]:
