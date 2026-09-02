@@ -242,7 +242,7 @@ menu_install() {
             "guided"        "Guided Setup → detect hardware, generate stack (no start)" \
             "storage"       "Media Storage Setup → provision blank drives as RAID/media volume" \
             "back"          "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             complete) complete_setup_flow ;;
             guided)   guided_setup ;;
@@ -261,12 +261,14 @@ menu_configure() {
             "services"    "Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc." \
             "credentials" "Configure Credentials → VPN, domain, tunnel token, passwords" \
             "storage"     "Reconfigure Media Storage → change RAID, mount point, drives" \
+            "reset-storage" "Reset Media Storage → unmount and wipe the media volume" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             services) configure_services_flow ;;
             credentials) "$VULCAN_BIN" configure; read -rp "Press Enter to return to the menu..." _ ;;
             storage)  storage_setup_flow ;;
+            reset-storage) storage_teardown_flow ;;
             back)     return ;;
         esac
     done
@@ -285,7 +287,7 @@ menu_stack() {
             "backup"      "Backup Stack → archive config/compose/env to backups/" \
             "restore"     "Restore Stack → from most recent backup" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             start)   confirm_and_run "Start Stack" "This will start stack/docker-compose.yml, reassigning any port already in use." "$VULCAN_BIN" start ;;
             status)  stack_status_flow ;;
@@ -307,7 +309,7 @@ menu_system() {
             "update"      "Update Vulcan → fast-forward this checkout" \
             "uninstall"   "Uninstall Stack → stop and delete stack/ entirely" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             update)     confirm_and_run "Update Vulcan" "This will fast-forward this Vulcan checkout to the latest origin/main." "$VULCAN_BIN" update-self --non-interactive --yes ;;
             uninstall)  uninstall_flow ;;
@@ -330,14 +332,14 @@ main_menu() {
             "stack"       "Stack → Start, Status, Update, Pull, Backup, Restore" \
             "system"      "System → Update, Uninstall" \
             "exit"        "Exit" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || { clear; return 0; }
 
         case "$choice" in
             install)    menu_install ;;
             configure)  menu_configure ;;
             stack)      menu_stack ;;
             system)     menu_system ;;
-            exit)       clear; exit 0 ;;
+            exit)       clear; return 0 ;;
         esac
     done
 }
