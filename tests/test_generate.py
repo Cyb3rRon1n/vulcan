@@ -1014,7 +1014,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # added capabilities - no privilege-drop or ownership-fixup step to
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
-    "downtify", "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
+    "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
 }
@@ -1045,6 +1045,13 @@ SPECIAL_CAP_SERVICES = {
     # bind-mounted /data (no root->PUID drop, so no SETGID/SETUID) -
     # verified live against a real bind mount under cap_drop: ALL.
     "portainer": ["CHOWN", "DAC_OVERRIDE", "FOWNER"],
+    # downtify runs its FastAPI app as root and writes its sqlite DB into
+    # the bind-mounted /data - under cap_drop: ALL a root process loses
+    # CAP_DAC_OVERRIDE and can't write a dir it doesn't own ("unable to
+    # open database file", crash-loop). Verified live: DAC_OVERRIDE alone
+    # is enough (it doesn't chown). Found on an Ubuntu homelab; the
+    # earlier zero-cap claim had been tested against a managed volume.
+    "downtify": ["DAC_OVERRIDE"],
 }
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
