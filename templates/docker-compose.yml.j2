@@ -1394,7 +1394,14 @@ services:
     ports:
       - "{{ ports['pihole'] }}:80"
     volumes:
-      - ./config/pihole/unbound:/etc/unbound
+      # Mount the OVERRIDE dir, not /etc/unbound itself - the image
+      # ships a complete working unbound.conf that already does
+      # recursive resolution and `include`s custom.conf.d/*.conf.
+      # Mounting an empty host dir over /etc/unbound hid that config
+      # ("Could not open /etc/unbound/unbound.conf") and unbound
+      # crash-looped, taking pihole (network_mode: service:unbound)
+      # with it.
+      - ./config/pihole/unbound:/etc/unbound/custom.conf.d
     cap_drop:
       - ALL
     cap_add:
