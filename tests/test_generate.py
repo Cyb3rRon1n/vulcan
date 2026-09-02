@@ -1006,7 +1006,7 @@ FIVE_CAP_SERVICES = {
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent",
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
-    "sportarr", "threadfin", "tracearr",
+    "sportarr", "threadfin", "tracearr", "crowdsec",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1015,7 +1015,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
     "downtify", "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
-    "seerr", "flaresolverr", "traefik", "cloudflared", "crowdsec",
+    "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
 }
 
@@ -1027,7 +1027,7 @@ SPECIAL_CAP_SERVICES = {
     "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
     "tailscale": ["NET_ADMIN", "NET_RAW"],
     "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
-    "pihole": ["NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
+    "pihole": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
     # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH
     # directly ("should run with...") - without it they degrade silently
     # rather than crash, so adding it is a real functionality gain over the
