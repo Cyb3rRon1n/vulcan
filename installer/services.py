@@ -44,6 +44,8 @@ RESOURCE_PROFILES: dict[str, str] = {
     "sportarr": "standard",
     "tracearr": "standard",
     "threadfin": "light",
+    "portainer": "light",
+    "adguardhome": "light",
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {
