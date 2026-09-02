@@ -1027,7 +1027,23 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         (output_dir / "config" / key).mkdir(parents=True, exist_ok=True)
 
     if "pihole" in enabled_service_keys(config):
-        (output_dir / "config" / "pihole" / "unbound").mkdir(parents=True, exist_ok=True)
+
+        unbound_dir = output_dir / "config" / "pihole" / "unbound"
+        unbound_dir.mkdir(parents=True, exist_ok=True)
+
+        # klutchell/unbound listens on :53 out of the box. pihole runs in
+        # unbound's network namespace (network_mode: service:unbound) and
+        # pihole-FTL also wants :53 - so without this, FTL fails to bind
+        # ("failed to create listening socket for port 53: Address in
+        # use") and DNS is dead. The compose env already points pihole's
+        # upstream at 127.0.0.1#5335; this is the other half. The image's
+        # own unbound.conf `include`s custom.conf.d/*.conf, and `port:`
+        # is last-wins, so this file alone moves it. Written once - a
+        # hand-edited override survives a regenerate.
+        unbound_conf = unbound_dir / "99-pihole-port.conf"
+
+        if not unbound_conf.exists():
+            unbound_conf.write_text("server:\n    port: 5335\n")
 
     if config.cloudflare_dns and "traefik" in enabled_service_keys(config):
 

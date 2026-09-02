@@ -1576,6 +1576,37 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "media" / "books").is_dir()
 
 
+def test_pihole_unbound_dns_wiring(tmp_path):
+    """pihole shares unbound's netns; both want :53. unbound must be
+    moved to :5335 (a config file write_stack drops in) and pihole's
+    v6 upstream must point at it - shipped once as an empty string,
+    which broke every lookup."""
+    output_dir = tmp_path / "stack"
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "m"),
+        puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"pihole"},
+    )
+
+    write_stack(config, output_dir=output_dir)
+
+    conf = output_dir / "config" / "pihole" / "unbound" / "99-pihole-port.conf"
+    assert conf.is_file()
+    assert "port: 5335" in conf.read_text()
+
+    services = yaml.safe_load((output_dir / "docker-compose.yml").read_text())["services"]
+    pihole_env = services["pihole"]["environment"]
+    assert "FTLCONF_dns_upstreams=127.0.0.1#5335" in pihole_env
+    assert "FTLCONF_dns_upstreams=" not in pihole_env  # not the empty-string form
+
+    # hand-edited override survives a regenerate
+    conf.write_text("server:\n    port: 9999\n")
+    write_stack(config, output_dir=output_dir)
+    assert "port: 9999" in conf.read_text()
+
+
 def test_write_stack_warns_when_tailscale_enabled(tmp_path):
 
     config = GenerationConfig(
