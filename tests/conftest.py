@@ -1,65 +1,24 @@
-"""Pytest configuration for Vulcan test isolation.
+"""Test isolation for the Vulcan suite.
 
-Ensures each test gets a clean stack directory state and prevents
-environment-state leakage between test runs.
+The CLI and several engine functions resolve ``stack/``, ``backups/``,
+``exports/`` and ``stack/.vulcan-state.json`` relative to the *current
+working directory*. Running ``pytest`` from a checkout that happens to
+contain a real generated ``stack/`` - a dev box, or a homelab actually
+running Vulcan - made a dozen-odd mocked CLI tests see a bogus "re-run
+against an existing stack" state and fail (wrong prompt sequence, wrong
+exit code). Found the hard way on two separate machines.
 
-This addresses the pre-existing issue where 3 tests fail in full suite
-isolation due to persistent stack directory state and tier defaults
-carrying over between runs.
+Fixing it per-test is whack-a-mole; the whole suite should be
+independent of what's sitting in the checkout. So: every test runs from
+a fresh empty directory.
 """
-
-import os
-import shutil
 
 import pytest
 
 
-def pytest_configure(config):
-    """Configure test environment state prevention."""
-    # Add custom marker for tests needing fresh state
-    config.addinivalue_line(
-        "markers",
-        "fresh_state: test requires fresh stack state (no persistence from other tests)"
-    )
-
-
-@pytest.fixture(autouse=True, scope="function")
-def clean_environment_state():
-    """Ensure clean environment state between tests.
-    
-    This fixture:
-    1. Removes any stack directory that might persist between tests
-    2. Ensures no global state carries over between test runs
-    3. Provides isolated environment for each test function
-    
-    The stack directory is user-generated output and should not persist
-    between test runs to prevent tier/defaults carryover.
-    """
-    yield
-    # Cleanup after test - remove any stack directory that was created
-    # The actual path depends on the test, but common paths are:
-    common_stack_dirs = [
-        "/scratch/stack",
-        "/home/sentinel/stack", 
-        "/tmp/stack",
-    ]
-    for stack_dir in common_stack_dirs:
-        if os.path.exists(stack_dir):
-            shutil.rmtree(stack_dir, ignore_errors=True)
-
-
-@pytest.fixture(autouse=True, scope="function")
-def fresh_tier_defaults():
-    """Ensure tier defaults don't carry over between tests.
-    
-    Some tests check tier behavior and previous test's tier selections
-    should not influence subsequent tests' results.
-    """
-    yield
-
-
-def pytest_collection_modifyitems(items):
-    """Optionally mark tests that need fresh state."""
-    # This can be used to identify tests that require fresh state
-    # but for now, the autouse fixtures handle isolation
-    pass
+@pytest.fixture(autouse=True)
+def _isolate_cwd(tmp_path, monkeypatch):
+    # monkeypatch.chdir restores the original cwd at teardown. Templates
+    # and other package data are resolved via the installer package path,
+    # not cwd, so nothing that should work breaks.
+    monkeypatch.chdir(tmp_path)
