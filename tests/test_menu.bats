@@ -14,6 +14,52 @@ setup() {
     MENU_SH="$BATS_TEST_DIRNAME/../installer/menu.sh"
 }
 
+# A complete `vulcan detect` block. menu.sh runs under `set -u`, so a
+# stub that only echoes the two or three vars a given test cares about
+# makes refresh_detect blow up on the first unstubbed reference. Tests
+# pass "KEY='value'" args to override/extend; later lines win the eval.
+_detect() {
+    cat <<'DETECT'
+CPU_CORES_LOGICAL='12'
+CPU_MODEL='Test CPU'
+RAM_TOTAL_GB='32.0'
+DISK_FREE_GB='900.0'
+GPU_VENDOR='intel'
+DOCKER_INSTALLED='true'
+DOCKER_RUNNING='true'
+DOCKER_COMPOSE_V2='true'
+OS_ID='fedora'
+OS_PRETTY_NAME='Test Linux'
+OS_IS_ATOMIC='false'
+RECOMMENDED_TIER='medium'
+RECOMMENDED_TIER_MEETS_MINIMUM='true'
+RECOMMENDED_TIER_EXPLANATION='test'
+BLANK_STORAGE_DEVICES=''
+ALL_UNPROTECTED_DEVICES=''
+STORAGE_MOUNT=''
+STACK_EXISTS='false'
+HAS_BACKUPS='false'
+DEFAULT_PUID='1000'
+DEFAULT_PGID='1000'
+DEFAULT_TIMEZONE='UTC'
+PREVIOUS_TIER=''
+PREVIOUS_MEDIA_PATH=''
+PREVIOUS_PUID=''
+PREVIOUS_PGID=''
+PREVIOUS_TIMEZONE=''
+PREVIOUS_ENABLED_OPTIONAL=''
+PREVIOUS_GPU_VENDOR=''
+PREVIOUS_DOMAIN=''
+PREVIOUS_CLOUDFLARE_DNS='false'
+PREVIOUS_CLOUDFLARE_EMAIL=''
+PREVIOUS_HOMEPAGE_PRIVATE='true'
+PREVIOUS_DASHY_PRIVATE='true'
+PREVIOUS_GENERATED_AT=''
+DETECT
+    printf '%s\n' "$@"
+}
+export -f _detect
+
 @test "confirm_and_run executes the command and reports success when confirmed" {
 
     whiptail() { return 0; }
@@ -177,11 +223,15 @@ setup() {
     [[ "$output" == *"--gpu"* ]]
 }
 
-@test "customize-services builds --services and skips domain flags without traefik" {
+@test "customize-services builds --services from the core seed and skips domain flags without traefik" {
 
+    # The category picker seeds the core services pre-checked; hitting
+    # "done" straight away keeps exactly those. --services list order is
+    # not deterministic (SELECTED_MAP is an associative array), so assert
+    # membership, not a fixed order.
     whiptail() {
         case "$*" in
-            *"Customize Services"*) echo -n '"jellyfin" "radarr" "sonarr" "prowlarr" "qbittorrent"' >&3; return 0 ;;
+            *"Select Category"*) echo -n "done" >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -201,36 +251,38 @@ setup() {
     "
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"SERVICES:--services jellyfin,radarr,sonarr,prowlarr,qbittorrent"* ]]
+    [[ "$output" == *"SERVICES:--services "* ]]
+    for svc in jellyfin radarr sonarr prowlarr qbittorrent; do
+        [[ "$output" == *"$svc"* ]]
+    done
     [[ "$output" == *"DOMAIN:"* ]]
     [[ "$output" != *"--domain"* ]]
 }
 
 @test "customize-services asks for a domain and Cloudflare/Authelia details when traefik+authelia are chosen" {
 
+    # Navigate: Infrastructure category -> check traefik; Security
+    # category -> check authelia; then done. Then the domain / Cloudflare
+    # / Authelia follow-up prompts fire because traefik+authelia are in
+    # the final list.
     whiptail() {
-        # More specific patterns first - the Cloudflare email inputbox's
-        # own --title also contains "Cloudflare", so a bare *"Cloudflare"*
-        # pattern would wrongly intercept it before reaching
-        # *"Contact email"* if it came first (found live while writing
-        # this test - a real ordering trap, not hypothetical).
         case "$*" in
-            *"Customize Services"*)
-                echo -n '"jellyfin" "traefik" "authelia"' >&3; return 0 ;;
-            *"Base domain"*)
-                echo -n "media.example.com" >&3; return 0 ;;
-            *"Contact email"*)
-                echo -n "me@example.com" >&3; return 0 ;;
-            *"Cloudflare"*)
-                return 0 ;;
-            *"admin username"*)
-                echo -n "admin" >&3; return 0 ;;
-            *"admin password"*)
-                echo -n "hunter2" >&3; return 0 ;;
+            *"Select Category"*)
+                if [ ! -f "$FLAG.infra" ]; then touch "$FLAG.infra"; echo -n "Infrastructure" >&3; return 0; fi
+                if [ ! -f "$FLAG.sec" ]; then touch "$FLAG.sec"; echo -n "Security" >&3; return 0; fi
+                echo -n "done" >&3; return 0 ;;
+            *"Customize: Infrastructure"*) echo -n '"traefik"' >&3; return 0 ;;
+            *"Customize: Security"*)       echo -n '"authelia"' >&3; return 0 ;;
+            *"Base domain"*)      echo -n "media.example.com" >&3; return 0 ;;
+            *"Contact email"*)    echo -n "me@example.com" >&3; return 0 ;;
+            *"Cloudflare DNS"*)   return 0 ;;   # yesno: yes
+            *"admin username"*)   echo -n "admin" >&3; return 0 ;;
+            *"admin password"*)   echo -n "hunter2" >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
     export -f whiptail
+    export FLAG="$BATS_TEST_TMPDIR/nav"
 
     run bash -c "
         source '$MENU_SH'
@@ -246,7 +298,8 @@ setup() {
     "
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"--services jellyfin,traefik,authelia"* ]]
+    [[ "$output" == *"traefik"* ]]
+    [[ "$output" == *"authelia"* ]]
     [[ "$output" == *"--domain media.example.com"* ]]
     [[ "$output" == *"--cloudflare-dns"* ]]
     [[ "$output" == *"--cloudflare-email me@example.com"* ]]
@@ -261,8 +314,7 @@ setup() {
     # detect needs *something* real to run against here.
     fake_vulcan() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
-            echo "STORAGE_MOUNT=''"
+            _detect "BLANK_STORAGE_DEVICES=''" "STORAGE_MOUNT=''"
         fi
     }
     export -f fake_vulcan
@@ -279,8 +331,7 @@ setup() {
 
     fake_vulcan() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
-            echo "STORAGE_MOUNT=''"
+            _detect "BLANK_STORAGE_DEVICES=''" "STORAGE_MOUNT=''"
         fi
     }
     export -f fake_vulcan
@@ -302,7 +353,7 @@ setup() {
 
     fake_vulcan() {
         case "$*" in
-            detect) echo "STACK_EXISTS='false'" ;;
+            detect) _detect "STACK_EXISTS='false'" ;;
             *) return 0 ;;
         esac
     }
@@ -326,9 +377,7 @@ setup() {
     fake_vulcan() {
         case "$*" in
             detect)
-                echo "STACK_EXISTS='true'"
-                echo "BLANK_STORAGE_DEVICES=''"
-                echo "STORAGE_MOUNT=''"
+                _detect "STACK_EXISTS='true'" "BLANK_STORAGE_DEVICES=''" "STORAGE_MOUNT=''"
                 ;;
             *) return 0 ;;
         esac
@@ -351,7 +400,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+            _detect "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'" "ALL_UNPROTECTED_DEVICES='/dev/sdb,/dev/sdc'"
         else
             echo "vulcan $*"
         fi
@@ -360,7 +409,7 @@ setup() {
 
     whiptail() {
         case "$*" in
-            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
+            *"Select drive"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
             *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
             *) return 0 ;;
         esac
@@ -381,7 +430,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
+            _detect 
         else
             echo "vulcan $*"
         fi
@@ -405,7 +454,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+            _detect "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'" "ALL_UNPROTECTED_DEVICES='/dev/sdb,/dev/sdc'"
         else
             echo "vulcan $*"
         fi
@@ -414,7 +463,7 @@ setup() {
 
     whiptail() {
         case "$*" in
-            *"Select storage devices"*) echo -n '' >&3; return 0 ;;
+            *"Select drive"*) echo -n '' >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -434,7 +483,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde'"
+            _detect "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde'" "ALL_UNPROTECTED_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd,/dev/sde'"
         else
             echo "vulcan $*"
         fi
@@ -443,7 +492,7 @@ setup() {
 
     whiptail() {
         case "$*" in
-            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd" "/dev/sde"' >&3; return 0 ;;
+            *"Select drive"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd" "/dev/sde"' >&3; return 0 ;;
             *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
             *"Choose a RAID level"*) echo -n "6" >&3; return 0 ;;
             *) return 0 ;;
@@ -461,11 +510,11 @@ setup() {
     [[ "$output" == *"vulcan storage apply --devices /dev/sdb,/dev/sdc,/dev/sdd,/dev/sde --mount-point /mnt/media --non-interactive --yes --raid-level 6"* ]]
 }
 
-@test "storage setup does not show the RAID picker at 3 devices (RAID5 is the only choice)" {
+@test "storage setup offers a RAID0/RAID5 picker at 3 devices and passes the chosen level" {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd'"
+            _detect "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd'" "ALL_UNPROTECTED_DEVICES='/dev/sdb,/dev/sdc,/dev/sdd'"
         else
             echo "vulcan $*"
         fi
@@ -474,11 +523,9 @@ setup() {
 
     whiptail() {
         case "$*" in
-            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd"' >&3; return 0 ;;
+            *"Select drive"*) echo -n '"/dev/sdb" "/dev/sdc" "/dev/sdd"' >&3; return 0 ;;
             *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
-            # The confirm text is a whiptail --yesno arg, not stdout -
-            # echo it so the test can assert the level summary it carries.
-            *"--yesno"*) echo "$*" >&1; return 0 ;;
+            *"Choose a RAID level"*) echo "$*" >&1; echo -n "5" >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -492,14 +539,15 @@ setup() {
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"RAID5"* ]]
-    [[ "$output" != *"--raid-level"* ]]
+    [[ "$output" == *"--raid-level 5"* ]]
+    [[ "$output" != *"RAID6"* ]]   # 3 devices: no RAID6/RAID10 option
 }
 
-@test "storage setup at 2 devices passes no --raid-level (engine defaults to RAID1)" {
+@test "storage setup offers a RAID0/RAID1 picker at 2 devices and passes the chosen level" {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'"
+            _detect "BLANK_STORAGE_DEVICES='/dev/sdb,/dev/sdc'" "ALL_UNPROTECTED_DEVICES='/dev/sdb,/dev/sdc'"
         else
             echo "vulcan $*"
         fi
@@ -508,9 +556,9 @@ setup() {
 
     whiptail() {
         case "$*" in
-            *"Select which blank device"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
+            *"Select drive"*) echo -n '"/dev/sdb" "/dev/sdc"' >&3; return 0 ;;
             *"Mount point for the media storage volume"*) echo -n "/mnt/media" >&3; return 0 ;;
-            *"--yesno"*) echo "$*" >&1; return 0 ;;
+            *"Choose a RAID level"*) echo "$*" >&1; echo -n "1" >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -524,14 +572,14 @@ setup() {
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"RAID1"* ]]
-    [[ "$output" != *"--raid-level"* ]]
+    [[ "$output" == *"--raid-level 1"* ]]
 }
 
 @test "storage teardown reports nothing to do when nothing is provisioned" {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "STORAGE_MOUNT=''"
+            _detect "STORAGE_MOUNT=''"
         else
             echo "vulcan $*"
         fi
@@ -555,7 +603,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "STORAGE_MOUNT='/mnt/media'"
+            _detect "STORAGE_MOUNT='/mnt/media'"
         else
             echo "vulcan $*"
         fi
@@ -584,7 +632,7 @@ setup() {
 
     vulcan_stub() {
         if [ "$1" = "detect" ]; then
-            echo "STORAGE_MOUNT='/mnt/media'"
+            _detect "STORAGE_MOUNT='/mnt/media'"
         else
             echo "vulcan $*"
         fi
@@ -609,81 +657,11 @@ setup() {
     [[ "$output" == *"vulcan storage teardown --mount-point /mnt/media --non-interactive --yes --confirm-wipe"* ]]
 }
 
-@test "main_menu shows Reset Media Storage only when nothing blank remains and something is mounted" {
+@test "main_menu renders the grouped top-level items in order" {
 
     fake_vulcan() {
         if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
-            echo "STORAGE_MOUNT='/mnt/media'"
-        fi
-    }
-    export -f fake_vulcan
-
-    whiptail() {
-        echo "$*" >&1
-        echo -n "exit" >&3
-        return 0
-    }
-    export -f whiptail
-
-    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
-
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"R. Reset Media Storage"* ]]
-}
-
-@test "main_menu hides Reset Media Storage when blank devices are still available" {
-
-    fake_vulcan() {
-        if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES='/dev/sdb'"
-            echo "STORAGE_MOUNT=''"
-        fi
-    }
-    export -f fake_vulcan
-
-    whiptail() {
-        echo "$*" >&1
-        echo -n "exit" >&3
-        return 0
-    }
-    export -f whiptail
-
-    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
-
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"Reset Media Storage"* ]]
-}
-
-@test "main_menu hides Reset Media Storage when nothing is mounted at all" {
-
-    fake_vulcan() {
-        if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
-            echo "STORAGE_MOUNT=''"
-        fi
-    }
-    export -f fake_vulcan
-
-    whiptail() {
-        echo "$*" >&1
-        echo -n "exit" >&3
-        return 0
-    }
-    export -f whiptail
-
-    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
-
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"Reset Media Storage"* ]]
-}
-
-@test "main_menu is numbered with install-path items first" {
-
-    fake_vulcan() {
-        if [ "$1" = "detect" ]; then
-            echo "BLANK_STORAGE_DEVICES=''"
-            echo "STORAGE_MOUNT=''"
+            _detect
         fi
     }
     export -f fake_vulcan
@@ -691,8 +669,7 @@ setup() {
     whiptail() {
         # `echo >&1` (not >&2): main_menu swaps fds via 3>&1 1>&2 2>&3,
         # so inside the command substitution fd1 is the *original*
-        # stderr, and fd2 has been redirected to the captured output -
-        # a `>&2` here would leak into CHOICE and never match "exit".
+        # stderr, and fd2 has been redirected to the captured output.
         echo "$*" >&1
         echo -n "exit" >&3
         return 0
@@ -702,27 +679,49 @@ setup() {
     run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; main_menu"
 
     [ "$status" -eq 0 ]
-    # Full rendered menu text (dialog args joined with spaces), asserting
-    # order: Guided Setup and Storage Setup (the new-install path) come
-    # before the maintenance items, and every item is numbered.
-    [[ "$output" == *"1. Guided Setup"* ]]
-    [[ "$output" == *"2. Media Storage Setup"* ]]
-    [[ "$output" == *"3. Start Stack"* ]]
-    [[ "$output" == *"4. Update Stack"* ]]
-    [[ "$output" == *"5. Pull Images"* ]]
-    [[ "$output" == *"6. Backup Stack"* ]]
-    [[ "$output" == *"7. Restore Stack"* ]]
-    [[ "$output" == *"8. Uninstall Stack"* ]]
-    [[ "$output" == *"9. Update Vulcan"* ]]
-    [[ "$output" == *"0. Exit"* ]]
+    [[ "$output" == *"Install → Complete, Guided, Storage"* ]]
+    [[ "$output" == *"Configure → Services, Storage"* ]]
+    [[ "$output" == *"Stack → Start, Status, Update, Pull, Backup, Restore"* ]]
+    [[ "$output" == *"System → Update, Uninstall"* ]]
 
-    first_guided=$(echo "$output" | grep -b -o "1. Guided Setup" | cut -d: -f1)
-    first_storage=$(echo "$output" | grep -b -o "2. Media Storage Setup" | cut -d: -f1)
-    first_start=$(echo "$output" | grep -b -o "3. Start Stack" | cut -d: -f1)
-    first_update=$(echo "$output" | grep -b -o "4. Update Stack" | cut -d: -f1)
-    [ "$first_guided" -lt "$first_storage" ]
-    [ "$first_storage" -lt "$first_start" ]
-    [ "$first_start" -lt "$first_update" ]
+    first_install=$(echo "$output" | grep -b -o "Install → Complete" | head -1 | cut -d: -f1)
+    first_stack=$(echo "$output" | grep -b -o "Stack → Start" | head -1 | cut -d: -f1)
+    first_system=$(echo "$output" | grep -b -o "System → Update" | head -1 | cut -d: -f1)
+    [ "$first_install" -lt "$first_stack" ]
+    [ "$first_stack" -lt "$first_system" ]
+}
+
+@test "menu_configure lists Reset Media Storage and routes it to storage_teardown_flow" {
+
+    FLAG="$BATS_TEST_TMPDIR/picked"
+
+    fake_vulcan() { [ "$1" = "detect" ] && _detect "STORAGE_MOUNT='/mnt/media'"; }
+    export -f fake_vulcan
+
+    # First render: pick reset-storage. Every render after: cancel (return
+    # 1) so menu_configure's `choice=$(...) || return` breaks the loop.
+    # menu.sh's fd swap (3>&1 1>&2 2>&3) puts the rendered args on the
+    # original stderr here - echo >&1.
+    whiptail() {
+        echo "MENU_ARGS:$*" >&1
+        [ -f "$FLAG" ] && return 1
+        touch "$FLAG"
+        echo -n "reset-storage" >&3
+        return 0
+    }
+    export -f whiptail
+    export FLAG
+
+    run bash -c "
+        source '$MENU_SH'
+        VULCAN_BIN=fake_vulcan
+        storage_teardown_flow() { echo 'TEARDOWN_FLOW_CALLED'; }
+        menu_configure
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"reset-storage"*"Reset Media Storage"* ]]
+    [[ "$output" == *"TEARDOWN_FLOW_CALLED"* ]]
 }
 
 @test "guided-setup Setup Complete screen includes 'vulcan install-summary' output" {
@@ -730,21 +729,8 @@ setup() {
     fake_vulcan() {
         case "$*" in
             detect)
-                echo "STORAGE_MOUNT=''"
-                echo "PREVIOUS_TIER=''"
-                echo "PREVIOUS_ENABLED_OPTIONAL=''"
-                echo "RECOMMENDED_TIER='medium'"
-                echo "CPU_CORES_LOGICAL='8'"
-                echo "RAM_TOTAL_GB='32.0'"
-                echo "DISK_FREE_GB='900.0'"
-                echo "RECOMMENDED_TIER_EXPLANATION='test'"
-                echo "DEFAULT_PUID='1000'"
-                echo "DEFAULT_PGID='1000'"
-                echo "DEFAULT_TIMEZONE='UTC'"
-                echo "DOCKER_INSTALLED='true'"
-                echo "DOCKER_RUNNING='true'"
-                echo "DOCKER_COMPOSE_V2='true'"
-                ;;
+                _detect "STORAGE_MOUNT=''" "PREVIOUS_TIER=''" "PREVIOUS_ENABLED_OPTIONAL=''" "RECOMMENDED_TIER='medium'" "CPU_CORES_LOGICAL='8'" "RAM_TOTAL_GB='32.0'" "DISK_FREE_GB='900.0'" "RECOMMENDED_TIER_EXPLANATION='test'" "DEFAULT_PUID='1000'" "DEFAULT_PGID='1000'" "DEFAULT_TIMEZONE='UTC'" "DOCKER_INSTALLED='true'" "DOCKER_RUNNING='true'"
+            ;;
             install-summary)
                 echo "EXAMPLE_INSTALL_SUMMARY_LINE"
                 ;;
@@ -786,21 +772,8 @@ setup() {
     fake_vulcan() {
         case "$*" in
             detect)
-                echo "STORAGE_MOUNT='/mnt/media'"
-                echo "PREVIOUS_TIER=''"
-                echo "PREVIOUS_ENABLED_OPTIONAL=''"
-                echo "RECOMMENDED_TIER='medium'"
-                echo "CPU_CORES_LOGICAL='8'"
-                echo "RAM_TOTAL_GB='32.0'"
-                echo "DISK_FREE_GB='900.0'"
-                echo "RECOMMENDED_TIER_EXPLANATION='test'"
-                echo "DEFAULT_PUID='1000'"
-                echo "DEFAULT_PGID='1000'"
-                echo "DEFAULT_TIMEZONE='UTC'"
-                echo "DOCKER_INSTALLED='true'"
-                echo "DOCKER_RUNNING='true'"
-                echo "DOCKER_COMPOSE_V2='true'"
-                ;;
+                _detect "STORAGE_MOUNT='/mnt/media'" "PREVIOUS_TIER=''" "PREVIOUS_ENABLED_OPTIONAL=''" "RECOMMENDED_TIER='medium'" "CPU_CORES_LOGICAL='8'" "RAM_TOTAL_GB='32.0'" "DISK_FREE_GB='900.0'" "RECOMMENDED_TIER_EXPLANATION='test'" "DEFAULT_PUID='1000'" "DEFAULT_PGID='1000'" "DEFAULT_TIMEZONE='UTC'" "DOCKER_INSTALLED='true'" "DOCKER_RUNNING='true'"
+            ;;
             *)
                 echo "VULCAN_INVOKED:$*"
                 return 0
@@ -837,21 +810,8 @@ setup() {
     fake_vulcan() {
         case "$*" in
             detect)
-                echo "STORAGE_MOUNT=''"
-                echo "PREVIOUS_TIER=''"
-                echo "PREVIOUS_ENABLED_OPTIONAL=''"
-                echo "RECOMMENDED_TIER='medium'"
-                echo "CPU_CORES_LOGICAL='8'"
-                echo "RAM_TOTAL_GB='32.0'"
-                echo "DISK_FREE_GB='900.0'"
-                echo "RECOMMENDED_TIER_EXPLANATION='test'"
-                echo "DEFAULT_PUID='1000'"
-                echo "DEFAULT_PGID='1000'"
-                echo "DEFAULT_TIMEZONE='UTC'"
-                echo "DOCKER_INSTALLED='true'"
-                echo "DOCKER_RUNNING='true'"
-                echo "DOCKER_COMPOSE_V2='true'"
-                ;;
+                _detect "STORAGE_MOUNT=''" "PREVIOUS_TIER=''" "PREVIOUS_ENABLED_OPTIONAL=''" "RECOMMENDED_TIER='medium'" "CPU_CORES_LOGICAL='8'" "RAM_TOTAL_GB='32.0'" "DISK_FREE_GB='900.0'" "RECOMMENDED_TIER_EXPLANATION='test'" "DEFAULT_PUID='1000'" "DEFAULT_PGID='1000'" "DEFAULT_TIMEZONE='UTC'" "DOCKER_INSTALLED='true'" "DOCKER_RUNNING='true'"
+            ;;
             *)
                 echo "VULCAN_INVOKED:$*"
                 return 0
@@ -888,25 +848,8 @@ setup() {
     fake_vulcan() {
         case "$*" in
             detect)
-                echo "STORAGE_MOUNT='/mnt/media'"
-                echo "PREVIOUS_TIER='medium'"
-                echo "PREVIOUS_MEDIA_PATH='/mnt/old-media'"
-                echo "PREVIOUS_PUID='1000'"
-                echo "PREVIOUS_PGID='1000'"
-                echo "PREVIOUS_TIMEZONE='UTC'"
-                echo "PREVIOUS_ENABLED_OPTIONAL=''"
-                echo "RECOMMENDED_TIER='medium'"
-                echo "CPU_CORES_LOGICAL='8'"
-                echo "RAM_TOTAL_GB='32.0'"
-                echo "DISK_FREE_GB='900.0'"
-                echo "RECOMMENDED_TIER_EXPLANATION='test'"
-                echo "DEFAULT_PUID='1000'"
-                echo "DEFAULT_PGID='1000'"
-                echo "DEFAULT_TIMEZONE='UTC'"
-                echo "DOCKER_INSTALLED='true'"
-                echo "DOCKER_RUNNING='true'"
-                echo "DOCKER_COMPOSE_V2='true'"
-                ;;
+                _detect "STORAGE_MOUNT='/mnt/media'" "PREVIOUS_TIER='medium'" "PREVIOUS_MEDIA_PATH='/mnt/old-media'" "PREVIOUS_PUID='1000'" "PREVIOUS_PGID='1000'" "PREVIOUS_TIMEZONE='UTC'" "PREVIOUS_ENABLED_OPTIONAL=''" "RECOMMENDED_TIER='medium'" "CPU_CORES_LOGICAL='8'" "RAM_TOTAL_GB='32.0'" "DISK_FREE_GB='900.0'" "RECOMMENDED_TIER_EXPLANATION='test'" "DEFAULT_PUID='1000'" "DEFAULT_PGID='1000'" "DEFAULT_TIMEZONE='UTC'" "DOCKER_INSTALLED='true'" "DOCKER_RUNNING='true'"
+            ;;
             *)
                 echo "VULCAN_INVOKED:$*"
                 return 0
@@ -945,23 +888,8 @@ setup() {
     fake_vulcan() {
         case "$1" in
             detect)
-                echo "ALL_UNPROTECTED_DEVICES=''"
-                echo "STORAGE_MOUNT=''"
-                echo "PREVIOUS_TIER=''"
-                echo "PREVIOUS_ENABLED_OPTIONAL=''"
-                echo "RECOMMENDED_TIER='medium'"
-                echo "CPU_CORES_LOGICAL='8'"
-                echo "RAM_TOTAL_GB='32.0'"
-                echo "DISK_FREE_GB='900.0'"
-                echo "RECOMMENDED_TIER_EXPLANATION='test'"
-                echo "DEFAULT_PUID='1000'"
-                echo "DEFAULT_PGID='1000'"
-                echo "DEFAULT_TIMEZONE='UTC'"
-                echo "GPU_VENDOR=''"
-                echo "DOCKER_INSTALLED='true'"
-                echo "DOCKER_RUNNING='true'"
-                echo "DOCKER_COMPOSE_V2='true'"
-                ;;
+                _detect "ALL_UNPROTECTED_DEVICES=''" "STORAGE_MOUNT=''" "PREVIOUS_TIER=''" "PREVIOUS_ENABLED_OPTIONAL=''" "RECOMMENDED_TIER='medium'" "CPU_CORES_LOGICAL='8'" "RAM_TOTAL_GB='32.0'" "DISK_FREE_GB='900.0'" "RECOMMENDED_TIER_EXPLANATION='test'" "DEFAULT_PUID='1000'" "DEFAULT_PGID='1000'" "DEFAULT_TIMEZONE='UTC'" "GPU_VENDOR=''" "DOCKER_INSTALLED='true'" "DOCKER_RUNNING='true'"
+            ;;
             *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
         esac
     }
