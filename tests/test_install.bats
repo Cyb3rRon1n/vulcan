@@ -34,6 +34,7 @@ teardown() {
 if [ "$1" = "-c" ]; then
     exit 1
 fi
+# Phase 0 preflight (and any later `-m installer ...`) -> succeed
 exit 0
 EOF
     chmod +x "$INSTALL_DIR/.venv/bin/python"
@@ -73,6 +74,7 @@ EOF
     cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "-c" ]; then exit 1; fi
+# Phase 0 preflight (and any later `-m installer ...`) -> succeed
 exit 0
 EOF
     chmod +x "$INSTALL_DIR/.venv/bin/python"
@@ -114,6 +116,70 @@ EOF
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m venv"* ]]
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"pip"*"-e $INSTALL_DIR"* ]]
     [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m installer"* ]]
+}
+
+@test "install runs preflight --fix, re-execs under sudo, and Phase 0 completes on the root pass" {
+
+    # healthy venv so the bootstrap goes straight to preflight.
+    # preflight only "needs root" on the first (unprivileged) pass -
+    # SUDO_USER being set marks the re-exec'd root pass, where it
+    # succeeds and the flow proceeds to the final `-m installer` run.
+    cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then exit 0; fi          # import check passes
+if [ "$2" = "installer" ] && [ "$3" = "preflight" ]; then
+    if [ -z "${SUDO_USER:-}" ]; then
+        echo "Phase 0 needs root"
+        exit 1
+    fi
+    exit 0                                    # root pass -> preflight OK
+fi
+# the final `-m installer <args>` (the real app) -> succeed
+exit 0
+EOF
+    chmod +x "$INSTALL_DIR/.venv/bin/python"
+
+    cat > "$INSTALL_DIR/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then printf '3.11\n'; fi
+exit 0
+EOF
+    # root only on the re-exec'd pass (SUDO_USER set by the sudo stub)
+    cat > "$INSTALL_DIR/bin/id" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-u" ]; then
+    [ -n "${SUDO_USER:-}" ] && echo 0 || echo 1000
+    exit 0
+fi
+exec /usr/bin/id "$@"
+EOF
+    # sudo actually re-execs the script as "root": same PATH, RUNLOG,
+    # and SUDO_USER set so the id/python stubs switch to their root behaviour.
+    cat > "$INSTALL_DIR/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+printf 'sudo %s\n' "$*" >> "$RUNLOG"
+exec env PATH="$PATH" RUNLOG="$RUNLOG" SUDO_USER=testuser bash "$@"
+EOF
+    cat > "$INSTALL_DIR/bin/runuser" <<'EOF'
+#!/usr/bin/env bash
+# runuser -u <user> -- <cmd...>
+printf 'runuser %s\n' "$*" >> "$RUNLOG"
+shift 3
+exec "$@"
+EOF
+    chmod +x "$INSTALL_DIR/bin/python3" "$INSTALL_DIR/bin/id" \
+        "$INSTALL_DIR/bin/sudo" "$INSTALL_DIR/bin/runuser"
+
+    RUNLOG="$INSTALL_DIR/run.log"
+    run env PATH="$INSTALL_DIR/bin:$PATH" RUNLOG="$RUNLOG" bash "$INSTALL_DIR/install" --plain version
+
+    [ "$status" -eq 0 ]
+    # the heads-up block printed exactly once (only the first pass needs root)
+    [ "$(grep -c "Vulcan needs root once" <<< "$output")" -eq 1 ]
+    [[ "$(cat "$RUNLOG")" == *"sudo "*"install"*"--plain version"* ]]
+    # Phase 0 was allowed to complete on the root pass: the final
+    # `-m installer version` ran (via runuser -u testuser).
+    [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m installer --plain version"* ]]
 }
 
 @test "a healthy venv (import succeeds) skips the re-bootstrap" {

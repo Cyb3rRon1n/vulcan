@@ -57,6 +57,68 @@ PREVIOUS_STATE = {
 }
 
 
+_DEFAULT_PROMPT_ANSWERS = {
+    "overwrite the existing": "y",
+    "Generate the stack": "y",
+    "Start the stack now": "n",
+}
+
+
+def respond_to_prompts(monkeypatch, mapping=None):
+    """Answer typer.prompt / typer.confirm calls by matching a substring of
+    the prompt text (case-insensitive) against `mapping` keys - first match
+    wins, unmatched prompts accept their own default.
+
+    Feeds answers by prompt text rather than by newline position, so adding
+    a service question or reordering the flow no longer breaks a test. The
+    prompt text is still echoed, so `... in result.output` wording
+    assertions keep working.
+    """
+    import typer
+
+    answers = {**_DEFAULT_PROMPT_ANSWERS, **(mapping or {})}
+
+    def _lookup(text):
+        low = str(text).lower()
+        for needle, value in answers.items():
+            if needle.lower() in low:
+                return value
+        return None
+
+    def fake_confirm(text, default=False, abort=False, **kwargs):
+        typer.echo(text)
+        value = _lookup(text)
+        if value is None:
+            result = bool(default)
+        else:
+            result = str(value).strip().lower() in ("y", "yes", "true", "1")
+        if abort and not result:
+            raise typer.Abort()
+        return result
+
+    def fake_prompt(text, default=None, type=None, **kwargs):
+        typer.echo(text)
+        value = _lookup(text)
+        if value is None or value == "":
+            if default is not None:
+                return default
+            value = value or ""
+        return int(value) if type is int else value
+
+    monkeypatch.setattr(typer, "confirm", fake_confirm)
+    monkeypatch.setattr(typer, "prompt", fake_prompt)
+
+
+# Docker/compose engine calls _start() and `vulcan start` make against the
+# host - stubbed so an interactive/start test can run the flow to completion
+# on a machine that may not have Docker or the generated compose file.
+_DOCKER_READY = {
+    "docker_installed": True, "docker_running": True,
+    "docker_accessible": True, "docker_compose_v2": True,
+}
+_NET_OK = {"ok": True, "errors": []}
+
+
 def test_detect_shell_output_is_eval_able_key_value(tmp_path):
     """
     installer/menu.sh's whiptail front end runs `eval "$(vulcan detect)"`
@@ -437,7 +499,7 @@ def test_non_interactive_rerun_uses_previous_state_when_flags_omitted(tmp_path):
     assert config.enabled_optional == {"gluetun"}
 
 
-def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
+def test_interactive_rerun_prompts_default_to_previous_values(tmp_path, monkeypatch):
 
     previous_state = {**PREVIOUS_STATE, "media_path": str(tmp_path / "previous-media")}
 
@@ -452,14 +514,11 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
 
-        # media path, tier, customize, gluetun confirm, sabnzbd confirm,
-        # recyclarr confirm, homepage confirm, metube confirm, downtify
-        # confirm, netdata confirm, vaultwarden confirm, dashy confirm,
-        # PUID, PGID, timezone all hit enter to accept their
-        # (previous-state-derived) defaults; the generate confirm has no
-        # default so needs an explicit "y", then decline the final start
-        # confirm with "n".
-        result = runner.invoke(app, ["--plain"], input="\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ny\nn\n")
+        # Every prompt accepts its previous-state-derived default; the
+        # generate confirm is answered "y" and the start confirm "n" by
+        # respond_to_prompts' built-in defaults.
+        respond_to_prompts(monkeypatch)
+        result = runner.invoke(app, ["--plain"])
 
     assert result.exit_code == 0, result.output
     assert "Found an existing" in result.output
@@ -473,11 +532,12 @@ def test_interactive_rerun_prompts_default_to_previous_values(tmp_path):
     assert config.enabled_optional == {"gluetun"}
 
 
-def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
+def test_overwrite_confirmation_wording_when_stack_exists(tmp_path, monkeypatch):
 
     stack_dir = tmp_path / "stack"
     stack_dir.mkdir()
     (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    respond_to_prompts(monkeypatch, {"overwrite the existing": "n"})
 
     with patch(
         "installer.cli.STACK_DIR", stack_dir
@@ -498,7 +558,6 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -506,9 +565,10 @@ def test_overwrite_confirmation_wording_when_stack_exists(tmp_path):
     mock_write_stack.assert_not_called()
 
 
-def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
+def test_generate_confirmation_wording_when_no_stack_exists(tmp_path, monkeypatch):
 
     stack_dir = tmp_path / "stack"
+    respond_to_prompts(monkeypatch, {"Generate the stack": "n"})
 
     with patch(
         "installer.cli.STACK_DIR", stack_dir
@@ -529,7 +589,6 @@ def test_generate_confirmation_wording_when_no_stack_exists(tmp_path):
                 "--plain", "--tier", "light", "--media-path", str(tmp_path / "media"),
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -623,9 +682,10 @@ def test_non_interactive_heavy_with_no_gpu_flag_disables_it(tmp_path):
     assert config.gpu_vendor is None
 
 
-def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
+def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"hardware transcoding": "y"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="nvidia")
@@ -642,7 +702,6 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
                 "--plain", "--tier", "heavy", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -652,9 +711,10 @@ def test_interactive_heavy_gpu_confirm_prompt_accepted(tmp_path):
     assert config.gpu_vendor == "nvidia"
 
 
-def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
+def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
@@ -672,7 +732,6 @@ def test_explicit_gpu_flag_skips_confirm_prompt(tmp_path):
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC",
                 "--no-start", "--gpu"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -717,6 +776,47 @@ def test_full_non_interactive_run_generates_stack_without_starting(tmp_path):
     mock_run_docker.assert_not_called()
 
 
+def test_build_succeeds_with_docker_down(tmp_path):
+    media_path = str(tmp_path / "media")
+    down = make_system_info(docker_running=False, docker_compose_v2=False)
+
+    with patch("installer.cli.detect_system", return_value=down), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write, patch(
+        "installer.cli.run_docker_command"
+    ) as mock_docker:
+
+        result = runner.invoke(app, [
+            "--tier", "light", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--no-start"
+        ])
+
+    assert result.exit_code == 0, result.output
+    mock_write.assert_called_once()
+    mock_docker.assert_not_called()
+
+
+def test_build_command_generates_without_starting(tmp_path):
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write, patch(
+        "installer.cli.run_docker_command"
+    ) as mock_docker:
+
+        result = runner.invoke(app, [
+            "build", "--tier", "medium", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn"
+        ])
+
+    assert result.exit_code == 0, result.output
+    mock_write.assert_called_once()
+    mock_docker.assert_not_called()
+
+
 def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
 
     media_path = str(tmp_path / "media")
@@ -732,6 +832,10 @@ def test_non_interactive_with_start_calls_run_docker_command(tmp_path):
     ), patch(
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
@@ -776,6 +880,10 @@ def test_start_success_prints_service_url_summary(tmp_path):
     ), patch(
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.detect_host_ip", return_value="192.168.1.50"
     ), patch(
@@ -922,6 +1030,10 @@ def test_start_auto_remaps_port_and_retries(tmp_path):
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
@@ -982,6 +1094,10 @@ def test_start_own_orphan_conflict_cleans_up_and_retries(tmp_path):
     ), patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
         "installer.cli.verify_stack_running",
@@ -1040,6 +1156,10 @@ def test_start_own_orphan_multiple_ports_cleans_up_once(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
     ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
@@ -1171,6 +1291,8 @@ def test_start_reassigns_conflicting_port_with_no_prompt(tmp_path):
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
         "installer.cli.verify_stack_running",
         return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
@@ -1198,134 +1320,38 @@ def test_start_reassigns_conflicting_port_with_no_prompt(tmp_path):
     )
 
 
-def test_docker_bootstrap_installs_when_not_ready_in_order(tmp_path):
+def test_run_install_asserts_docker_and_exits_when_not_ready(tmp_path):
+    """After the Phase-0 move, run_install does not install Docker - it
+    asserts and points at ./install."""
 
     media_path = str(tmp_path / "media")
+    down = make_system_info(docker_running=False, docker_compose_v2=False)
 
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False,
-        os_id="fedora"
-    )
-
-    parent = MagicMock()
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ), patch(
-        "installer.cli.install_docker",
-        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
-    ) as mock_install, patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ) as mock_add_group, patch(
-        "installer.cli.ensure_compose_v2"
-    ) as mock_compose, patch(
+    with patch("installer.cli.detect_system", return_value=down), patch(
         "installer.cli.detect_disk",
         return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
     ), patch(
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False,
+                      "docker_accessible": False, "docker_compose_v2": False}
+    ), patch("installer.cli.install_docker") as mock_install, patch(
+        "installer.cli.start_docker_service"
+    ) as mock_start, patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ):
 
-        parent.attach_mock(mock_install, "install_docker")
-        parent.attach_mock(mock_start, "start_docker_service")
-        parent.attach_mock(mock_add_group, "add_user_to_docker_group")
-        parent.attach_mock(mock_compose, "ensure_compose_v2")
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain",
-                "--tier", "light",
-                "--media-path", media_path,
-                "--puid", "1000",
-                "--pgid", "1000",
-                "--timezone", "UTC",
-                "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-
-    mock_install.assert_called_once()
-    mock_start.assert_called_once()
-    mock_add_group.assert_called_once()
-    mock_compose.assert_called_once()
-
-    call_order = [call[0] for call in parent.mock_calls]
-    assert call_order == [
-        "install_docker", "start_docker_service", "add_user_to_docker_group", "ensure_compose_v2"
-    ]
-
-
-def test_docker_bootstrap_unsupported_distro_exits_cleanly(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False,
-        os_id="gentoo"
-    )
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.install_plan_for", return_value=None
-    ), patch(
-        "installer.cli.install_docker"
-    ) as mock_install:
-
-        result = runner.invoke(
-            app,
-            ["--tier", "light", "--media-path", media_path, "--non-interactive", "--yes"]
-        )
+        result = runner.invoke(app, [
+            "--tier", "light", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--start"
+        ])
 
     assert result.exit_code == 1
-    assert "No known automatic install method" in result.output
+    assert "./install" in result.output
     mock_install.assert_not_called()
+    mock_start.assert_not_called()
 
 
-def test_docker_bootstrap_offline_skips_install_attempt(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_ready = make_system_info(
-        docker_installed=False, docker_running=False, docker_compose_v2=False
-    )
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_ready
-    ), patch(
-        "installer.cli.install_plan_for"
-    ) as mock_plan, patch(
-        "installer.cli.install_docker"
-    ) as mock_install:
-
-        result = runner.invoke(
-            app,
-            [
-                "--tier", "light", "--media-path", media_path,
-                "--non-interactive", "--yes", "--offline"
-            ]
-        )
-
-    assert result.exit_code == 1
-    assert "No internet access" in result.output
-    mock_plan.assert_not_called()
-    mock_install.assert_not_called()
-
-
-def test_interactive_full_run_with_prompts(tmp_path):
+def test_interactive_full_run_with_prompts(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
@@ -1333,6 +1359,10 @@ def test_interactive_full_run_with_prompts(tmp_path):
         disk_free_gb=600.0, ram_total_gb=16.0,
         cpu_cores_logical=6, cpu_cores_physical=6
     )
+
+    # Accept the recommended tier (medium for this hardware), decline every
+    # optional service, generate "y", decline the start prompt.
+    respond_to_prompts(monkeypatch, {"Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=info
@@ -1353,7 +1383,6 @@ def test_interactive_full_run_with_prompts(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\nn\n\n\nn\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1366,7 +1395,7 @@ def test_interactive_full_run_with_prompts(tmp_path):
     mock_run_docker.assert_not_called()
 
 
-def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
+def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
@@ -1374,6 +1403,8 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
         disk_free_gb=100.0, ram_total_gb=4.0,
         cpu_cores_logical=2, cpu_cores_physical=2
     )
+
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=info
@@ -1387,7 +1418,6 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--media-path", media_path, "--no-start"],
-            input="\nn\n\nn\nn\nn\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1395,129 +1425,17 @@ def test_interactive_puid_pgid_prompt_shows_context_line(tmp_path):
     mock_write_stack.assert_called_once()
 
 
-def test_docker_installed_but_not_running_starts_service(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    not_running = make_system_info(docker_running=False, docker_compose_v2=False)
-
-    with patch(
-        "installer.cli.detect_system", return_value=not_running
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": False, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ), patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ), patch(
-        "installer.cli.install_docker"
-    ) as mock_install, patch(
-        "installer.cli.detect_disk",
-        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
-    ), patch(
-        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ):
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain", "--tier", "light", "--media-path", media_path,
-                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-    mock_start.assert_called_once()
-    mock_install.assert_not_called()
-
-
-def test_ensure_docker_ready_adds_group_when_daemon_up_but_inaccessible():
-    """docker_running=True, docker_accessible=False (daemon up, user not
-    in the docker group): _ensure_docker_ready adds the user to the
-    group and does NOT try to (re)start the service."""
-
-    from installer.cli import _ensure_docker_ready
-
-    info = make_system_info(docker_accessible=False)
-
-    with patch(
-        "installer.cli.start_docker_service"
-    ) as mock_start, patch(
-        "installer.cli.add_user_to_docker_group",
-        return_value={"success": True, "error": None}
-    ) as mock_group, patch(
-        "installer.cli.install_docker"
-    ) as mock_install, patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": True,
-            "docker_accessible": True, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.check_docker_ready",
-        return_value={"docker_running": True, "docker_compose_v2": True}
-    ):
-
-        result_info, group_just_added = _ensure_docker_ready(
-            info, non_interactive=True, yes=True
-        )
-
-    mock_group.assert_called_once()
-    mock_start.assert_not_called()
-    mock_install.assert_not_called()
-    assert group_just_added is True
-
-
-def test_docker_running_but_missing_compose_v2(tmp_path):
-
-    media_path = str(tmp_path / "media")
-
-    no_compose = make_system_info(docker_compose_v2=False)
-
-    with patch(
-        "installer.cli.detect_system", return_value=no_compose
-    ), patch(
-        "installer.cli.detect_docker",
-        return_value={
-            "docker_installed": True, "docker_running": True, "docker_compose_v2": True
-        }
-    ), patch(
-        "installer.cli.ensure_compose_v2"
-    ) as mock_compose, patch(
-        "installer.cli.detect_disk",
-        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
-    ), patch(
-        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
-    ):
-
-        result = runner.invoke(
-            app,
-            [
-                "--plain", "--tier", "light", "--media-path", media_path,
-                "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
-            ],
-            input="y\n\n\n\n\n\n\n\n\n\n\ny\n"
-        )
-
-    assert result.exit_code == 0, result.output
-    mock_compose.assert_called_once()
-
-
-def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
+def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
 
     heavy_capable = make_system_info(
         cpu_cores_logical=8, cpu_cores_physical=8, ram_total_gb=32.0, disk_free_gb=2000.0
     )
+
+    # Accept the tier prompt's default - which must be the recommendation
+    # (heavy) for this hardware.
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=heavy_capable
@@ -1536,7 +1454,6 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -1545,9 +1462,16 @@ def test_heavy_recommendation_is_offered_as_the_default_choice(tmp_path):
     assert config.tier.name == "heavy"
 
 
-def test_invalid_tier_input_reprompts_until_valid(tmp_path):
+def test_invalid_tier_input_reprompts_until_valid(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+
+    # First tier answer is invalid ("nonsense"); the re-prompt ("Please
+    # enter 'light', 'medium', or 'heavy'") is answered "light".
+    respond_to_prompts(monkeypatch, {
+        "Which tier": "nonsense",
+        "Please enter 'light'": "light",
+    })
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1564,10 +1488,10 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path):
                 "--plain", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="nonsense\nlight\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
+    assert "Please enter 'light', 'medium', or 'heavy'" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "light"
@@ -1632,6 +1556,46 @@ def test_non_interactive_vpn_off_generates_stack_without_crashing(tmp_path):
     assert "gluetun" not in config.enabled_optional
     assert config.vpn_service_provider is None
     assert config.vpn_type is None
+
+
+def test_run_install_calls_configure_between_build_and_start(tmp_path):
+    media_path = str(tmp_path / "media")
+    calls = []
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli._build", side_effect=lambda *a, **k: calls.append("build") or READY_WRITE_RESULT), \
+        patch("installer.cli.configure_pending", side_effect=lambda *a, **k: calls.append("configure") or {"written": [], "still_blank": []}), \
+        patch("installer.cli._start", side_effect=lambda *a, **k: calls.append("start")):
+
+        result = runner.invoke(app, [
+            "--tier", "medium", "--media-path", media_path,
+            "--non-interactive", "--yes", "--no-vpn", "--start"
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["build", "configure", "start"]
+
+
+def test_gather_config_does_not_prompt_for_wireguard_key(tmp_path):
+    """VPN credential prompts moved to Phase 6 - service selection must not
+    ask for a key anymore."""
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli._build", return_value=READY_WRITE_RESULT), patch(
+        "installer.cli.configure_pending", return_value={"written": [], "still_blank": []}
+    ), patch("installer.cli._start"):
+
+        result = runner.invoke(app, [
+            "--plain", "--media-path", media_path,
+            "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
+        ], input="\ny\n" + "\n" * 20)
+
+    assert "WireGuard Private Key" not in result.output
 
 
 def test_prints_all_three_tier_compositions_when_interactively_choosing(tmp_path):
@@ -1896,9 +1860,9 @@ def test_non_interactive_fresh_install_defaults_homepage_enabled(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    # Gluetun now defaults on too (see the CLI's own real reasoning) -
-    # a fresh install with no flags at all gets both real defaults.
-    assert config.enabled_optional == {"homepage", "gluetun"}
+    # Homepage defaults on for a fresh install; Gluetun deliberately does
+    # not (commit ff25250 - "prevents gluetun failing without VPN config").
+    assert config.enabled_optional == {"homepage"}
 
 
 def test_non_interactive_regenerate_existing_heavy_stack_preserves_homepage(tmp_path):
@@ -1941,9 +1905,10 @@ def test_non_interactive_regenerate_existing_heavy_stack_preserves_homepage(tmp_
     assert "homepage" in config.enabled_optional
 
 
-def test_homepage_question_shown_and_declined_at_light_tier(tmp_path):
+def test_homepage_question_shown_and_declined_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable Homepage dashboard": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -1960,7 +1925,6 @@ def test_homepage_question_shown_and_declined_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\n\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -2008,6 +1972,10 @@ def test_run_docker_command_failure_reported_cleanly(tmp_path):
         "installer.cli.check_ports_available",
         return_value={"available": True, "conflicts": []}
     ), patch(
+        "installer.cli.check_network_conflicts", return_value=_NET_OK
+    ), patch(
+        "installer.cli.detect_docker", return_value=_DOCKER_READY
+    ), patch(
         "installer.cli.run_docker_command", return_value=mock_proc
     ):
 
@@ -2023,9 +1991,10 @@ def test_run_docker_command_failure_reported_cleanly(tmp_path):
     assert "Failed to start the stack" in result.output
 
 
-def test_media_path_prompted_when_not_passed(tmp_path):
+def test_media_path_prompted_when_not_passed(tmp_path, monkeypatch):
 
     prompted_path = str(tmp_path / "prompted-media")
+    respond_to_prompts(monkeypatch, {"Media library path": prompted_path})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -2036,6 +2005,8 @@ def test_media_path_prompted_when_not_passed(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack, patch(
         "installer.cli.list_blank_unprotected_devices", return_value=[]
+    ), patch(
+        "installer.cli.list_unprotected_devices", return_value=[]
     ):
 
         result = runner.invoke(
@@ -2044,10 +2015,10 @@ def test_media_path_prompted_when_not_passed(tmp_path):
                 "--plain", "--tier", "light",
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input=f"{prompted_path}\n\n\n\n\n\n\n\n\n\n\ny\nn\n"
         )
 
     assert result.exit_code == 0, result.output
+    assert "Media library path" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.media_path == prompted_path
@@ -2137,9 +2108,10 @@ def test_media_path_creation_failure_reported_cleanly():
     assert "Can't create media path" in result.output
 
 
-def test_declining_generate_confirm_aborts(tmp_path):
+def test_declining_generate_confirm_aborts(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Generate the stack": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -2156,7 +2128,6 @@ def test_declining_generate_confirm_aborts(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC"
             ],
-            input="\n\n\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -4285,9 +4256,10 @@ def test_gpu_question_shown_in_custom_mode_even_for_light_tier(tmp_path):
     assert config.gpu_vendor == "amd"
 
 
-def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected(tmp_path):
+def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch)
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info(gpu_vendor="amd")
@@ -4304,7 +4276,6 @@ def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\n\n\n\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -4312,9 +4283,10 @@ def test_gpu_question_not_shown_for_non_custom_light_tier_even_with_gpu_detected
     assert mock_write_stack.call_args[0][0].gpu_vendor is None
 
 
-def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
+def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable SABnzbd": "y", "Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -4331,7 +4303,6 @@ def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\ny\n\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -4341,9 +4312,10 @@ def test_sabnzbd_question_shown_and_accepted_at_light_tier(tmp_path):
     assert config.enabled_optional == {"sabnzbd"}
 
 
-def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
+def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path, monkeypatch):
 
     media_path = str(tmp_path / "media")
+    respond_to_prompts(monkeypatch, {"Enable Recyclarr": "y", "Homepage": "n"})
 
     with patch(
         "installer.cli.detect_system", return_value=make_system_info()
@@ -4360,7 +4332,6 @@ def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
                 "--plain", "--tier", "light", "--media-path", media_path,
                 "--puid", "1000", "--pgid", "1000", "--timezone", "UTC", "--no-start"
             ],
-            input="\nn\n\ny\nn\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -4368,3 +4339,36 @@ def test_recyclarr_question_shown_and_accepted_at_light_tier(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     assert config.enabled_optional == {"recyclarr"}
+
+
+def test_preflight_reports_ready_and_exits_zero():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": True, "needs_root": False, "needs_reboot": False,
+        "missing": [], "did": [], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight"])
+
+    assert result.exit_code == 0
+    assert "ready" in result.output.lower()
+
+
+def test_preflight_fix_needs_root_hints_sudo_and_exits_one():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": False, "needs_root": True, "needs_reboot": False,
+        "missing": ["docker"], "did": [], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight", "--fix"])
+
+    assert result.exit_code == 1
+    assert "sudo ./install" in result.output
+
+
+def test_preflight_fix_reboot_prints_message_exits_zero():
+    with patch("installer.cli.ensure_system_ready", return_value={
+        "ready": False, "needs_root": False, "needs_reboot": True,
+        "missing": [], "did": ["installed Docker"], "group_added": False,
+    }):
+        result = runner.invoke(app, ["preflight", "--fix"])
+
+    assert result.exit_code == 0
+    assert "reboot" in result.output.lower()

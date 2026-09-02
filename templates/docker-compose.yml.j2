@@ -257,8 +257,14 @@ services:
       - ${MEDIA_PATH}:/data
 {% if 'gluetun' in enabled %}
     network_mode: "service:gluetun"
+    # service_healthy, not the default service_started: qBittorrent
+    # shares gluetun's network namespace, so if it starts before
+    # gluetun's VPN handshake finishes, runc fails to attach with a
+    # cryptic "namespace path ... no such file or directory". Waiting on
+    # gluetun's (image-defined) healthcheck removes that race.
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
 {% else %}
     ports:
       - "{{ ports['qbittorrent'] }}:8080"
@@ -766,12 +772,19 @@ services:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
     # Verified empirically (docker run --cap-drop=ALL against the real
-    # image, keeping this service's existing cap_add) - sufficient as-is,
-    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    # image). NET_ADMIN: the VPN tunnel. NET_RAW: gluetun's own
+    # healthcheck ICMP probe (without it, it logs "not permitted ...
+    # add NET_RAW" and falls back to slower DNS-over-UDP checks).
+    # DAC_OVERRIDE: gluetun runs as root but cap_drop: ALL removes it,
+    # so it can't write /tmp/gluetun/ip to cache its public IP
+    # ("persisting public ip address: ... permission denied"). Both
+    # were surfaced by a real connected run's logs, not guessed.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
+      - NET_RAW
+      - DAC_OVERRIDE
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
@@ -1027,9 +1040,19 @@ services:
     # Verified empirically (docker run --cap-drop=ALL against the real
     # image) - starts and runs cleanly with zero added capabilities, no
     # privilege-drop or ownership-fixup step to support. See
-    # ROADMAP.md's cap_drop entry.
+    # ROADMAP.md's cap_drop entry. crowdsec runs as root and rsyncs its
+    # default config into the bind-mounted /etc/crowdsec on first start -
+    # needs the ownership-fixup + privilege-drop set (verified: a real
+    # run without these logged "mkstemp ... Permission denied" and
+    # crash-looped).
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1381,7 +1404,14 @@ services:
     ports:
       - "{{ ports['pihole'] }}:80"
     volumes:
-      - ./config/pihole/unbound:/etc/unbound
+      # Mount the OVERRIDE dir, not /etc/unbound itself - the image
+      # ships a complete working unbound.conf that already does
+      # recursive resolution and `include`s custom.conf.d/*.conf.
+      # Mounting an empty host dir over /etc/unbound hid that config
+      # ("Could not open /etc/unbound/unbound.conf") and unbound
+      # crash-looped, taking pihole (network_mode: service:unbound)
+      # with it.
+      - ./config/pihole/unbound:/etc/unbound/custom.conf.d
     cap_drop:
       - ALL
     cap_add:
@@ -1408,6 +1438,10 @@ services:
       - FTLCONF_dns_upstreams=
       - PIHOLE_DNS=127.0.0.1#5335
       - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
+      # Run pihole-FTL as root so it doesn't need to setcap itself at
+      # start - no-new-privileges:true blocks that, and the image's own
+      # error message names this exact env var as the fix.
+      - DNSMASQ_USER=root
     volumes:
       - ./config/pihole/etc:/etc/pihole
       - ./config/pihole/dnsmasq:/etc/dnsmasq.d
@@ -1415,6 +1449,9 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
       - NET_BIND_SERVICE
       - NET_ADMIN
       - SETGID

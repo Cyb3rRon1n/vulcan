@@ -1041,3 +1041,30 @@ def test_uninstall_stack_skips_orphan_lookup_when_stack_dir_and_no_containers(tm
 
     assert result == {"success": True, "error": None}
     mock_run.assert_not_called()
+
+
+def test_backup_survives_sockets_fifos_and_unreadable_files(tmp_path):
+    """netdata/qbittorrent leave sockets, fifos and root-owned caches in
+    stack/config - a raw copytree died on them. Regression."""
+    import os, socket
+    from installer.post_install import backup_stack
+
+    stack = tmp_path / "stack"
+    (stack / "config" / "netdata" / "cache").mkdir(parents=True)
+    (stack / "docker-compose.yml").write_text("services: {}\n")
+    (stack / ".env").write_text("PUID=1000\n")
+    (stack / "config" / "app.conf").write_text("real config\n")
+
+    sock = socket.socket(socket.AF_UNIX)
+    sock.bind(str(stack / "config" / "netdata" / "cache" / "ipc-socket"))
+    os.mkfifo(stack / "config" / "netdata" / "cache" / "fifo")
+
+    result = backup_stack(stack_dir=stack, backup_dir=tmp_path / "backups")
+
+    assert result["success"] is True
+    assert result["backup_path"] is not None
+    import tarfile
+    with tarfile.open(result["backup_path"]) as tar:
+        names = tar.getnames()
+    assert "config/app.conf" in names
+    assert ".env" in names

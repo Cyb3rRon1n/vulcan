@@ -1,7 +1,7 @@
 """
 Install the system packages a Vulcan first run needs but a fresh OS may
-not ship with: python3 (+ venv), whiptail (the TUI), and mdadm (software
-RAID). The bash `install` bootstrap uses this same family mapping to get
+not ship with: python3 (+ venv), whiptail (the TUI), mdadm (software
+RAID), and git. The bash `install` bootstrap uses this same family mapping to get
 python3 in place before any Python exists; ensure_system_deps() runs from
 within the Python flow for everything else. Mirrors docker_setup.py's
 shape - a per-distro install plan plus a run_privileged execution half,
@@ -41,6 +41,7 @@ _TOOL_PACKAGES = {
     "python3": {"debian": ["python3", "python3-venv"], "fedora": ["python3"], "arch": ["python"]},
     "whiptail": {"debian": ["whiptail"], "fedora": ["newt"], "arch": ["libnewt"]},
     "mdadm": {"debian": ["mdadm"], "fedora": ["mdadm"], "arch": ["mdadm"]},
+    "git": {"debian": ["git"], "fedora": ["git"], "arch": ["git"]},
 }
 
 
@@ -52,7 +53,7 @@ def _tool_present(tool: str) -> bool:
 
 
 def ensure_system_deps(dry_run: bool = False) -> dict:
-    """Install whatever of {python3, whiptail, mdadm} is missing and report
+    """Install whatever of {python3, whiptail, mdadm, git} is missing and report
     what's still missing. dry_run only computes the plan (never runs) so the
     front ends can preview the install command before confirming."""
 
@@ -72,7 +73,7 @@ def ensure_system_deps(dry_run: bool = False) -> dict:
 
     to_install: list[str] = []
 
-    for tool in ("python3", "whiptail", "mdadm"):
+    for tool in ("python3", "whiptail", "mdadm", "git"):
 
         if _tool_present(tool):
             result["already_present"].append(tool)
@@ -101,7 +102,7 @@ def ensure_system_deps(dry_run: bool = False) -> dict:
 
         ok = run_privileged([*_INSTALL_CMD[family], *result["packages"]])["success"]
 
-    for tool in ("python3", "whiptail", "mdadm"):
+    for tool in ("python3", "whiptail", "mdadm", "git"):
 
         if _tool_present(tool):
             if tool not in result["already_present"]:
