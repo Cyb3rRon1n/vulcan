@@ -1442,9 +1442,12 @@ services:
       - unbound
     environment:
       - TZ=${TZ}
-      - PIHOLE_DNS_=127.0.0.1#5335
-      - FTLCONF_dns_upstreams=
-      - PIHOLE_DNS=127.0.0.1#5335
+      # pihole v6 reads upstreams from FTLCONF_dns_upstreams. This was
+      # shipped as an empty string, which pihole took literally - "no
+      # upstream servers configured", every lookup SERVFAIL. Point it at
+      # unbound (running in the same netns on :5335, see the unbound
+      # service + config/pihole/unbound/99-pihole-port.conf).
+      - FTLCONF_dns_upstreams=127.0.0.1#5335
       - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
       # Run pihole-FTL as root so it doesn't need to setcap itself at
       # start - no-new-privileges:true blocks that, and the image's own
