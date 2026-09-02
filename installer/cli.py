@@ -1,4 +1,3 @@
-import getpass
 import os
 import subprocess
 import sys
@@ -9,6 +8,7 @@ from rich.console import Console
 
 from installer import __version__
 from installer.auth import hash_authelia_password
+from installer.configure import configure_pending
 from installer.detect import (
     SystemInfo,
     describe_media_redundancy,
@@ -21,14 +21,13 @@ from installer.detect import (
     detect_system,
 )
 from installer.docker_setup import (
-    add_user_to_docker_group,
-    check_docker_ready,
-    ensure_compose_v2,
-    install_docker,
-    install_plan_for,
+    # install_docker / start_docker_service: Phase 0 (installer/phase0.py)
+    # owns Docker install/start/group now - kept in this namespace only so
+    # tests can patch them and assert run_install never installs Docker.
+    install_docker,  # noqa: F401
     prune_docker_artifacts,
     run_docker_command,
-    start_docker_service,
+    start_docker_service,  # noqa: F401
 )
 from installer.generate import (
     STACK_DIR,
@@ -64,6 +63,7 @@ from installer.preflight import (
     format_network_conflicts,
     format_port_conflicts,
 )
+from installer.phase0 import ensure_system_ready
 from installer.panel import RunPanel, _NoOpPanel, progress_panel
 from installer.self_update import update_vulcan_self
 from installer.storage import (
@@ -274,6 +274,42 @@ def detect_shell():
         print(f"{key}={_shell_quote(str(value))}")
 
 
+@app.command()
+def preflight(
+    fix: bool = typer.Option(False, "--fix", help="Install what's missing (needs root for Docker/packages).")
+):
+    """Phase 0: check (or with --fix, install) the system packages and
+    Docker setup a first run needs. Idempotent - safe to re-run."""
+
+    report = ensure_system_ready(fix=fix)
+
+    for step in report["did"]:
+        console.print(f"[green]✓[/green] {step}")
+
+    if report["needs_reboot"]:
+        console.print(
+            "\n[yellow]Docker was layered via rpm-ostree (atomic OS). Reboot, "
+            "then run ./install again - it will pick up from here.[/yellow]\n"
+            "  sudo systemctl reboot"
+        )
+        raise typer.Exit(code=0)
+
+    if report["needs_root"]:
+        console.print(
+            "\n[red]Phase 0 needs root to install Docker / system packages.[/red]\n"
+            "  sudo ./install"
+        )
+        raise typer.Exit(code=1)
+
+    if report["ready"]:
+        console.print("[green]System is ready.[/green]")
+        raise typer.Exit(code=0)
+
+    console.print("\n[red]Still missing:[/red] " + ", ".join(report["missing"]))
+    console.print("Run  ./install  (or  sudo vulcan preflight --fix ) to install these.")
+    raise typer.Exit(code=1)
+
+
 def _config_from_previous_state(previous: dict) -> GenerationConfig:
     """
     Rebuilds a real GenerationConfig from saved state - the shared
@@ -324,6 +360,47 @@ def urls_shell():
     config = _config_from_previous_state(previous)
 
     print(render_stack_summary(config, detect_host_ip()))
+
+
+@app.command()
+def configure():
+    """
+    Fill in credentials for services in the already-built stack (VPN
+    provider + key, Cloudflare tunnel token, Tailscale auth key, Pi-hole
+    admin password). Run after `vulcan build` / a Guided Setup that
+    generated the stack but left credentials blank.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        console.print("[red]No stack found. Run `vulcan build` first.[/red]")
+        raise typer.Exit(code=1)
+
+    config = _config_from_previous_state(previous)
+
+    from installer.configure import pending_credentials, configured_credentials
+
+    already = configured_credentials(config)
+    pending = [item["service"] for item in pending_credentials(config)]
+
+    if already:
+        console.print(f"[green]Already configured:[/green] {', '.join(already)}")
+    if not pending:
+        console.print("[green]Nothing left to configure.[/green]")
+        return
+
+    console.print(f"[bold]Needs credentials:[/bold] {', '.join(pending)}")
+    result = configure_pending(config, non_interactive=False)
+
+    if result["written"]:
+        console.print(f"[green]Wrote:[/green] {', '.join(result['written'])}")
+
+    if result["still_blank"]:
+        console.print(f"[yellow]Still blank:[/yellow] {', '.join(result['still_blank'])}")
+
+    if not result["written"] and not result["still_blank"]:
+        console.print("[green]All enabled services already have their credentials.[/green]")
 
 
 @app.command(name="install-summary")
@@ -857,6 +934,85 @@ def start():
 
 
 @app.command()
+def build(
+    tier: str | None = typer.Option(None, "--tier", help="light, medium, or heavy"),
+    media_path: str | None = typer.Option(None, "--media-path"),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    vpn: bool | None = typer.Option(None, "--vpn/--no-vpn"),
+    cloudflared: bool | None = typer.Option(None, "--cloudflared/--no-cloudflared"),
+    sabnzbd: bool | None = typer.Option(None, "--sabnzbd/--no-sabnzbd"),
+    recyclarr: bool | None = typer.Option(None, "--recyclarr/--no-recyclarr"),
+    homepage: bool | None = typer.Option(None, "--homepage/--no-homepage"),
+    homepage_private: bool | None = typer.Option(
+        None, "--homepage-private/--homepage-public"
+    ),
+    metube: bool | None = typer.Option(None, "--metube/--no-metube"),
+    downtify: bool | None = typer.Option(None, "--downtify/--no-downtify"),
+    netdata: bool | None = typer.Option(None, "--netdata/--no-netdata"),
+    vaultwarden: bool | None = typer.Option(None, "--vaultwarden/--no-vaultwarden"),
+    dashy: bool | None = typer.Option(None, "--dashy/--no-dashy"),
+    dashy_private: bool | None = typer.Option(None, "--dashy-private/--dashy-public"),
+    pihole: bool | None = typer.Option(None, "--pihole/--no-pihole"),
+    sportarr: bool | None = typer.Option(None, "--sportarr/--no-sportarr"),
+    tracearr: bool | None = typer.Option(None, "--tracearr/--no-tracearr"),
+    threadfin: bool | None = typer.Option(None, "--threadfin/--no-threadfin"),
+    gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
+    puid: int | None = typer.Option(None, "--puid"),
+    pgid: int | None = typer.Option(None, "--pgid"),
+    timezone: str | None = typer.Option(None, "--timezone"),
+    services: str | None = typer.Option(None, "--services"),
+    domain: str | None = typer.Option(None, "--domain"),
+    cloudflare_dns: bool = typer.Option(False, "--cloudflare-dns"),
+    cloudflare_email: str | None = typer.Option(None, "--cloudflare-email"),
+    auth_username: str | None = typer.Option(None, "--auth-username"),
+    auth_password: str | None = typer.Option(None, "--auth-password"),
+    auth_users: str | None = typer.Option(None, "--auth-users"),
+):
+    """
+    Generate stack/docker-compose.yml + .env from your choices and stop -
+    never starts anything, never needs Docker. Run `vulcan start` once
+    Docker is ready. Mirrors every option of the top-level guided run
+    (`vulcan --help`) bar the start-related ones.
+    """
+
+    run_install(
+        tier=tier,
+        media_path=media_path,
+        non_interactive=non_interactive,
+        yes=yes,
+        vpn=vpn,
+        cloudflared=cloudflared,
+        sabnzbd=sabnzbd,
+        recyclarr=recyclarr,
+        homepage=homepage,
+        homepage_private=homepage_private,
+        metube=metube,
+        downtify=downtify,
+        netdata=netdata,
+        vaultwarden=vaultwarden,
+        dashy=dashy,
+        dashy_private=dashy_private,
+        pihole=pihole,
+        sportarr=sportarr,
+        tracearr=tracearr,
+        threadfin=threadfin,
+        start=False,
+        gpu=gpu,
+        puid=puid,
+        pgid=pgid,
+        timezone=timezone,
+        services=services,
+        domain=domain,
+        cloudflare_dns=cloudflare_dns,
+        cloudflare_email=cloudflare_email,
+        auth_username=auth_username,
+        auth_password=auth_password,
+        auth_users_raw=auth_users,
+    )
+
+
+@app.command()
 def backup():
     """
     Archive the generated stack's config directories and compose files.
@@ -1205,10 +1361,6 @@ def main(
         "implies --no-start --non-interactive --yes"
     ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
-    offline: bool = typer.Option(
-        False, "--offline",
-        help="No internet access on this machine - skip automatic Docker install if it's missing"
-    )
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -1217,8 +1369,6 @@ def main(
         non_interactive = True
         yes = True
         start = False
-
-    _ensure_system_deps(non_interactive=non_interactive)
 
     if not non_interactive and not plain:
 
@@ -1257,7 +1407,6 @@ def main(
         auth_username=auth_username,
         auth_password=auth_password,
         auth_users_raw=auth_users,
-        offline=offline,
         dry_run=dry_run
     )
 
@@ -1295,7 +1444,6 @@ def run_install(
     auth_username: str | None = None,
     auth_password: str | None = None,
     auth_users_raw: str | None = None,
-    offline: bool = False,
     dry_run: bool = False
 ):
 
@@ -1337,7 +1485,7 @@ def run_install(
     # start is always explicit (--start/--no-start) in the menu path,
     # which is the only path that activates the panel - so the "Start
     # stack" phase only exists when it will actually run.
-    phases = ["Detect system", "Storage setup", "Docker ready", "Configure stack", "Generate stack"]
+    phases = ["Detect system", "Storage setup", "Configure stack", "Generate stack", "Configure services"]
     if start is not False:
         phases.append("Start stack")
 
@@ -1395,14 +1543,15 @@ def run_install(
                                             panel.note(f"[green]Storage provisioned at {mount_point}[/green]")
         panel.advance()
 
-        info, group_just_added = _ensure_docker_ready(info, non_interactive, yes, offline, panel)
-
-        if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
-            panel.finish(False)
-            console.print("[red]Docker isn't ready - can't continue.[/red]")
-            raise typer.Exit(code=1)
-
-        panel.advance()
+        # Phase 0 adds the user to the docker group in a separate (root)
+        # process; this process's group list is still stale, but
+        # `./install`'s final `exec` goes through `runuser -u $SUDO_USER`,
+        # which builds a fresh group list from the DB - so by the time
+        # this code runs, the docker group is already effective. (A
+        # non-root `./install` where Phase 0 had nothing to do added no
+        # group, so nothing is stale either.) Kept for _start's
+        # use_group_workaround signature.
+        group_just_added = False
 
         config = _gather_generation_config(
             info, tier, media_path, vpn, cloudflared, sabnzbd, recyclarr, homepage,
@@ -1414,157 +1563,68 @@ def run_install(
         )
         panel.advance()
 
-        _generate_and_maybe_start(
-            config, non_interactive, yes, start, group_just_added,
+        build_result = _build(
+            config, non_interactive, yes,
             on_phase=panel.advance, panel=panel
         )
+
+        # Phase 6 - Configure: fill in the credentials enabled services
+        # need but don't have yet (VPN key, tunnel token, ...). Env vars
+        # (set by the menu or exported by the user) + --domain seed the
+        # answers; anything still blank gets prompted interactively, or
+        # left for `vulcan configure` on a non-interactive run.
+        vpn_answers = {
+            "VPN_SERVICE_PROVIDER": os.environ.get("VPN_SERVICE_PROVIDER", ""),
+            "VPN_TYPE": os.environ.get("VPN_TYPE", ""),
+            "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", ""),
+            "WIREGUARD_ADDRESSES": os.environ.get("WIREGUARD_ADDRESSES", ""),
+            # OpenVPN has no env.j2 keys yet - see follow-up
+            "DOMAIN": config.domain or "",
+        }
+
+        configure_pending(
+            config, non_interactive,
+            answers={k: v for k, v in vpn_answers.items() if v}
+        )
+        panel.advance()
+
+        if start is None:
+            start = False if non_interactive else typer.confirm(
+                "Start the stack now?", default=True
+            )
+
+        if start is not False:
+            _start(
+                config, build_result, group_just_added,
+                on_phase=panel.advance, panel=panel
+            )
+        else:
+            _report_stack_generated(config, build_result, panel=panel)
+
         panel.finish(True)
 
 
-def _ensure_docker_ready(
-    info: SystemInfo,
-    non_interactive: bool,
-    yes: bool,
-    offline: bool = False,
-    panel: RunPanel | _NoOpPanel | None = None
-) -> tuple[SystemInfo, bool]:
+def _assert_docker_ready(info: SystemInfo) -> SystemInfo:
+    """Phase 0 (`./install` / `vulcan preflight --fix`) is responsible for
+    getting Docker ready. By the time run_install runs it either is, or we
+    stop here and point the user back at ./install."""
 
-    group_just_added = False
-    panel = panel if panel is not None else _NoOpPanel(console)
+    state = detect_docker()
+    info.docker_installed = state["docker_installed"]
+    info.docker_running = state["docker_running"]
+    info.docker_accessible = state.get("docker_accessible", True)
+    info.docker_compose_v2 = state["docker_compose_v2"]
 
-    if info.docker_installed and info.docker_running and info.docker_accessible and info.docker_compose_v2:
-
-        panel.note("[green]Docker is ready.[/green]")
-        return info, group_just_added
-
-    if not info.docker_installed:
-
-        if offline:
-
-            console.print(
-                "[red]No internet access - Docker must already be installed on this "
-                "machine, or install it from a machine that does have a connection: "
-                "https://docs.docker.com/engine/install/[/red]"
-            )
-
-            return info, group_just_added
-
-        plan = install_plan_for(info.os_id, info.os_is_atomic)
-
-        if plan is None:
-
-            console.print(
-                f"[red]No known automatic install method for '{info.os_id}'. "
-                "Install Docker manually: https://docs.docker.com/engine/install/[/red]"
-            )
-
-            return info, group_just_added
-
-        console.print(f"Docker will be installed via: {plan['description']}")
-
-        if yes or typer.confirm("Install Docker now?"):
-
-            result = install_docker(info.os_id, info.os_is_atomic)
-
-            if not result["success"]:
-
-                console.print(f"[red]Docker install failed: {result['error']}[/red]")
-                return info, group_just_added
-
-            if result["needs_reboot"]:
-
-                console.print(
-                    "[yellow]Docker was layered onto this system via rpm-ostree (this is "
-                    "an atomic/immutable OS - Bazzite, Silverblue, Kinoite, or similar). "
-                    "That only takes effect after a reboot.[/yellow]\n\n"
-                    "Reboot this machine now, then re-run this installer - it will detect "
-                    "Docker is installed and pick up from there (starting the service, "
-                    "adding your user to the docker group):\n"
-                    "  sudo systemctl reboot"
-                )
-                return info, group_just_added
-
-            start_docker_service()
-
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            ensure_compose_v2(info.os_id)
-            group_just_added = True
-
-    elif info.docker_running and not info.docker_accessible:
-
+    if not (info.docker_installed and info.docker_running
+            and info.docker_accessible and info.docker_compose_v2):
         console.print(
-            "Docker is running, but your user isn't in the 'docker' group "
-            "yet - that's why it looked unavailable."
+            "[red]Docker isn't ready.[/red] Run  ./install  again "
+            "(or  vulcan preflight --fix ) to install/start it and add your "
+            "user to the docker group, then retry."
         )
+        raise typer.Exit(code=1)
 
-        if yes or typer.confirm("Add your user to the docker group now?"):
-
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            group_just_added = True
-
-    elif not info.docker_running:
-
-        console.print("Docker is installed but not running.")
-
-        if yes or typer.confirm("Start the Docker service now?"):
-
-            start_docker_service()
-
-            # Real gap found live (sibling Anvil project) against a
-            # real Bazzite host: Docker installed by a *previous* run
-            # (the atomic-OS reboot-split case) never got its user
-            # added to the docker group, since that only happened
-            # alongside a fresh install above. The daemon starting
-            # cleanly doesn't mean this user can reach it -
-            # /var/run/docker.sock is root:docker.
-            group_result = add_user_to_docker_group(getpass.getuser())
-
-            if not group_result["success"]:
-                console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
-                return info, group_just_added
-
-            group_just_added = True
-
-    elif not info.docker_compose_v2:
-
-        console.print("Docker Compose v2 isn't available.")
-
-        if yes or typer.confirm("Attempt to install Docker Compose v2 now?"):
-            ensure_compose_v2(info.os_id)
-
-    docker_state = detect_docker()
-    info.docker_installed = docker_state["docker_installed"]
-    info.docker_running = docker_state["docker_running"]
-    info.docker_accessible = docker_state.get("docker_accessible", True)
-    info.docker_compose_v2 = docker_state["docker_compose_v2"]
-
-    if group_just_added:
-
-        # A plain detect_docker() re-check right after adding this
-        # process's own user to the docker group would still see the
-        # stale group list inherited at this session's login - see
-        # check_docker_ready()'s own docstring for the real failure
-        # this fixes, confirmed live rather than assumed.
-        readiness = check_docker_ready(use_group_workaround=True)
-        info.docker_running = readiness["docker_running"]
-        info.docker_compose_v2 = readiness["docker_compose_v2"]
-
-        # The group add + `sg docker` workaround is what makes Docker
-        # reachable for the rest of this run; a plain socket check would
-        # still fail on this process's stale login-time group list.
-        info.docker_accessible = readiness["docker_running"]
-
-    return info, group_just_added
+    return info
 
 
 def _choose_raid_level(device_count: int) -> str | None:
@@ -1845,16 +1905,20 @@ def _gather_generation_config(
     # non-interactive run, which is what the whiptail menu always uses).
     # The one-line recommendation stays either way; it's short and still
     # useful context even when the choice is already made.
-    # Show all services per tier before the recommendation
-    console.print("\n[bold]Services included in each tier:[/bold]")
-    for tier_name in ("light", "medium", "heavy"):
-        tier_obj = TIERS[tier_name]
-        core = [s for s in tier_obj.services if not s.optional]
-        opt = [s for s in tier_obj.services if s.optional]
-        rec_marker = " ← recommended" if tier_obj.name == recommendation.tier.name else ""
-        console.print(f"\n  {tier_obj.display_name}{rec_marker}:")
-        console.print(f"    Core ({len(core)}): {', '.join(s.display_name for s in core)}")
-        console.print(f"    Optional ({len(opt)}): {', '.join(s.display_name for s in opt)}")
+    # Show all services per tier before the recommendation - but only when
+    # the tier is still being chosen. A non-interactive run (every whiptail
+    # Guided Setup) has already decided, so this is just the wall of text
+    # the comment above is about.
+    if not non_interactive:
+        console.print("\n[bold]Services included in each tier:[/bold]")
+        for tier_name in ("light", "medium", "heavy"):
+            tier_obj = TIERS[tier_name]
+            core = [s for s in tier_obj.services if not s.optional]
+            opt = [s for s in tier_obj.services if s.optional]
+            rec_marker = " ← recommended" if tier_obj.name == recommendation.tier.name else ""
+            console.print(f"\n  {tier_obj.display_name}{rec_marker}:")
+            console.print(f"    Core ({len(core)}): {', '.join(s.display_name for s in core)}")
+            console.print(f"    Optional ({len(opt)}): {', '.join(s.display_name for s in opt)}")
 
     console.print(
         f"Recommended tier: [bold]{recommendation.tier.display_name}[/bold] - "
@@ -2139,24 +2203,11 @@ def _gather_generation_config(
 
         if enable_vpn:
 
-            # Credentials already came from the environment above (set by
-            # the menu, or exported by the user). Only prompt when a real
-            # interactive run left them blank.
-            if vpn is None and not non_interactive and (not vpn_service_provider or not vpn_type):
-                console.print("\n[bold]Gluetun VPN Configuration[/bold]")
-                console.print("You'll need your VPN provider's credentials. See:")
-                console.print("https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n")
-
-                vpn_service_provider = typer.prompt("VPN Service Provider (e.g. protonvpn, mullvad, nordvpn)", default="")
-                vpn_type = typer.prompt("VPN Type (wireguard/openvpn)", default="wireguard")
-
-                if vpn_type == "wireguard":
-                    wireguard_private_key = typer.prompt("WireGuard Private Key", hide_input=True)
-                    wireguard_addresses = typer.prompt("WireGuard Addresses (e.g. 10.0.0.2/24)", default="")
-                else:
-                    openvpn_user = typer.prompt("OpenVPN Username", default="")
-                    openvpn_password = typer.prompt("OpenVPN Password", hide_input=True)
-
+            # Credentials (provider, key, ...) are no longer gathered here -
+            # Phase 6 (`configure_pending`) fills them in after the stack is
+            # built, from env vars or an interactive walkthrough. The
+            # os.environ reads above still seed GenerationConfig so
+            # write_stack can put real values / placeholders in .env.
             enabled_optional.add("gluetun")
 
     if custom_services_selected is None:
@@ -2656,15 +2707,19 @@ def _resolve_port_conflicts(config: GenerationConfig, result: dict) -> dict:
     raise typer.Exit(code=1)
 
 
-def _generate_and_maybe_start(
+def _build(
     config: GenerationConfig,
     non_interactive: bool,
     yes: bool,
-    start: bool | None,
-    group_just_added: bool,
     on_phase=None,
     panel: RunPanel | _NoOpPanel | None = None
 ) -> dict:
+    """
+    Generate stack/docker-compose.yml + .env from the gathered config -
+    review, confirm, write_stack, surface warnings. Never touches Docker,
+    so a first run can generate a stack before Docker is installed/started
+    (Phase 0 / `vulcan start` handle that). Returns the write_stack result.
+    """
 
     panel = panel if panel is not None else _NoOpPanel(console)
 
@@ -2739,110 +2794,133 @@ def _generate_and_maybe_start(
     for warning in result["warnings"]:
         panel.note(f"[yellow]! {warning}[/yellow]")
 
-    if start is None:
-        do_start = False if non_interactive else typer.confirm("Start the stack now?", default=True)
-    else:
-        do_start = start
-
-    if do_start:
-
-        result = _resolve_port_conflicts(config, result)
-
-        net_check = check_network_conflicts(result["compose_path"])
-
-        if not net_check["ok"]:
-            console.print("[red]Network configuration errors (Docker would reject these):[/red]")
-            console.print(format_network_conflicts(net_check))
-            raise typer.Exit(code=1)
-
-        proc = run_docker_command(
-            [
-                "docker", "compose",
-                "-f", result["compose_path"],
-                "--env-file", result["env_path"],
-                "up", "-d"
-            ],
-            use_group_workaround=group_just_added
-        )
-
-        if proc.returncode == 0:
-
-            if on_phase is not None:
-                on_phase("Start stack")
-
-            # `up -d` only waits for containers to start, not for the
-            # process inside to actually stay up - a real check here
-            # catches a crash-loop `up -d` alone would silently report
-            # as success.
-            verification = verify_stack_running(result["compose_path"])
-
-            if not verification["all_running"]:
-
-                console.print("[red]Stack started but isn't actually running:[/red]")
-
-                if verification["error"]:
-                    console.print(f"[red]{verification['error']}[/red]")
-
-                for entry in verification["not_running"]:
-                    console.print(
-                        f"[red]  {entry['service']}: {entry['state']} ({entry['status']})[/red]"
-                    )
-
-                console.print("[red]Check `docker compose logs` for the failing service(s).[/red]")
-                raise typer.Exit(code=1)
-
-            panel.note("[green]Stack is up:[/green]")
-
-            summary = render_stack_summary(config, detect_host_ip())
-
-            if summary:
-                panel.note(summary)
-
-            setup_order = render_setup_order(config, detect_host_ip())
-
-            if setup_order:
-                panel.note(f"\n{setup_order}")
-
-        else:
-            console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
-            raise typer.Exit(code=1)
-
-    else:
-
-        panel.note("[bold]Stack generated (not started):[/bold]")
-
-        summary = render_stack_summary(config, detect_host_ip())
-
-        if summary:
-            panel.note(summary)
-
-        setup_order = render_setup_order(config, detect_host_ip())
-
-        if setup_order:
-            panel.note(f"\n{setup_order}")
-
-        panel.note(
-            "\nRun this when you're ready:\n"
-            f"  docker compose -f {result['compose_path']} --env-file {result['env_path']} up -d"
-        )
-
-        if config.auth_users:
-            panel.note(
-                f"\nAuthelia users configured: admin ('{config.auth_username}') + "
-                f"{len(config.auth_users)} additional user(s). Admin has full access; "
-                "additional users can only reach Jellyfin and Seerr."
-            )
-
-        if "cloudflared" in enabled_service_keys(config):
-            panel.note(
-                "\nCloudflare Tunnel: fill in TUNNEL_TOKEN in "
-                f"{result['env_path']} before starting. Create a tunnel at "
-                "Zero Trust dashboard > Networks > Tunnels > Create a tunnel > "
-                "Docker tab, then add a Public Hostname pointing at "
-                "http://traefik:8081."
-            )
-
     return result
+
+
+def _start(
+    config: GenerationConfig,
+    build_result: dict,
+    group_just_added: bool,
+    on_phase=None,
+    panel: RunPanel | _NoOpPanel | None = None
+) -> None:
+    """
+    Bring an already-generated stack up: assert Docker is ready (Phase 0's
+    job, not ours - bail to ./install if not), resolve port/network
+    conflicts, `docker compose up -d`, then verify the containers actually
+    stayed up and print the access summary. Raises typer.Exit on any failure.
+    """
+
+    panel = panel if panel is not None else _NoOpPanel(console)
+
+    # Phase 0 (./install / vulcan preflight --fix) owns getting Docker
+    # ready. Starting the stack is the first step that actually needs it -
+    # assert here and bail to ./install rather than install anything.
+    _assert_docker_ready(detect_system())
+
+    result = _resolve_port_conflicts(config, build_result)
+
+    net_check = check_network_conflicts(result["compose_path"])
+
+    if not net_check["ok"]:
+        console.print("[red]Network configuration errors (Docker would reject these):[/red]")
+        console.print(format_network_conflicts(net_check))
+        raise typer.Exit(code=1)
+
+    proc = run_docker_command(
+        [
+            "docker", "compose",
+            "-f", result["compose_path"],
+            "--env-file", result["env_path"],
+            "up", "-d"
+        ],
+        use_group_workaround=group_just_added
+    )
+
+    if proc.returncode != 0:
+        console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")
+        raise typer.Exit(code=1)
+
+    if on_phase is not None:
+        on_phase("Start stack")
+
+    # `up -d` only waits for containers to start, not for the process
+    # inside to actually stay up - a real check here catches a
+    # crash-loop `up -d` alone would silently report as success.
+    verification = verify_stack_running(result["compose_path"])
+
+    if not verification["all_running"]:
+
+        console.print("[red]Stack started but isn't actually running:[/red]")
+
+        if verification["error"]:
+            console.print(f"[red]{verification['error']}[/red]")
+
+        for entry in verification["not_running"]:
+            console.print(
+                f"[red]  {entry['service']}: {entry['state']} ({entry['status']})[/red]"
+            )
+
+        console.print("[red]Check `docker compose logs` for the failing service(s).[/red]")
+        raise typer.Exit(code=1)
+
+    panel.note("[green]Stack is up:[/green]")
+
+    summary = render_stack_summary(config, detect_host_ip())
+
+    if summary:
+        panel.note(summary)
+
+    setup_order = render_setup_order(config, detect_host_ip())
+
+    if setup_order:
+        panel.note(f"\n{setup_order}")
+
+
+def _report_stack_generated(
+    config: GenerationConfig,
+    build_result: dict,
+    panel: RunPanel | _NoOpPanel | None = None
+) -> None:
+    """The "generated but not started" summary - what `_start` would have
+    printed, plus the manual `up -d` line and any service-specific
+    follow-ups (Cloudflare Tunnel token, extra Authelia users)."""
+
+    panel = panel if panel is not None else _NoOpPanel(console)
+
+    panel.note("[bold]Stack generated (not started):[/bold]")
+
+    summary = render_stack_summary(config, detect_host_ip())
+
+    if summary:
+        panel.note(summary)
+
+    setup_order = render_setup_order(config, detect_host_ip())
+
+    if setup_order:
+        panel.note(f"\n{setup_order}")
+
+    panel.note(
+        "\nRun this when you're ready:\n"
+        f"  docker compose -f {build_result['compose_path']} "
+        f"--env-file {build_result['env_path']} up -d"
+    )
+
+    if config.auth_users:
+        panel.note(
+            f"\nAuthelia users configured: admin ('{config.auth_username}') + "
+            f"{len(config.auth_users)} additional user(s). Admin has full access; "
+            "additional users can only reach Jellyfin and Seerr."
+        )
+
+    if "cloudflared" in enabled_service_keys(config):
+        panel.note(
+            "\nCloudflare Tunnel: fill in TUNNEL_TOKEN in "
+            f"{build_result['env_path']} before starting. Create a tunnel at "
+            "Zero Trust dashboard > Networks > Tunnels > Create a tunnel > "
+            "Docker tab, then add a Public Hostname pointing at "
+            "http://traefik:8081."
+        )
 
 
 if __name__ == "__main__":

@@ -66,6 +66,13 @@ compactbutton=white,red
 # guard was added.
 if ! declare -F whiptail >/dev/null; then
     whiptail() {
+        # Clear the real terminal first. Over SSH, leftover state from
+        # the previous command (a Rich live panel's final frame, a
+        # slow `vulcan detect`, a half-flushed escape sequence) can
+        # swallow newt's initial paint, so the dialog is "open" but
+        # invisible until a keypress forces a redraw. A clean screen
+        # right before every dialog removes that class of stall.
+        command tput clear >/dev/tty 2>/dev/null || true
         command whiptail --fullbuttons "$@"
     }
 fi
@@ -88,18 +95,29 @@ _dlg_rows() {
 }
 
 _dlg_cols() {
+    # 72% (was 60%) so the longest --menu item descriptions fit inside
+    # the box instead of bleeding past the right border.
     local total
     total=$(tput cols 2>/dev/null || echo 80)
-    local cols=$(( total * 60 / 100 ))
+    local cols=$(( total * 72 / 100 ))
     [ "$cols" -lt 60 ] && cols=60
     echo "$cols"
 }
 
 _dlg_menu_items() {
-    local total
+    # The --menu/--checklist/--radiolist list-height. It must leave room
+    # inside the DLG_ROWS-tall box for the title bar, top/bottom border,
+    # the (1-3 line) message and the button row - otherwise whiptail
+    # draws the list starting over the top border (no visible title) and
+    # on a short terminal bails out entirely, so a menu selection just
+    # bounces back with nothing drawn. Sized against DLG_ROWS, not raw
+    # terminal height, for exactly that reason.
+    local total rows items
     total=$(tput lines 2>/dev/null || echo 24)
-    local items=$(( total * 45 / 100 ))
-    [ "$items" -lt 5 ] && items=5
+    rows=$(( total * 60 / 100 ))
+    [ "$rows" -lt 10 ] && rows=10
+    items=$(( rows - 9 ))
+    [ "$items" -lt 3 ] && items=3
     echo "$items"
 }
 
@@ -241,11 +259,13 @@ menu_configure() {
         choice=$(whiptail --backtitle "$BACKTITLE" --title "Configure" \
             --menu "Configure services:" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
             "services"    "Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc." \
+            "credentials" "Configure Credentials → VPN, domain, tunnel token, passwords" \
             "storage"     "Reconfigure Media Storage → change RAID, mount point, drives" \
             "back"        "Back to main menu" \
             3>&1 1>&2 2>&3) || return
         case "$choice" in
             services) configure_services_flow ;;
+            credentials) "$VULCAN_BIN" configure; read -rp "Press Enter to return to the menu..." _ ;;
             storage)  storage_setup_flow ;;
             back)     return ;;
         esac
@@ -569,11 +589,8 @@ complete_setup_flow() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    # Docker readiness is Phase 0's job (`./install` runs
+    # `vulcan preflight --fix` before this menu launches).
 
     # Phase 2: Guided Setup (PLAN - tier, services, media path) - NO START
     log_title "PLAN: Guided Stack Configuration"
@@ -605,28 +622,11 @@ complete_setup_flow() {
     show_checklist 4
 
     log_title "CONFIGURE: Service Credentials"
-    refresh_detect
-    if [ -f "stack/docker-compose.yml" ]; then
-        local needs_config=false
-        if grep -q "gluetun" stack/docker-compose.yml && [ -z "${VPN_SERVICE_PROVIDER:-}${VPN_TYPE:-}" ]; then
-            needs_config=true
-        elif grep -q "cloudflared" stack/docker-compose.yml && [ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
-            needs_config=true
-        elif grep -q "tailscale" stack/docker-compose.yml && [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
-            needs_config=true
-        elif grep -q "traefik" stack/docker-compose.yml && [ -z "${DOMAIN:-}" ]; then
-            needs_config=true
-        elif grep -q "pihole" stack/docker-compose.yml && [ -z "${PIHOLE_PASSWORD:-}" ]; then
-            needs_config=true
-        fi
 
-        if [ "$needs_config" = true ]; then
-            if whiptail --backtitle "$BACKTITLE" --title "CONFIGURE: Service Credentials" --yesno \
-                "Some services need additional configuration (VPN credentials, domain, tunnel tokens, etc.).\n\nOpen Configure Services menu now to set them up?" "$DLG_ROWS" "$DLG_COLS"; then
-                configure_services_flow
-            fi
-        fi
-    fi
+    # Phase 6: fill in credentials the enabled services still need -
+    # `vulcan configure` reads stack/.env and prompts only for what's
+    # actually missing (same call guided_setup uses).
+    "$VULCAN_BIN" configure || true
 
     # ============================================================
     # PHASE 4: START - Launch Stack
@@ -1032,11 +1032,9 @@ guided_setup_no_start() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready, showing warning"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    # Docker readiness is Phase 0's job now (`./install` runs
+    # `vulcan preflight --fix` before this menu ever launches), so no
+    # Docker-not-ready warning here.
 
     log_title "Phase 2: Configuration"
 
@@ -1096,7 +1094,7 @@ guided_setup_no_start() {
     fi
 
     # If gluetun (VPN) was selected, prompt for credentials now
-    if [[ " ${TOGGLE_FLAGS[@]} " =~ " --vpn " ]]; then
+    if [[ " ${TOGGLE_FLAGS[*]:-} " =~ " --vpn " ]]; then
         if [ -z "${VPN_SERVICE_PROVIDER:-}" ] || [ -z "${VPN_TYPE:-}" ]; then
             if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno \
                 $'Gluetun VPN was selected but no VPN credentials were provided.\n\nYou must provide VPN credentials for the stack to start successfully.\n\nWould you like to configure VPN credentials now?' "$DLG_ROWS" "$DLG_COLS"; then
@@ -1148,8 +1146,8 @@ guided_setup_no_start() {
         --inputbox "Timezone (e.g. America/New_York, Europe/London)" "$DLG_ROWS" "$DLG_COLS" "$default_tz_value" \
         3>&1 1>&2 2>&3) || return
 
-    # Build and run the vulcan command (without --start)
-    local vulcan_cmd=("$VULCAN_BIN" --non-interactive --yes)
+    # Build and run the vulcan command (generate only, never start)
+    local vulcan_cmd=("$VULCAN_BIN" build --non-interactive --yes)
 
     vulcan_cmd+=(--tier "$TIER")
     vulcan_cmd+=(--media-path "$MEDIA_PATH")
@@ -1157,9 +1155,14 @@ guided_setup_no_start() {
     vulcan_cmd+=(--pgid "$PGID")
     vulcan_cmd+=(--timezone "$TIMEZONE")
 
-    [ -n "$SERVICES_FLAG" ] && vulcan_cmd+=(--services "$SERVICES_FLAG")
-    [ -n "$DOMAIN_FLAGS" ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
-    [ -n "$TOGGLE_FLAGS" ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
+    # Count guard, not `[ -n "$ARR" ]`: under `set -u`, "$SERVICES_FLAG"
+    # expands to "${SERVICES_FLAG[0]}" which is UNBOUND when the array is
+    # empty (the quick-toggles path never sets SERVICES_FLAG) and aborts
+    # the whole script. And SERVICES_FLAG is a 2-element array
+    # (--services <joined>), so it must expand with [@], not as a scalar.
+    [ "${#SERVICES_FLAG[@]}" -gt 0 ] && vulcan_cmd+=("${SERVICES_FLAG[@]}")
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${DOMAIN_FLAGS[@]}")
+    [ "${#TOGGLE_FLAGS[@]}" -gt 0 ] && vulcan_cmd+=("${TOGGLE_FLAGS[@]}")
 
     confirm_and_run "Generate Stack" \
         "This will generate stack/docker-compose.yml and .env with your choices. Stack will NOT be started." \
@@ -1202,11 +1205,9 @@ guided_setup() {
     log_info "Docker: installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose=$DOCKER_COMPOSE_V2"
     log_info "Recommended tier: ${RECOMMENDED_TIER:-none}"
 
-    if [ "$DOCKER_INSTALLED" != "true" ] || [ "$DOCKER_RUNNING" != "true" ] || [ "$DOCKER_COMPOSE_V2" != "true" ]; then
-        log_info "Docker not fully ready, showing warning"
-        whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-            "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Vulcan try to install/start it for you (--yes is implied)." "$DLG_ROWS" "$DLG_COLS"
-    fi
+    # Docker readiness is Phase 0's job now (`./install` runs
+    # `vulcan preflight --fix` before this menu ever launches), so no
+    # Docker-not-ready warning here.
 
     log_title "Phase 2: Configuration"
 
@@ -1299,30 +1300,50 @@ guided_setup() {
     log_info "Services: $services_summary"
     log_info "Start: $START_FLAG"
 
-    # Show a full settings summary before executing (Security Onion pattern).
+    # Show a full settings summary before executing (Security Onion
+    # pattern). Each line is truncated to the dialog's inner width so a
+    # long services list can't push the Yes/No buttons off-screen - the
+    # untruncated list is on the Setup Complete screen via
+    # `vulcan install-summary`. No --scrolltext: the buttons stay put.
+    local width=$(( DLG_COLS - 6 ))
+    _rvline() { printf '%-.*s' "$width" "$1"; }
+
     local summary=""
-    summary+="Tier:        $TIER\n"
-    summary+="Media Path:  $MEDIA_PATH\n"
-    summary+="PUID/PGID:   $PUID / $PGID\n"
-    summary+="Timezone:    $TIMEZONE\n"
-    summary+="Services:    $services_summary\n"
-    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && summary+="Domain/Auth: configured\n"
-    summary+="Auto-start:  $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")\n"
-    summary+="\nPress TAB to select yes or no."
+    summary+="$(_rvline "Tier:        $TIER")"$'\n'
+    summary+="$(_rvline "Media Path:  $MEDIA_PATH")"$'\n'
+    summary+="$(_rvline "PUID/PGID:   $PUID / $PGID")"$'\n'
+    summary+="$(_rvline "Timezone:    $TIMEZONE")"$'\n'
+    summary+="$(_rvline "Services:    $services_summary")"$'\n'
+    [ "${#DOMAIN_FLAGS[@]}" -gt 0 ] && summary+="$(_rvline "Domain/Auth: configured")"$'\n'
+    summary+="$(_rvline "Auto-start:  $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")")"$'\n'
+    summary+=$'\n'"Press TAB to select yes or no."
 
     if ! whiptail --backtitle "$BACKTITLE" --title "Review Settings" \
-        --yesno "$summary" "$DLG_ROWS" "$DLG_COLS" --scrolltext; then
+        --yesno "$summary" "$DLG_ROWS" "$DLG_COLS"; then
         return 0
     fi
 
-    SKIP_RETURN_PROMPT=true confirm_and_run "Guided Setup" \
-        "About to generate a $TIER stack at $MEDIA_PATH (PUID=$PUID PGID=$PGID TZ=$TIMEZONE). Continue?" \
-        "$VULCAN_BIN" --non-interactive --yes \
+    # Detect -> ... -> Build -> Configure -> Start: generate the stack
+    # first (never starts it), fill in credentials, then optionally
+    # start - the same order run_install() follows.
+    SKIP_RETURN_PROMPT=true confirm_and_run "Build Stack" \
+        "Generate stack/docker-compose.yml + .env at $MEDIA_PATH (PUID=$PUID PGID=$PGID TZ=$TIMEZONE)." \
+        "$VULCAN_BIN" build --non-interactive --yes \
             --tier "$TIER" --media-path "$MEDIA_PATH" \
             --puid "$PUID" --pgid "$PGID" --timezone "$TIMEZONE" \
-            "${SERVICES_FLAG[@]}" "${TOGGLE_FLAGS[@]}" "${DOMAIN_FLAGS[@]}" \
-            "$START_FLAG"
+            "${SERVICES_FLAG[@]}" "${TOGGLE_FLAGS[@]}" "${DOMAIN_FLAGS[@]}"
     local rc=$?
+    [ "$rc" -ne 0 ] && return "$rc"
+
+    # Phase 6: fill in credentials the enabled services still need.
+    "$VULCAN_BIN" configure || true
+
+    if [ "$START_FLAG" = "--start" ]; then
+        confirm_and_run "Start Stack" \
+            "Start stack/docker-compose.yml, reassigning any port already in use." \
+            "$VULCAN_BIN" start
+        rc=$?
+    fi
 
     if [ "$rc" -eq 0 ]; then
         log_info "Guided setup completed successfully"

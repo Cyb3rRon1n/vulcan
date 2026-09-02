@@ -9,6 +9,7 @@ that port) gets reported clearly before Docker's own opaque failure,
 not after.
 """
 
+import errno
 import re
 import socket
 import subprocess
@@ -26,8 +27,14 @@ def _port_in_use(port: int) -> bool:
         try:
             s.bind(("0.0.0.0", port))
             return False
-        except OSError:
-            return True
+        except OSError as error:
+            # EADDRINUSE = genuinely taken. EACCES = we're an unprivileged
+            # process and can't bind a <1024 port just to probe it (80/443
+            # for Traefik) - that is NOT a conflict, and treating it as one
+            # made `vulcan start` unusable for every non-root run with
+            # Traefik enabled. A real collision still surfaces from
+            # `docker compose up` itself.
+            return error.errno == errno.EADDRINUSE
 
 
 def _find_container_on_port(port: int) -> tuple[str, str, str | None] | None:

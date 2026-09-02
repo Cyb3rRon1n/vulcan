@@ -937,6 +937,55 @@ setup() {
     [[ "$output" == *"--media-path /mnt/old-media"* ]]
 }
 
+@test "guided_setup calls vulcan build then configure then start, no docker msgbox" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-$$"; : > "$VULCAN_CALLS"
+    export SETUP_LOG="$BATS_TMPDIR/setup-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect)
+                echo "ALL_UNPROTECTED_DEVICES=''"
+                echo "STORAGE_MOUNT=''"
+                echo "PREVIOUS_TIER=''"
+                echo "PREVIOUS_ENABLED_OPTIONAL=''"
+                echo "RECOMMENDED_TIER='medium'"
+                echo "CPU_CORES_LOGICAL='8'"
+                echo "RAM_TOTAL_GB='32.0'"
+                echo "DISK_FREE_GB='900.0'"
+                echo "RECOMMENDED_TIER_EXPLANATION='test'"
+                echo "DEFAULT_PUID='1000'"
+                echo "DEFAULT_PGID='1000'"
+                echo "DEFAULT_TIMEZONE='UTC'"
+                echo "GPU_VENDOR=''"
+                echo "DOCKER_INSTALLED='true'"
+                echo "DOCKER_RUNNING='true'"
+                echo "DOCKER_COMPOSE_V2='true'"
+                ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Docker isn't fully ready"*) echo "DOCKER MSGBOX SHOWN" >&2; return 0 ;;
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Customize the full service list"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "source '$MENU_SH'; VULCAN_BIN=fake_vulcan; guided_setup"
+
+    [ "$status" -eq 0 ]
+    grep -q '^build ' "$VULCAN_CALLS"
+    grep -q '^configure' "$VULCAN_CALLS"
+    grep -q '^start' "$VULCAN_CALLS"
+    ! grep -q "DOCKER MSGBOX SHOWN" <<< "$output"
+}
+
 @test "every field menu.sh references from 'vulcan detect' is actually emitted by it" {
 
     cli_py="$BATS_TEST_DIRNAME/../installer/cli.py"
@@ -955,5 +1004,26 @@ setup() {
             echo "menu.sh references \$$var but detect_shell() never emits it" >&2
             return 1
         }
+    done
+}
+
+@test "_dlg_menu_items list-height leaves room for the box chrome (no title/border overflow)" {
+    # Regression: _dlg_menu_items returned ~45% of the raw terminal
+    # height while the box (_dlg_rows) is ~60% of it, so on any terminal
+    # shorter than ~53 lines the list overflowed the top border - no
+    # visible title, and a menu selection silently bounced back.
+    source "$MENU_SH"
+
+    for term in 20 24 30 40 50 80; do
+        tput() { [ "$1" = "lines" ] && echo "$term" || echo 80; }
+        export -f tput
+        rows=$(_dlg_rows)
+        items=$(_dlg_menu_items)
+        # whiptail needs list-height <= box-height - 8 (title/border/msg/buttons)
+        [ "$items" -le $(( rows - 8 )) ] || {
+            echo "term=$term rows=$rows items=$items -> overflows box by $(( items - (rows - 8) ))"
+            return 1
+        }
+        [ "$items" -ge 3 ]
     done
 }
