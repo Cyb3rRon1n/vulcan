@@ -42,11 +42,22 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
     exit 1
 fi
 
-if [ ! -d "$VENV_DIR" ] || ! "$VENV_DIR/bin/python" -c "import installer.cli" &>/dev/null; then
-    echo "Setting up Vulcan (first run)..."
-    python3 -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-    "$VENV_DIR/bin/pip" install --quiet -e "$SCRIPT_DIR"
+# Everything past the python3 bootstrap above touches the checkout - the
+# venv, the editable install, and the CLI itself (which writes stack/,
+# and .git/ on `vulcan update`). Run it as the real user when invoked
+# via sudo, so `sudo ./install` doesn't leave root-owned files behind
+# that break git for the user afterward. The CLI re-escalates with sudo
+# per-command for the few steps that genuinely need root.
+RUN_AS=()
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    RUN_AS=(runuser -u "$SUDO_USER" --)
 fi
 
-exec "$VENV_DIR/bin/python" -m installer "$@"
+if [ ! -d "$VENV_DIR" ] || ! "${RUN_AS[@]}" "$VENV_DIR/bin/python" -c "import installer.cli" &>/dev/null; then
+    echo "Setting up Vulcan (first run)..."
+    "${RUN_AS[@]}" python3 -m venv "$VENV_DIR"
+    "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet --upgrade pip
+    "${RUN_AS[@]}" "$VENV_DIR/bin/pip" install --quiet -e "$SCRIPT_DIR"
+fi
+
+exec "${RUN_AS[@]}" "$VENV_DIR/bin/python" -m installer "$@"

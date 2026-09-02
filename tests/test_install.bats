@@ -67,6 +67,55 @@ EOF
     [[ "$(cat "$PIP_LOG")" == *"-e $INSTALL_DIR"* ]]
 }
 
+@test "under sudo, venv build and the CLI run as \$SUDO_USER, not root" {
+
+    # A broken venv so the setup block runs.
+    cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then exit 1; fi
+exit 0
+EOF
+    chmod +x "$INSTALL_DIR/.venv/bin/python"
+
+    cat > "$INSTALL_DIR/.venv/bin/pip" <<'EOF'
+#!/usr/bin/env bash
+printf 'pip %s\n' "$*" >> "$RUNLOG"
+exit 0
+EOF
+    chmod +x "$INSTALL_DIR/.venv/bin/pip"
+
+    # Stubs: python3 passes the version check; `id -u` says root;
+    # `runuser` records every command it was asked to run as the user.
+    cat > "$INSTALL_DIR/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then printf '3.11\n'; fi
+exit 0
+EOF
+    cat > "$INSTALL_DIR/bin/id" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "-u" ] && { echo 0; exit 0; }
+exec /usr/bin/id "$@"
+EOF
+    cat > "$INSTALL_DIR/bin/runuser" <<'EOF'
+#!/usr/bin/env bash
+# runuser -u <user> -- <cmd...>
+printf 'runuser %s\n' "$*" >> "$RUNLOG"
+shift 3
+exec "$@"
+EOF
+    chmod +x "$INSTALL_DIR/bin/python3" "$INSTALL_DIR/bin/id" "$INSTALL_DIR/bin/runuser"
+
+    RUNLOG="$INSTALL_DIR/run.log"
+    run env PATH="$INSTALL_DIR/bin:$PATH" RUNLOG="$RUNLOG" SUDO_USER=testuser \
+        bash "$INSTALL_DIR/install" --plain version
+
+    [ "$status" -eq 0 ]
+    # venv creation, both pip installs, and the final exec all went via runuser -u testuser
+    [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m venv"* ]]
+    [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"pip"*"-e $INSTALL_DIR"* ]]
+    [[ "$(cat "$RUNLOG")" == *"runuser -u testuser -- "*"-m installer"* ]]
+}
+
 @test "a healthy venv (import succeeds) skips the re-bootstrap" {
 
     cat > "$INSTALL_DIR/.venv/bin/python" <<'EOF'
