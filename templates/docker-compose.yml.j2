@@ -1465,7 +1465,9 @@ services:
       - ./config/homepage:/srv/homepage-config
 {% endif %}
     ports:
-      # gtstef/filebrowser (Quantum) serves on :80, not the classic :8080
+      # gtstef/filebrowser (Filebrowser Quantum) serves on :80, not the
+      # classic filebrowser/filebrowser :8080 - verified against the real
+      # image (only listener is :80, its baked-in healthcheck hits :80).
       - "{{ ports['filebrowser'] }}:80"
 {% if 'traefik' in enabled and domain %}
     labels:
