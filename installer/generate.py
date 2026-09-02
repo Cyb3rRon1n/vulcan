@@ -66,7 +66,8 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
-    "dashy", "filebrowser",
+    "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
+    "adguardhome",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -86,15 +87,13 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Events (Calendar)": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "recyclarr", "sportarr"],
-    "System": ["uptime-kuma", "tracearr", "netdata", "watchtower", "vaultwarden", "portainer"],
-    "Network": ["traefik", "gluetun", "tailscale", "cloudflared", "pihole", "adguardhome"],
-    "Files & Media Management": ["filebrowser", "homepage", "dashy", "jellyfin", "seerr"],
-    "Media Processing": ["radarr", "sonarr", "lidarr", "readarr", "bazarr", "recyclarr", "decluttarr", "maintainerr", "flaresolverr", "sportarr"],
+    "Media": ["jellyfin", "seerr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
-    "Security": ["authelia", "crowdsec", "vaultwarden"],
-    "Infrastructure": ["traefik", "gluetun", "tailscale", "cloudflared", "pihole", "adguardhome", "portainer"],
     "Live TV": ["threadfin"],
+    "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
+    "Security": ["authelia", "vaultwarden"],
+    "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
 }
 
 _HOMEPAGE_PORTS: dict[str, int] = {
@@ -131,7 +130,6 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "gluetun": 8888,
     "tailscale": 41641,
     "cloudflared": 8080,
-    "dashy": 4000,
     "crowdsec": 8080,
     # Deliberately no "traefik" entry - its dashboard has no
     # independent host-published port (see _service_href()'s
@@ -175,13 +173,10 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "recyclarr": "TRaSH Guides sync for Radarr/Sonarr",
     "decluttarr": "Download queue cleanup for Radarr/Sonarr",
     "flaresolverr": "CAPTCHA solver for indexers",
-    "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "watchtower": "Automatic container updates",
     "gluetun": "VPN client for WireGuard/OpenVPN",
     "tailscale": "Private network mesh VPN",
     "cloudflared": "Cloudflare Tunnel for secure remote access",
-    "decluttarr": "Download queue cleanup for Radarr/Sonarr",
-    "flaresolverr": "CAPTCHA solver for indexers",
     "crowdsec": "Intrusion protection for your services",
     "homepage": "Homarr dashboard - customizable start page for all your services",
     "dashy": "Dashy dashboard - beautiful, customizable service dashboard",

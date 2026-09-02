@@ -5,10 +5,11 @@ def test_all_known_services_have_a_resource_profile():
 
     expected = {
         "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd", "recyclarr",
-        "decluttarr", "maintainerr", "jellyseerr", "bazarr", "flaresolverr", "gluetun",
+        "decluttarr", "maintainerr", "seerr", "bazarr", "flaresolverr", "gluetun",
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
         "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec",
-        "cloudflared", "filebrowser", "pihole"
+        "cloudflared", "filebrowser", "pihole", "sportarr", "tracearr", "threadfin",
+        "portainer", "adguardhome"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
