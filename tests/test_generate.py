@@ -2357,6 +2357,24 @@ def test_render_stack_summary_lists_homepage_first_when_enabled():
     assert "  Radarr: http://192.168.1.50:7878" in lines
 
 
+def test_render_stack_summary_lists_each_service_once():
+    """radarr and sonarr each sit in two _HOMEPAGE_GROUPS buckets (Events
+    and Media Processing), and homepage is emitted explicitly *and* sits
+    in a group - the summary must still list every service exactly once."""
+
+    output = render_stack_summary(
+        make_config("heavy", custom_services={"homepage", "radarr", "sonarr", "jellyfin"}),
+        host_ip="192.168.1.50",
+    )
+
+    lines = [line for line in output.splitlines() if line.strip()]
+
+    assert len(lines) == len(set(lines))
+    assert sum("Radarr:" in line for line in lines) == 1
+    assert sum("Sonarr:" in line for line in lines) == 1
+    assert sum(line.startswith("  Homepage") for line in lines) == 1
+
+
 def test_render_stack_summary_omits_homepage_when_disabled():
 
     output = render_stack_summary(
