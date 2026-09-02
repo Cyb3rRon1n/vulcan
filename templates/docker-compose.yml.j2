@@ -434,12 +434,20 @@ services:
       - "traefik.http.routers.downtify.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image) - starts and runs cleanly with zero added capabilities, no
-    # privilege-drop or ownership-fixup step to support. See
-    # ROADMAP.md's cap_drop entry.
+    # downtify runs its FastAPI app as root and, with no PUID/PGID
+    # support, writes its sqlite DB straight into the bind-mounted
+    # /data (and downloads into /downloads). Under cap_drop: ALL a
+    # root process loses CAP_DAC_OVERRIDE too, so it can't write to a
+    # host dir it doesn't own - "sqlite3.OperationalError: unable to
+    # open database file", crash-loop. Verified against the real image:
+    # DAC_OVERRIDE alone is enough (it doesn't chown, so CHOWN/FOWNER
+    # aren't needed). The earlier "zero added capabilities" claim here
+    # was tested against a root-owned/managed volume, not a real
+    # non-root bind mount - found live on an Ubuntu homelab.
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     deploy:
