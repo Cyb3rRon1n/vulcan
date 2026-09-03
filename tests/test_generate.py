@@ -1050,7 +1050,7 @@ SPECIAL_CAP_SERVICES = {
     # to write its state store into the bind-mounted /var/lib/tailscale
     # ("state store is unhealthy", crash-loop) - alongside NET_ADMIN/
     # NET_RAW for the tun device. Same false-positive pattern as downtify.
-    "tailscale": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
+    "tailscale": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE", "FOWNER"],
     "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
     "pihole": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
     # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH

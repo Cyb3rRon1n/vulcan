@@ -1142,18 +1142,22 @@ services:
     volumes:
       - ./config/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-    # tailscaled runs as root and writes its state store into the
-    # bind-mounted /var/lib/tailscale; under cap_drop: ALL it loses
-    # CAP_DAC_OVERRIDE and can't ("state store is unhealthy", crash-
-    # loop). NET_ADMIN/NET_RAW are for the tun device. Verified against
-    # the real image - the earlier "sufficient as-is" check missed this
-    # because it wrote into a root-owned dir, not a real bind mount.
+    # tailscaled runs as root and manages its state store in the
+    # bind-mounted /var/lib/tailscale: it writes files (needs
+    # DAC_OVERRIDE - the dir is owned by PUID, not root) and `chmod 0700`s
+    # the dir itself (needs FOWNER - chmod on a file you don't own).
+    # Under cap_drop: ALL, without both: "state store failed to
+    # initialize ... chmod /var/lib/tailscale: operation not permitted",
+    # crash-loop. NET_ADMIN/NET_RAW are for the tun device. The earlier
+    # "sufficient as-is" check wrote into a root-owned dir, not a real
+    # non-root bind mount.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
       - DAC_OVERRIDE
+      - FOWNER
     network_mode: host
     security_opt:
       - no-new-privileges:true
