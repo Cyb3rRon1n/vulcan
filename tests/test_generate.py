@@ -676,6 +676,27 @@ def test_render_compose_tailscale_uses_host_networking():
     assert "NET_RAW" in tailscale_block
 
 
+def test_tailscale_accept_dns_off_when_a_local_dns_server_is_in_the_stack():
+    # network_mode: host - TS_ACCEPT_DNS=true would rewrite the host
+    # resolver, taking it away from pihole/adguardhome.
+    with_pihole = render_compose(make_config("heavy", custom_services={"tailscale", "pihole"}))
+    assert "TS_ACCEPT_DNS=false" in _service_block(with_pihole, "tailscale", "homepage")
+
+    solo = render_compose(make_config("heavy", custom_services={"tailscale", "jellyfin"}))
+    assert "TS_ACCEPT_DNS=true" in _service_block(solo, "tailscale", "jellyfin")
+
+
+def test_gluetun_and_tailscale_coexist():
+    # container-scoped egress VPN + host-mode ingress mesh - no longer
+    # mutually exclusive (installer.cli._SERVICE_CONFLICTS).
+    output = render_compose(make_config(
+        "heavy", custom_services={"gluetun", "tailscale", "qbittorrent", "jellyfin"}
+    ))
+    assert "container_name: gluetun" in output
+    assert "container_name: tailscale" in output
+    assert "network_mode: \"service:gluetun\"" in output  # qbittorrent still routes through gluetun
+
+
 def test_render_compose_omits_tailscale_when_disabled():
 
     output = render_compose(make_config("light"))

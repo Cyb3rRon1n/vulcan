@@ -1764,13 +1764,20 @@ def _offer_storage_setup(non_interactive: bool) -> str | None:
     return mount_point
 
 
-_SERVICE_CONFLICTS: list[tuple[set[str], set[str], str]] = [
-    (
-        {"gluetun", "tailscale"}, set(),
-        "Gluetun (container VPN) and Tailscale (host VPN) both manage network "
-        "routing and cannot run together. Pick one.",
-    ),
-]
+# (required_both, required_neither, message) - an error fires if a stack
+# contains all of `required_both`, or all of `required_neither`.
+#
+# gluetun + tailscale used to live here as mutually exclusive. They're
+# not: gluetun is container-scoped (only whatever opts into
+# `network_mode: service:gluetun` - qbittorrent - routes through it, the
+# host routing table is never touched), and tailscale runs
+# `network_mode: host` for inbound mesh access to the management UIs.
+# The common split - gluetun for download egress, tailscale for admin
+# ingress - is a real, supported layout. The one interaction is
+# TS_ACCEPT_DNS, handled in the compose template (off when pihole/
+# adguardhome is also enabled so tailscale doesn't take the host
+# resolver from them).
+_SERVICE_CONFLICTS: list[tuple[set[str], set[str], str]] = []
 
 
 _SERVICE_DEPS: list[tuple[str, str, str]] = [
