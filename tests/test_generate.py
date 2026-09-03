@@ -586,12 +586,25 @@ def test_render_compose_crowdsec_creates_service_with_bouncer_middleware():
     assert "BOUNCER_KEY_TRAEFIK=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
     assert "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true" in crowdsec_block
     assert "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
+    # without a service+port the docker provider discards the whole
+    # container config and the middleware never registers (every route 404s)
+    assert "traefik.http.services.crowdsec.loadbalancer.server.port=8080" in crowdsec_block
 
     traefik_block = _service_block(output, "traefik", "crowdsec")
     assert "--accesslog=true" in traefik_block
     assert "--accesslog.filepath=/var/log/traefik/access.log" in traefik_block
     assert "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin" in traefik_block
     assert "./config/traefik/logs:/var/log/traefik" in traefik_block
+
+
+def test_vaultwarden_router_names_its_service_explicitly():
+    # two services on one container (main + -ws) -> the main router
+    # can't auto-link and the route is silently dropped without this.
+    output = render_compose(make_config(
+        "heavy", custom_services={"vaultwarden", "traefik"}, domain="media.example.com"
+    ))
+    block = _service_block(output, "vaultwarden", "recyclarr")
+    assert "traefik.http.routers.vaultwarden.service=vaultwarden" in block
 
 
 def test_render_compose_omits_crowdsec_when_disabled():
