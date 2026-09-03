@@ -1163,7 +1163,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         warnings.append(
             "Cloudflare Tunnel requires a real Tunnel token in stack/.env (TUNNEL_TOKEN) - "
             "create one at the Zero Trust dashboard's Networks > Tunnels > Create a tunnel > "
-            "Docker tab, then add a Public Hostname pointing at http://traefik:8081."
+            "Docker tab. Then add a Public Hostname: subdomain '*' (or one per service), "
+            "your domain, Service type HTTPS, URL 'traefik:8081', and under Additional "
+            "application settings > TLS turn ON 'No TLS Verify' (Traefik serves its own "
+            "self-signed cert on that entrypoint). HTTP (not HTTPS) 404s - every router "
+            "requires TLS."
         )
 
         if config.domain and "authelia" in enabled_service_keys(config):

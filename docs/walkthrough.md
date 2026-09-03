@@ -324,11 +324,15 @@ native-app login of its own, so Authelia protects all of those cleanly.
      the run command shown (just the token, not the whole command) into
      `stack/.env`'s `TUNNEL_TOKEN`.
   2. **Add a Public Hostname**, same screen: subdomain + your domain →
-     Service type `HTTP` → URL `traefik:8081` (Vulcan's internal
-     tunnel-only entrypoint - plain HTTP is correct here, Cloudflare's edge
-     already terminated public TLS by the time traffic reaches it). One
-     wildcard hostname (`*.yourdomain.com`) covers every routed service at
-     once; per-subdomain hostnames work too if you'd rather be explicit.
+     Service type `HTTPS` → URL `traefik:8081` (Vulcan's internal
+     tunnel-only entrypoint). Then expand **Additional application
+     settings → TLS** and turn **No TLS Verify** ON - Traefik serves its
+     own self-signed cert on that entrypoint and every router requires
+     TLS, so a plain `HTTP` service URL 404s. Cloudflare's edge still
+     terminates the *public* TLS; this is just the internal hop.
+     One wildcard hostname (`*.yourdomain.com`) covers every routed
+     service at once; per-subdomain hostnames work too if you'd rather be
+     explicit.
   3. **No DNS record step needed** - unlike the direct port-forward path
      above, adding a Public Hostname creates its own DNS record
      automatically.
