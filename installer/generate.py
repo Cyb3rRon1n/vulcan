@@ -1201,7 +1201,23 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         # users_database.yml below stays guarded - that one holds real
         # hashed passwords a user may have hand-added.
         configuration_path = authelia_dir / "configuration.yml"
-        configuration_path.write_text(render_authelia_configuration(config, host_ip))
+        rendered_authelia_config = render_authelia_configuration(config, host_ip)
+
+        try:
+            configuration_path.write_text(rendered_authelia_config)
+        except PermissionError:
+            # Authelia's official image runs as its own internal root and
+            # can leave config/authelia/ root-owned - don't let one
+            # un-writable file abort the whole regenerate (compose + .env
+            # are already written). Warn loudly with the fix instead.
+            if configuration_path.read_text() != rendered_authelia_config:
+                warnings.append(
+                    "Could not update stack/config/authelia/configuration.yml - it's "
+                    "root-owned (Authelia's image runs as its own root). Authelia will "
+                    "keep using the old domain/rules until you fix it: "
+                    "`sudo chown -R $(id -u):$(id -g) stack/config/authelia` then "
+                    "re-run the generate step."
+                )
 
         users_database_path = authelia_dir / "users_database.yml"
 
