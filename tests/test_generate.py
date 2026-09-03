@@ -3169,7 +3169,7 @@ def test_write_stack_creates_authelia_files_on_first_generate(tmp_path):
     assert parsed["users"]["admin"]["password"] == "$argon2id$fake$hash"
 
 
-def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
+def test_write_stack_preserves_authelia_users_and_secrets_but_regenerates_config(tmp_path):
 
     config = GenerationConfig(
         tier=TIERS["heavy"],
@@ -3191,11 +3191,11 @@ def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
     jwt_secret_path = authelia_dir / "secrets" / "JWT_SECRET"
 
     users_database_path.write_text("# hand-edited\nusers: {}\n")
-    configuration_path.write_text("# hand-edited\n")
+    configuration_path.write_text("# stale\n")
     original_secret = jwt_secret_path.read_text()
 
-    # A regenerate with no username/hash (mirrors a real second run, where
-    # the CLI/TUI skip prompting entirely once users_database.yml exists).
+    # A regenerate with a CHANGED domain - the exact case that used to
+    # leave Authelia rejecting every forward-auth request.
     second_config = GenerationConfig(
         tier=TIERS["heavy"],
         media_path=str(tmp_path / "media-root"),
@@ -3203,14 +3203,19 @@ def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
         pgid=1000,
         timezone="UTC",
         enabled_optional={"authelia", "traefik"},
-        domain="media.example.com"
+        domain="newdomain.example.com"
     )
 
     write_stack(second_config, output_dir=tmp_path / "stack")
 
+    # users + secrets: preserved (real hashed passwords live in users_database)
     assert users_database_path.read_text() == "# hand-edited\nusers: {}\n"
-    assert configuration_path.read_text() == "# hand-edited\n"
     assert jwt_secret_path.read_text() == original_secret
+    # configuration.yml: regenerated for the new domain
+    config_text = configuration_path.read_text()
+    assert "# stale" not in config_text
+    assert "newdomain.example.com" in config_text
+    assert "media.example.com" not in config_text
 
 
 def test_write_stack_warns_when_authelia_enabled_without_traefik_domain(tmp_path):
