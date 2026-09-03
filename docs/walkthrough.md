@@ -323,22 +323,31 @@ native-app login of its own, so Authelia protects all of those cleanly.
      Create a tunnel → name it → Docker environment → copy the token from
      the run command shown (just the token, not the whole command) into
      `stack/.env`'s `TUNNEL_TOKEN`.
-  2. **Add a Public Hostname**, same screen: subdomain + your domain →
-     Service type `HTTPS` → URL `traefik:8081` (Vulcan's internal
-     tunnel-only entrypoint). Then expand **Additional application
-     settings → TLS** and turn **No TLS Verify** ON - Traefik serves its
-     own self-signed cert on that entrypoint and every router requires
-     TLS, so a plain `HTTP` service URL 404s. Cloudflare's edge still
-     terminates the *public* TLS; this is just the internal hop.
-     One wildcard hostname (`*.yourdomain.com`) covers every routed
-     service at once; per-subdomain hostnames work too if you'd rather be
-     explicit.
-  3. **No DNS record step needed** - unlike the direct port-forward path
-     above, adding a Public Hostname creates its own DNS record
-     automatically.
-  4. Restart the stack (`sudo vulcan update`) once `TUNNEL_TOKEN` is filled
-     in, then `docker compose -f stack/docker-compose.yml logs cloudflared`
-     to confirm it connected.
+  2. **Add a route** (newer dashboard) / **Public Hostname** (older):
+     - **Subdomain:** `*` (one wildcard route covers every service; the
+       dashboard rejects `*` on some plans - then add one route per
+       subdomain, all pointing at the same service below).
+     - **Domain:** your domain.
+     - **Service:** `https://traefik:8081` - HTTPS, not HTTP. Traefik
+       serves a self-signed cert on that internal entrypoint and every
+       router requires TLS, so a plain `http://` URL 404s every request.
+     - Expand **Additional application settings → TLS** and turn on
+       **Disable TLS certificate verification** (older UI: "No TLS
+       Verify"). Leave "Match SNI to host" and "Use HTTP/2 to origin"
+       **off**.
+     Cloudflare's edge still terminates the *public* TLS; this is only the
+     internal hop.
+  3. **No manual DNS step** - saving the route creates its own proxied
+     CNAME. If it errors with *"a record with that host already exists"*,
+     an old A/CNAME is in the way: **DNS → Records**, delete the record at
+     that exact name (anything that isn't the tunnel's own
+     `<uuid>.cfargotunnel.com` CNAME), then save the route again.
+  4. Once `TUNNEL_TOKEN` is in `stack/.env`, apply it to the running
+     stack: `docker compose -f stack/docker-compose.yml --env-file
+     stack/.env up -d` (recreates the changed container - `vulcan update`
+     pulls *new images*, which is not what you want here). Then
+     `docker compose -f stack/docker-compose.yml logs cloudflared` should
+     show `Registered tunnel connection`.
 
   Traefik's `80`/`443` ports stay published either way - this adds a
   second, port-forward-free path to the same Traefik, it doesn't replace
@@ -348,3 +357,31 @@ Both can be enabled together - Tailscale for your own admin access
 (Homepage, Traefik's dashboard, anything you'd rather keep off the public
 internet entirely), Traefik+domain for the one or two services (Jellyfin,
 Jellyseerr) you actually want reachable by other people.
+
+**Gluetun and Tailscale can also run side by side.** Gluetun is
+container-scoped - only qBittorrent routes its traffic out through the
+VPN - while Tailscale runs on the host for inbound access. The common
+split: Gluetun for download privacy, Tailscale for reaching the
+management UIs, Jellyfin/Seerr public via the tunnel. When Pi-hole or
+AdGuard Home is also in the stack, Vulcan sets `TS_ACCEPT_DNS=false` so
+Tailscale doesn't take the host resolver away from them.
+
+## Changing settings after install
+
+`vulcan build` is re-run-safe and keeps your `stack/.env`. To change the
+domain, add/remove services, add Authelia users, etc.:
+
+```
+vulcan build --non-interactive --yes --domain newdomain.com   # (+ any other flags)
+docker compose -f stack/docker-compose.yml --env-file stack/.env up -d
+```
+
+The `build` step only rewrites `stack/` - the **`docker compose up -d`**
+is what recreates containers with the new labels/config. A `--domain`
+change also regenerates `stack/config/authelia/configuration.yml`; if
+that file ended up root-owned (Authelia's image runs as its own root),
+`build` warns and you fix it with
+`sudo chown -R $(id -u):$(id -g) stack/config/authelia` then re-run.
+After a domain change, also update the Cloudflare route's subdomain/domain
+(above) and restart `crowdsec` + `traefik` + `authelia` so their plugins
+reconnect.
