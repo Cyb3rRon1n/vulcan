@@ -1035,7 +1035,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # added capabilities - no privilege-drop or ownership-fixup step to
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
-    "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
+    "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
 }
@@ -1046,7 +1046,11 @@ ZERO_CAP_SERVICES = {
 # not researched from a blank slate.
 SPECIAL_CAP_SERVICES = {
     "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
-    "tailscale": ["NET_ADMIN", "NET_RAW"],
+    # tailscaled runs as root; under cap_drop: ALL it needs DAC_OVERRIDE
+    # to write its state store into the bind-mounted /var/lib/tailscale
+    # ("state store is unhealthy", crash-loop) - alongside NET_ADMIN/
+    # NET_RAW for the tun device. Same false-positive pattern as downtify.
+    "tailscale": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
     "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
     "pihole": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
     # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH
@@ -1073,6 +1077,10 @@ SPECIAL_CAP_SERVICES = {
     # is enough (it doesn't chown). Found on an Ubuntu homelab; the
     # earlier zero-cap claim had been tested against a managed volume.
     "downtify": ["DAC_OVERRIDE"],
+    # vaultwarden runs as root, writes its sqlite DB + rsa_key.pem into
+    # the bind-mounted /data - same DAC_OVERRIDE need as downtify, same
+    # stale "zero caps" verification (a managed volume, not a bind mount).
+    "vaultwarden": ["DAC_OVERRIDE"],
 }
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)

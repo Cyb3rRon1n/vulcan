@@ -500,12 +500,17 @@ services:
       - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image) - starts and runs cleanly with zero added capabilities, no
-    # privilege-drop or ownership-fixup step to support. See
-    # ROADMAP.md's cap_drop entry.
+    # vaultwarden runs as root and writes its sqlite DB + rsa_key.pem
+    # into the bind-mounted /data. Under cap_drop: ALL a root process
+    # loses CAP_DAC_OVERRIDE and can't write a dir it doesn't own
+    # ("Error creating private key 'data/rsa_key.pem': permission
+    # denied", crash-loop). Verified against the real image: DAC_OVERRIDE
+    # alone. Same false-positive as downtify - the old "zero caps"
+    # verification was against a managed volume, not a real bind mount.
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1137,14 +1142,18 @@ services:
     volumes:
       - ./config/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image, keeping this service's existing cap_add) - sufficient as-is,
-    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    # tailscaled runs as root and writes its state store into the
+    # bind-mounted /var/lib/tailscale; under cap_drop: ALL it loses
+    # CAP_DAC_OVERRIDE and can't ("state store is unhealthy", crash-
+    # loop). NET_ADMIN/NET_RAW are for the tun device. Verified against
+    # the real image - the earlier "sufficient as-is" check missed this
+    # because it wrote into a root-owned dir, not a real bind mount.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
+      - DAC_OVERRIDE
     network_mode: host
     security_opt:
       - no-new-privileges:true
