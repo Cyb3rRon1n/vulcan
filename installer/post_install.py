@@ -307,10 +307,21 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
             return drop
 
         try:
-            shutil.copytree(config_dir, staged_config, ignore=_ignore)
+            # symlinks=True: copy links as links, never follow them.
+            # Config dirs sprout symlinks pointing outside the tree -
+            # netdata drops `config/orig -> /usr/lib/netdata/conf.d`,
+            # seerr symlinks its logs - and following those both drags
+            # in unrelated files and made the except handler below crash
+            # (relative_to() on an out-of-tree path). A dangling link in
+            # the archive is harmless; the container recreates it.
+            shutil.copytree(config_dir, staged_config, ignore=_ignore, symlinks=True)
         except shutil.Error as error:
             for src, _dst, _why in error.args[0]:
-                skipped_junk.append(str(Path(src).resolve().relative_to(config_dir.resolve())))
+                try:
+                    rel = str(Path(src).resolve().relative_to(config_dir.resolve()))
+                except ValueError:
+                    rel = src
+                skipped_junk.append(rel)
 
         for live_path in config_dir.rglob("*"):
 
