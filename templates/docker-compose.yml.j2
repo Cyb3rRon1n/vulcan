@@ -1128,7 +1128,12 @@ services:
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_ACCEPT_DNS=true
+      # network_mode: host means TS_ACCEPT_DNS=true would rewrite the
+      # *host's* /etc/resolv.conf to Tailscale MagicDNS. Off when a local
+      # DNS server is in the stack (pihole/adguardhome) so it doesn't
+      # hijack the resolver you just set up - on otherwise, so MagicDNS
+      # name resolution across the tailnet still works out of the box.
+      - TS_ACCEPT_DNS={{ 'false' if ('pihole' in enabled or 'adguardhome' in enabled) else 'true' }}
     volumes:
       - ./config/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun

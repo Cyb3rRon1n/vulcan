@@ -7,7 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from installer.cli import _choose_raid_level, _launch_menu, _offer_storage_setup, app
+from installer.cli import (
+    _check_service_conflicts,
+    _choose_raid_level,
+    _launch_menu,
+    _offer_storage_setup,
+    app,
+)
 from installer.detect import SystemInfo
 
 
@@ -4386,3 +4392,14 @@ def test_preflight_fix_reboot_prints_message_exits_zero():
 
     assert result.exit_code == 0
     assert "reboot" in result.output.lower()
+
+
+def test_gluetun_and_tailscale_are_not_a_conflict():
+    # container-scoped download-egress VPN + host-mode admin-ingress mesh
+    assert _check_service_conflicts({"gluetun", "tailscale", "qbittorrent"}) is None
+
+
+def test_service_deps_still_enforced():
+    # cloudflared/authelia/crowdsec still require traefik
+    assert _check_service_conflicts({"cloudflared"}) is not None
+    assert _check_service_conflicts({"cloudflared", "traefik"}) is None
