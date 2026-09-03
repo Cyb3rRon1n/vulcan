@@ -1192,10 +1192,16 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         authelia_dir = output_dir / "config" / "authelia"
         generate_authelia_secrets(authelia_dir / "secrets")
 
+        # Always regenerated, like docker-compose.yml itself - it is
+        # fully derived from `config` (session cookie domain, authelia_url,
+        # the per-service access_control rules, RBAC groups). Guarding it
+        # with `if not exists()` meant a re-run that changed the domain
+        # or the service list left Authelia rejecting every forward-auth
+        # request ("no configured session cookie domain matches the url").
+        # users_database.yml below stays guarded - that one holds real
+        # hashed passwords a user may have hand-added.
         configuration_path = authelia_dir / "configuration.yml"
-
-        if not configuration_path.exists():
-            configuration_path.write_text(render_authelia_configuration(config, host_ip))
+        configuration_path.write_text(render_authelia_configuration(config, host_ip))
 
         users_database_path = authelia_dir / "users_database.yml"
 
