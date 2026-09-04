@@ -39,10 +39,10 @@ cd vulcan
 1. **Preflight** — re-check Phase 0
 2. **Detect** hardware
 3. **Recommend** a tier
-4. **Shape** — pick the tier and services (media path, optional VPN/SABnzbd/Recyclarr/Homepage, PUID/PGID/timezone)
+4. **Shape** — pick the tier and services (media path, optional extras — VPN, a Usenet client, an automated quality-profile sync, a dashboard — PUID/PGID/timezone)
 5. **Confirm** what's about to be generated
 6. **Build** (`vulcan build`) — writes `stack/docker-compose.yml` + `.env` and starts nothing; works even with Docker down
-7. **Configure** (`vulcan configure`) — prompts for the credentials the enabled services need (Gluetun VPN + WireGuard key, Cloudflare Tunnel `TUNNEL_TOKEN`, Tailscale `TS_AUTHKEY`, Pi-hole web password) and writes them into `stack/.env`
+7. **Configure** (`vulcan configure`) — prompts for the credentials whatever you enabled actually needs (a VPN key, a tunnel token, a mesh-VPN auth key, a DNS admin password — only ever asked about services you turned on) and writes them into `stack/.env`
 8. **Start** (`vulcan start`) — needs Docker; checks every needed port is free and refuses cleanly (naming the conflict), then `docker compose up -d`, then a container-stayed-up check
 9. **Report** — the real URL for every service you enabled
 
@@ -63,37 +63,37 @@ Scripted use is also supported:
 
 ## Tiers
 
-Each tier's actual services are shown before you pick — not just the name.
+Each tier's actual service list is shown before you pick — not just the name. The full, named list lives in the [Services Catalog](docs/services-catalog.md); this table is the shape, not the roster.
 
-| Tier | Target Hardware | Core Services |
+| Tier | Target Hardware | Core stack (always on) |
 |------|-----------------|---------------|
-| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | qBittorrent, Radarr, Sonarr, Prowlarr |
-| Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + Jellyseerr, Bazarr, FlareSolverr |
-| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + Uptime Kuma, Watchtower |
+| Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | a download client, two library-management apps, a shared indexer manager |
+| Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + a request front-end, subtitle management, an indexer CAPTCHA-solver |
+| Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + uptime monitoring, automatic image updates |
 
-Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube/Downtify (downloaders), Netdata/Glances (monitoring), Vaultwarden (password manager), Pi-hole/AdGuard Home (DNS ad-blocking), FileBrowser (web file manager), Portainer (container management). Heavy adds GPU transcoding (when a GPU is detected), plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale, Cloudflare Tunnel, Sportarr, and Threadfin via custom mode.
+Every tier also offers the same ~25 tier-agnostic optional extras, spanning: a VPN client (on by default), a second download-client type, automated quality-profile sync, download-queue/library cleanup, a dashboard, on-demand media downloaders, system monitoring, a password manager, DNS-level ad blocking, a file manager, and container management. Heavy adds GPU transcoding (when a GPU is detected) plus, via custom mode, more library-management apps, a reverse proxy, a login wall, intrusion protection, a private mesh VPN, a zero-forwarded-ports tunnel, and live-TV/sports automation. **Full named list, one row per service, by category: [Services Catalog](docs/services-catalog.md).**
 
 All tiers share the same directory layout and volume naming, so re-running later to move up a tier shouldn't lose data.
 
 ### Custom mode
 
-Pick exactly which services to include, from all 36 known services regardless of tier, pre-checked based on your hardware:
+Pick exactly which of the 36 known services to include, regardless of tier, pre-checked based on your hardware — service keys come from the [Services Catalog](docs/services-catalog.md):
 
 ```bash
-sudo ./install --plain --tier medium --services qbittorrent,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
+sudo ./install --plain --tier medium --services <comma-separated-service-keys> --non-interactive --yes --media-path /mnt/media
 ```
 
-Resource limits scale using whichever tier you choose — picking Homepage alongside Medium doesn't pull in Heavy-tier limits. In `--plain`, answer "y" to "Customize which services are included?" after picking a tier. In the whiptail menu, answer "Yes" to "Customize the full service list?" right after picking a tier. This is also the only path that can reach Traefik/Authelia/CrowdSec/Tailscale/Decluttarr/Maintainerr/Lidarr/Readarr, since domain-based routing only activates when an explicit service list includes `traefik`.
+Resource limits scale using whichever tier you choose, independent of which extras you add. In `--plain`, answer "y" to "Customize which services are included?" after picking a tier. In the whiptail menu, answer "Yes" to "Customize the full service list?" right after picking a tier. This is also the only path that can reach the reverse-proxy/login-wall/intrusion-protection/mesh-VPN/queue-and-library-cleanup extras and the two Heavy-only library apps, since domain-based routing only activates when an explicit service list includes the reverse proxy.
 
 ---
 
 ## Optional Integrations
 
-Beyond the core stack, custom mode (`--services` list) unlocks: Traefik (domain-based `<service>.<domain>` routing, self-signed HTTPS by default), Cloudflare DNS (real Let's Encrypt certs) and Cloudflare Tunnel (no forwarded ports at all), Tailscale (private remote access, no public exposure), Authelia (login wall for routed services), CrowdSec (blocks malicious IPs at the edge), Pi-hole/AdGuard Home (DNS-level ad blocking), Glances (per-service monitoring widgets), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
+Beyond the core stack, custom mode unlocks real infrastructure most homelab installers skip: domain-based routing with automatic HTTPS, a real-certificate path via a DNS provider, a zero-forwarded-ports tunnel, a private mesh VPN, a login wall in front of every routed service, edge-level bad-IP blocking, DNS-level ad blocking (two interchangeable options), and per-metric monitoring widgets — plus pre-seeded dashboards, queue/library automation, and on-demand downloaders.
 
-Homepage/Dashy tiles come pre-seeded with real links on first build and are never overwritten after that — customize tabs, layout, and widgets by editing plain YAML (`stack/config/homepage/`), easiest done in-browser via FileBrowser (mounted automatically when both are enabled) rather than SSH. See the [Dashboard Widgets Guide](docs/guides/homepage-widgets.md).
+Dashboard tiles come pre-seeded with real links on first build and are never overwritten after that — customize tabs, layout, and widgets by editing plain YAML, easiest done in-browser via the built-in file manager (mounted automatically alongside a dashboard) rather than SSH. See the [Dashboard Widgets Guide](docs/guides/homepage-widgets.md).
 
-Full detail, gotchas, and copy-pasteable commands for each: [Optional Integrations →](https://cyb3rron1n.github.io/vulcan/integrations/) (or [docs/integrations.md](docs/integrations.md)).
+Full detail, gotchas, and copy-pasteable commands for each: [Optional Integrations →](https://cyb3rron1n.github.io/vulcan/integrations/) (or [docs/integrations.md](docs/integrations.md)). Named list of every integration: [Services Catalog](docs/services-catalog.md).
 
 ---
 
