@@ -45,6 +45,19 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
+# Seeded once into config/homepage/widgets.yaml. `disk: /media` reads the
+# media array (mounted read-only into the homepage container); without
+# that mount the widget would report the container rootfs instead.
+_HOMEPAGE_WIDGETS = (
+    "- resources:\n"
+    "    cpu: true\n"
+    "    memory: true\n"
+    "    disk: /media\n"
+    "- search:\n"
+    "    provider: duckduckgo\n"
+    "    target: _blank\n"
+)
+
 # Every service with its own routable web UI - the single source of
 # truth both Homepage's tile groups (below) and the Traefik template's
 # per-service labels (templates/docker-compose.yml.j2) draw from,
@@ -1086,8 +1099,18 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             warnings.append(
                 "Homepage was pre-seeded with tiles for your enabled services at "
                 "stack/config/homepage/services.yaml - edit it directly to customize "
-                "further; Vulcan won't overwrite it on a later regenerate."
+                "further; Vulcan won't overwrite it on a later regenerate. Add "
+                "per-service widgets (qBittorrent speeds, *arr queues) and API keys "
+                "there; see docs/guides/homepage-widgets.md."
             )
+
+        # A minimal top-of-page widget set: real host resources (disk
+        # points at the media array via the /media:ro mount) + a search
+        # box. Seeded once, never overwritten - same as services.yaml.
+        widgets_yaml_path = output_dir / "config" / "homepage" / "widgets.yaml"
+
+        if not widgets_yaml_path.exists():
+            widgets_yaml_path.write_text(_HOMEPAGE_WIDGETS)
 
     if "dashy" in enabled_service_keys(config):
 

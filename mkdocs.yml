@@ -34,6 +34,7 @@ nav:
   - Storage Planning: storage.md
   - Maintaining a Stack: maintenance.md
   - Post-Install Walkthrough: walkthrough.md
+  - "Guide: Homepage Widgets": guides/homepage-widgets.md
   - Roadmap: roadmap.md
 
 markdown_extensions:

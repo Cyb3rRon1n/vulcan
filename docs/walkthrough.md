@@ -259,7 +259,11 @@ above are actually running.
 - **Homepage** and **Dashy** were both pre-seeded with tiles for
   everything you enabled, including a link back to this page (under
   "Guides") - Dashy is a second, more visually customizable dashboard
-  option alongside Homepage, not a replacement; enable one or both. Dashy
+  option alongside Homepage, not a replacement; enable one or both. To add
+  live per-service stats (qBittorrent speeds, *arr queue counts), the
+  top resources/network row, or Docker status dots, see
+  **[Guide: Homepage Widgets](guides/homepage-widgets.md)** - there's no
+  in-app editor, it's YAML in `stack/config/homepage/`. Dashy
   runs as a fixed container uid/gid (1000:1000, no PUID/PGID support) -
   if your own PUID/PGID differ, you may need `sudo` to edit
   `stack/config/dashy/conf.yml` directly on the host.
