@@ -1,3 +1,4 @@
+import json
 import re
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,8 @@ from installer.generate import (
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,
+    export_plan,
+    load_plan,
     load_previous_state,
     render_authelia_configuration,
     render_authelia_users_database,
@@ -2838,6 +2841,65 @@ def test_load_previous_state_unknown_tier_returns_none(tmp_path):
     (tmp_path / ".vulcan-state.json").write_text('{"tier": "ultra"}')
 
     assert load_previous_state(tmp_path) is None
+
+
+def test_export_plan_strips_warnings_and_generated_at_but_keeps_everything_else(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path="/mnt/media",
+        puid=1000,
+        pgid=1000,
+        timezone="America/New_York",
+        custom_services={"jellyfin", "traefik", "authelia"},
+        domain="media.example.com",
+    )
+
+    save_state(config, tmp_path, warnings=["some warning"])
+    state = load_previous_state(tmp_path)
+
+    plan_path = tmp_path / "plan.json"
+    export_plan(state, plan_path)
+    plan = json.loads(plan_path.read_text())
+
+    assert plan["tier"] == "heavy"
+    assert sorted(plan["custom_services"]) == ["authelia", "jellyfin", "traefik"]
+    assert plan["domain"] == "media.example.com"
+    assert plan["plan_version"] == 1
+    assert "warnings" not in plan
+    assert "generated_at" not in plan
+
+
+def test_load_plan_round_trips_and_is_a_valid_previous_state(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["medium"], media_path="/mnt/media", puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional={"homepage", "recyclarr"},
+    )
+    save_state(config, tmp_path)
+    plan_path = tmp_path / "plan.json"
+    export_plan(load_previous_state(tmp_path), plan_path)
+
+    plan = load_plan(plan_path)
+
+    assert plan["tier"] == "medium"
+    assert sorted(plan["enabled_optional"]) == ["homepage", "recyclarr"]
+    # every key _config_from_previous_state() reads is present
+    for key in ("media_path", "puid", "pgid", "timezone", "enabled_optional", "custom_services"):
+        assert key in plan
+
+
+def test_load_plan_missing_or_invalid_returns_none(tmp_path):
+
+    assert load_plan(tmp_path / "nope.json") is None
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json")
+    assert load_plan(bad) is None
+
+    unknown_tier = tmp_path / "unknown.json"
+    unknown_tier.write_text('{"tier": "ultra"}')
+    assert load_plan(unknown_tier) is None
 
 
 def test_render_env_defaults_match_original_placeholders():

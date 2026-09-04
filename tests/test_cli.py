@@ -15,6 +15,7 @@ from installer.cli import (
     app,
 )
 from installer.detect import SystemInfo
+from installer.generate import export_plan
 
 
 runner = CliRunner()
@@ -835,6 +836,96 @@ def test_build_command_generates_without_starting(tmp_path):
     assert result.exit_code == 0, result.output
     mock_write.assert_called_once()
     mock_docker.assert_not_called()
+
+
+def test_plan_export_no_stack_found_exits_1():
+
+    with patch("installer.cli.load_previous_state", return_value=None):
+        result = runner.invoke(app, ["plan", "export", "out.json"])
+
+    assert result.exit_code == 1
+    assert "No generated stack found" in result.output
+
+
+def test_plan_export_writes_shareable_file_without_warnings_or_timestamp(tmp_path):
+
+    state = {
+        "tier": "heavy", "media_path": "/mnt/media", "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": ["homepage"], "custom_services": None,
+        "warnings": ["some warning"], "generated_at": "2026-01-01T00:00:00+00:00",
+    }
+    out = tmp_path / "plan.json"
+
+    with patch("installer.cli.load_previous_state", return_value=state):
+        result = runner.invoke(app, ["plan", "export", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert out.is_file()
+
+    import json
+    plan = json.loads(out.read_text())
+    assert plan["tier"] == "heavy"
+    assert "warnings" not in plan
+    assert "generated_at" not in plan
+
+
+def test_build_from_plan_missing_file_exits_1(tmp_path):
+
+    result = runner.invoke(app, [
+        "build", "--non-interactive", "--yes", "--from-plan", str(tmp_path / "nope.json")
+    ])
+
+    assert result.exit_code == 1
+    assert "Could not read a valid plan" in result.output
+
+
+def test_build_from_plan_seeds_tier_and_services_without_explicit_flags(tmp_path):
+
+    plan_path = tmp_path / "plan.json"
+    export_plan({
+        "tier": "medium", "media_path": str(tmp_path / "media"), "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": [], "custom_services": ["jellyfin", "homepage"],
+        "gpu_vendor": None, "domain": None, "cloudflare_dns": False, "cloudflare_email": None,
+        "port_overrides": {}, "homepage_private": True, "dashy_private": True,
+    }, plan_path)
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": str(tmp_path / "media")}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write:
+
+        result = runner.invoke(app, [
+            "build", "--non-interactive", "--yes", "--from-plan", str(plan_path)
+        ])
+
+    assert result.exit_code == 0, result.output
+    config = mock_write.call_args[0][0]
+    assert config.tier.name == "medium"
+    assert config.custom_services == {"jellyfin", "homepage"}
+    assert config.media_path == str(tmp_path / "media")
+
+
+def test_build_from_plan_explicit_tier_flag_overrides_the_plan(tmp_path):
+
+    plan_path = tmp_path / "plan.json"
+    export_plan({
+        "tier": "light", "media_path": str(tmp_path / "media"), "puid": 1000, "pgid": 1000,
+        "timezone": "UTC", "enabled_optional": [], "custom_services": None,
+        "gpu_vendor": None, "domain": None, "cloudflare_dns": False, "cloudflare_email": None,
+        "port_overrides": {}, "homepage_private": True, "dashy_private": True,
+    }, plan_path)
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk",
+        return_value={"disk_free_gb": 900.0, "disk_path_checked": str(tmp_path / "media")}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write:
+
+        result = runner.invoke(app, [
+            "build", "--tier", "heavy", "--non-interactive", "--yes", "--from-plan", str(plan_path)
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert mock_write.call_args[0][0].tier.name == "heavy"
 
 
 def test_non_interactive_with_start_calls_run_docker_command(tmp_path):

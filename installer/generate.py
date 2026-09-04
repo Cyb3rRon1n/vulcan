@@ -400,6 +400,41 @@ def load_previous_state(output_dir: Path) -> dict | None:
         return None
 
 
+def export_plan(state: dict, path: Path) -> None:
+    """
+    A "plan" is the portable subset of saved state: every field
+    _gather_generation_config()/_config_from_previous_state() read to
+    rebuild a GenerationConfig, minus `warnings`/`generated_at` (purely
+    informational, not a choice). Never contains secrets - those live
+    only in stack/.env, generated separately by `vulcan configure` -
+    so a plan is safe to commit to a repo or hand to someone else.
+    """
+
+    plan = {k: v for k, v in state.items() if k not in ("warnings", "generated_at")}
+    plan["plan_version"] = 1
+    path.write_text(json.dumps(plan, indent=2))
+
+
+def load_plan(path: Path) -> dict | None:
+    """
+    Same defensive shape as load_previous_state() - a plan is meant to
+    be hand-edited or come from someone else's machine, so a missing
+    file, corrupt JSON, or unknown tier name is a clean None, not a
+    crash. Unlike load_previous_state(), a caller that was explicitly
+    given a plan path should treat None as an error to report, not
+    silently fall back to "no previous state".
+    """
+
+    try:
+
+        plan = json.loads(path.read_text())
+        assert plan["tier"] in TIERS
+        return plan
+
+    except (OSError, json.JSONDecodeError, KeyError, AssertionError):
+        return None
+
+
 def _preserved_vpn_value(output_dir: Path, key: str, default: str) -> str:
 
     try:

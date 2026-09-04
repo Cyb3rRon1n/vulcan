@@ -20,6 +20,17 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 
 `vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`. Pass `--prune-docker` to also run `docker system prune -a` afterward and reclaim disk space — this is opt-in and asked separately (its own confirmation, defaulting to No) because it affects the *whole* Docker host's stopped containers, unused networks, dangling images, and build cache, not just vulcan's own.
 
+## Sharing a stack's shape (plans)
+
+```bash
+vulcan plan export my-plan.json
+vulcan build --from-plan my-plan.json --non-interactive --yes
+```
+
+`vulcan plan export` writes the current stack's tier, enabled services, domain/routing settings, and PUID/PGID/timezone to a plain JSON file — **never credentials**, those stay in `stack/.env`, generated separately by `vulcan configure`. Safe to commit to a repo or hand to someone else.
+
+`vulcan build --from-plan <file>` uses that file exactly the way a re-run on the same machine already uses `.vulcan-state.json`: every field in the plan is a *default*, and any explicit flag on the command (`--tier`, `--media-path`, `--services`, `--domain`, …) overrides the plan's value for that one field. On a fresh machine you'll usually still pass `--media-path` — the plan's own path is just what it was on the machine it was exported from.
+
 ## Updating Vulcan itself
 
 ```bash
