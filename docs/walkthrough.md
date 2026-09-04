@@ -123,6 +123,14 @@ this stack can find anything until this step is done.
 
 Settings > Indexers > Add Indexer, for each tracker/indexer you use.
 
+**FlareSolverr**, if you enabled it, needs no setup of its own - but
+Prowlarr won't use it until you tell it to. Settings > Indexers > add an
+**Indexer Proxy** > **FlareSolverr**: Host `http://flaresolverr:8191/`,
+Request Timeout `60`, and give it a **tag** (e.g. `flaresolverr`). Then
+open each indexer that sits behind Cloudflare's challenge page and add
+that same tag - only tagged indexers route through FlareSolverr. Prowlarr
+flags most of the ones that need it.
+
 ## 4. Radarr / Sonarr / Lidarr / Readarr
 
 For each one you enabled:

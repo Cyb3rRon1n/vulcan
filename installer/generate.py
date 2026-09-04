@@ -1322,6 +1322,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "its own setup wizard on first login before it can download anything."
         )
 
+    if "flaresolverr" in enabled_service_keys(config):
+
+        warnings.append(
+            "FlareSolverr needs no setup of its own, but nothing uses it until you "
+            "wire it into Prowlarr: Settings > Indexers > add an Indexer Proxy > "
+            "FlareSolverr, Host http://flaresolverr:8191/, give it a tag, then add "
+            "that tag to each indexer that sits behind a Cloudflare challenge."
+        )
+
     if "recyclarr" in enabled_service_keys(config):
 
         warnings.append(
