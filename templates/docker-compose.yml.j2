@@ -1541,7 +1541,11 @@ services:
       # unbound (running in the same netns on :5335, see the unbound
       # service + config/pihole/unbound/99-pihole-port.conf).
       - FTLCONF_dns_upstreams=127.0.0.1#5335
-      - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
+      # pihole v6 sets the web/API password from FTLCONF_webserver_api_password.
+      # The v5 name (WEBPASSWORD) is silently ignored by the v6 image - it
+      # boots with a random password instead, so the Homepage pihole widget
+      # (and a hand login) fail auth. Verified live against pihole/pihole:latest.
+      - FTLCONF_webserver_api_password=${PIHOLE_WEBPASSWORD}
       # Run pihole-FTL as root so it doesn't need to setcap itself at
       # start - no-new-privileges:true blocks that, and the image's own
       # error message names this exact env var as the fix.
