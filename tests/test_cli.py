@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from installer.cli import _choose_raid_level, _launch_menu, _offer_storage_setup, app
@@ -11,6 +12,19 @@ from installer.detect import SystemInfo
 
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_container_lookup():
+    """Several CLI paths (`detect`, `update`, `uninstall`) call
+    stack_containers_exist(STACK_DIR.name), which shells out to a real
+    `docker ps` filtered by compose-project label. On a machine actually
+    running a Vulcan stack (project name "stack", the default) that
+    returns True and flips STACK_EXISTS / re-run detection under the
+    tests' feet. Default it to False; the few tests that exercise the
+    orphaned-container path patch it themselves."""
+    with patch("installer.cli.stack_containers_exist", return_value=False):
+        yield
 
 
 def make_system_info(**overrides) -> SystemInfo:
