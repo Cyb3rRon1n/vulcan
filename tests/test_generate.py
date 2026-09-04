@@ -20,6 +20,7 @@ from installer.generate import (
     render_env,
     render_dashy_config,
     render_homepage_services,
+    render_homepage_widgets,
     render_setup_order,
     render_stack_summary,
     resolve_ports,
@@ -485,6 +486,16 @@ def test_render_compose_filebrowser_routes_on_its_service_key():
     assert "traefik.http.services.filebrowser.loadbalancer.server.port=80" in output
 
 
+def test_render_compose_filebrowser_exposes_homepage_config_only_when_both_enabled():
+    with_homepage = render_compose(make_config("light", custom_services={"filebrowser", "homepage"}))
+    assert "./config/homepage:/srv/homepage-config" in with_homepage
+    # never all of ./config (Authelia secrets, VPN keys live there)
+    assert "./config:/srv" not in with_homepage
+
+    without = render_compose(make_config("light", custom_services={"filebrowser"}))
+    assert "homepage-config" not in without
+
+
 def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
 
     output = render_compose(
@@ -820,6 +831,38 @@ def test_render_compose_netdata_never_gets_traefik_labels():
     assert "traefik.http.routers.netdata" not in output
 
 
+def test_render_compose_glances_web_mode_minimal_caps_and_docker_socket():
+    output = render_compose(make_config("light", enabled_optional={"glances"}))
+    block = _service_block(output, "glances", "homepage")
+
+    assert "nicolargo/glances" in block
+    assert "GLANCES_OPT=-w" in block
+    assert "pid: host" in block
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in block
+    assert "61208" in block
+    data = yaml.safe_load(output)
+    assert data["services"]["glances"]["cap_drop"] == ["ALL"]
+    assert data["services"]["glances"]["cap_add"] == ["DAC_READ_SEARCH", "SYS_PTRACE"]
+
+
+def test_render_compose_glances_routes_through_traefik_when_domain_set():
+    """Unlike netdata (host networking), glances has a normal ports:
+    mapping and Docker-network identity, so it routes like any other
+    service - and picks up the Authelia/CrowdSec middleware that gates
+    every routed service, which is what you want in front of raw host
+    metrics."""
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"glances", "traefik", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    assert "traefik.http.routers.glances.rule=Host(`glances.media.example.com`)" in output
+    assert "traefik.http.routers.glances.middlewares=" in output
+
+
 def test_render_compose_homepage_private_omits_traefik_labels():
 
     output = render_compose(
@@ -1095,6 +1138,13 @@ SPECIAL_CAP_SERVICES = {
         "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID",
         "SYS_PTRACE", "SYS_ADMIN",
     ],
+    # glances -w runs as root and does no privilege drop / ownership fixup
+    # (nothing bind-mounted but the read-only docker socket), so it starts
+    # clean with zero caps - except per-process I/O attribution for
+    # non-root processes reads /proc/<pid>/io (0400) and is silently
+    # zeroed under cap_drop: ALL. DAC_READ_SEARCH + SYS_PTRACE restore it,
+    # same two caps netdata needed for the same reason. Verified live.
+    "glances": ["DAC_READ_SEARCH", "SYS_PTRACE"],
     # AdGuard Home's binary carries file-based cap_net_bind_service/cap_net_raw
     # (dropped ALL blocks the exec), and its first-run data-dir setup needs
     # DAC_OVERRIDE once ALL is dropped - all three verified live against the
@@ -1159,7 +1209,7 @@ def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
 
 def test_every_service_has_cap_drop_all():
     """
-    Regression lock, all 35 services: this pass covers every service known
+    Regression lock, all 36 services: this pass covers every service known
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
@@ -2290,10 +2340,43 @@ def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
     # widgets.yaml is seeded too, disk widget pointed at the /media mount
     widgets_yaml_path = tmp_path / "stack" / "config" / "homepage" / "widgets.yaml"
     assert widgets_yaml_path.is_file()
-    assert "disk: /media" in widgets_yaml_path.read_text()
+    text = widgets_yaml_path.read_text()
+    assert "disk: /media" in text
+    # heavy config has radarr+sonarr but no glances -> calendar, no glances block
+    assert yaml.safe_load(text)  # valid YAML
+    assert "- calendar:" in text
+    assert "service_name: Radarr" in text
+    assert "glances:" not in text
     # and the homepage container gets the read-only media mount
     compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
     assert "${MEDIA_PATH}:/media:ro" in compose
+
+
+def test_render_homepage_widgets_base_is_valid_yaml_without_optional_blocks():
+    text = render_homepage_widgets(make_config("light", enabled_optional=set(), custom_services=set()))
+
+    assert yaml.safe_load(text)
+    assert "disk: /media" in text
+    assert "glances:" not in text
+    assert "- calendar:" not in text
+
+
+def test_render_homepage_widgets_adds_glances_blocks_only_when_glances_enabled():
+    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "glances"}))
+
+    assert yaml.safe_load(text)
+    assert "url: http://glances:61208" in text
+    assert "metric: info" in text
+    assert "metric: process" in text
+
+
+def test_render_homepage_widgets_calendar_lists_only_enabled_arrs():
+    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "radarr"}))
+    data = yaml.safe_load(text)
+
+    calendar = next(block["calendar"] for block in data if "calendar" in block)
+    types = {integration["type"] for integration in calendar["integrations"]}
+    assert types == {"radarr"}
 
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):

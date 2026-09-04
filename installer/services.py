@@ -34,6 +34,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "metube": "standard",
     "downtify": "standard",
     "netdata": "light",
+    "glances": "light",
     "vaultwarden": "light",
     # Confirmed live: ~47MB idle via `docker stats` against a real
     # started container - genuinely light, same bucket as Homepage.

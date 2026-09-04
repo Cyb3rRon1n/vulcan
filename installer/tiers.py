@@ -47,6 +47,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("metube", "MeTube", optional=True, category="Downloaders"),
     ServiceDefinition("downtify", "Downtify", optional=True, category="Downloaders"),
     ServiceDefinition("netdata", "Netdata", optional=True, category="Monitoring"),
+    ServiceDefinition("glances", "Glances (system monitor + Homepage widgets)", optional=True, category="Monitoring"),
     ServiceDefinition("vaultwarden", "Vaultwarden", optional=True, category="Security"),
     ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True, category="Infrastructure"),
     ServiceDefinition("portainer", "Portainer", optional=True, category="Utilities"),

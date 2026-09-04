@@ -1525,8 +1525,10 @@ _guided_setup_customize_services() {
         "uptime-kuma:Uptime Kuma (monitoring):Monitoring"
         "tracearr:Tracearr (stream analytics):Monitoring"
         "netdata:Netdata (system monitoring):Monitoring"
+        "glances:Glances (system monitor + Homepage widgets):Monitoring"
         "gluetun:Gluetun (VPN):Infrastructure"
         "pihole:Pi-hole + Unbound (DNS ad-blocker):Infrastructure"
+        "adguardhome:AdGuard Home (DNS ad-blocker):Infrastructure"
         "traefik:Traefik (reverse proxy):Infrastructure"
         "cloudflared:Cloudflare Tunnel:Infrastructure"
         "tailscale:Tailscale (private remote access):Infrastructure"
@@ -1537,6 +1539,7 @@ _guided_setup_customize_services() {
         "dashy:Dashy dashboard:Dashboards"
         "watchtower:Watchtower (auto-updates):Utilities"
         "filebrowser:FileBrowser (file manager):Utilities"
+        "portainer:Portainer (container management):Utilities"
         "threadfin:Threadfin (IPTV proxy):Live TV"
     )
 
