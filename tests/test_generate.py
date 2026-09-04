@@ -472,6 +472,17 @@ def test_render_compose_qbittorrent_routed_when_gluetun_disabled():
     assert "traefik.http.services.qbittorrent.loadbalancer.server.port=8080" in qbittorrent_block
 
 
+def test_render_compose_filebrowser_routes_on_its_service_key():
+    # was Host(`files.<domain>`) - the only service whose route didn't
+    # match its key, so the homepage tile / `vulcan urls`
+    # (filebrowser.<domain>) 404'd.
+    output = render_compose(
+        make_config("heavy", custom_services={"filebrowser", "traefik"}, domain="media.example.com")
+    )
+    assert "traefik.http.routers.filebrowser.rule=Host(`filebrowser.media.example.com`)" in output
+    assert "files.media.example.com" not in output
+
+
 def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
 
     output = render_compose(

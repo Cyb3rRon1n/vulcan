@@ -1412,7 +1412,7 @@ services:
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.filebrowser.rule=Host(`files.{{ domain }}`)"
+      - "traefik.http.routers.filebrowser.rule=Host(`filebrowser.{{ domain }}`)"
       - "traefik.http.routers.filebrowser.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.filebrowser.tls=true"
 {% if cloudflare_dns %}
