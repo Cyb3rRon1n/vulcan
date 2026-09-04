@@ -434,12 +434,20 @@ services:
       - "traefik.http.routers.downtify.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
 {% endif %}
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image) - starts and runs cleanly with zero added capabilities, no
-    # privilege-drop or ownership-fixup step to support. See
-    # ROADMAP.md's cap_drop entry.
+    # downtify runs its FastAPI app as root and, with no PUID/PGID
+    # support, writes its sqlite DB straight into the bind-mounted
+    # /data (and downloads into /downloads). Under cap_drop: ALL a
+    # root process loses CAP_DAC_OVERRIDE too, so it can't write to a
+    # host dir it doesn't own - "sqlite3.OperationalError: unable to
+    # open database file", crash-loop. Verified against the real image:
+    # DAC_OVERRIDE alone is enough (it doesn't chown, so CHOWN/FOWNER
+    # aren't needed). The earlier "zero added capabilities" claim here
+    # was tested against a root-owned/managed volume, not a real
+    # non-root bind mount - found live on an Ubuntu homelab.
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -472,6 +480,10 @@ services:
       - "traefik.http.routers.vaultwarden.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+      # explicit - this container defines two services (main + -ws), so
+      # the main router can't be linked automatically ("cannot be linked
+      # ... with multiple Services"), which silently drops the route.
+      - "traefik.http.routers.vaultwarden.service=vaultwarden"
       - "traefik.http.routers.vaultwarden-ws.rule=Host(`vaultwarden.{{ domain }}`) && Path(`/notifications/hub`)"
       - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.vaultwarden-ws.tls=true"
@@ -492,12 +504,17 @@ services:
       - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image) - starts and runs cleanly with zero added capabilities, no
-    # privilege-drop or ownership-fixup step to support. See
-    # ROADMAP.md's cap_drop entry.
+    # vaultwarden runs as root and writes its sqlite DB + rsa_key.pem
+    # into the bind-mounted /data. Under cap_drop: ALL a root process
+    # loses CAP_DAC_OVERRIDE and can't write a dir it doesn't own
+    # ("Error creating private key 'data/rsa_key.pem': permission
+    # denied", crash-loop). Verified against the real image: DAC_OVERRIDE
+    # alone. Same false-positive as downtify - the old "zero caps"
+    # verification was against a managed volume, not a real bind mount.
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1032,7 +1049,16 @@ services:
    block, same precedent as Authelia's forwardAuth middleware labels
    above - Traefik's Docker provider reads labels from any container
    with traefik.enable=true, not just ones that also carry a router of
-   their own, and crowdsec has no router/web UI to route to. #}
+   their own, and crowdsec has no router/web UI to route to.
+
+   The catch (found live): the docker provider still tries to build a
+   *service* for every traefik.enable=true container, and with no
+   router and no port it fails ("service ... error: port is missing")
+   and DISCARDS the whole container's config - including this middleware
+   - so every routed service then 404s on "middleware crowdsec@docker
+   does not exist". Pointing a (never-routed) service at crowdsec's real
+   LAPI port satisfies the provider and lets the middleware register. #}
+      - "traefik.http.services.crowdsec.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecmode=stream"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}"
@@ -1120,18 +1146,31 @@ services:
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_ACCEPT_DNS=true
+      # network_mode: host means TS_ACCEPT_DNS=true would rewrite the
+      # *host's* /etc/resolv.conf to Tailscale MagicDNS. Off when a local
+      # DNS server is in the stack (pihole/adguardhome) so it doesn't
+      # hijack the resolver you just set up - on otherwise, so MagicDNS
+      # name resolution across the tailnet still works out of the box.
+      - TS_ACCEPT_DNS={{ 'false' if ('pihole' in enabled or 'adguardhome' in enabled) else 'true' }}
     volumes:
       - ./config/tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-    # Verified empirically (docker run --cap-drop=ALL against the real
-    # image, keeping this service's existing cap_add) - sufficient as-is,
-    # no wider capability need found. See ROADMAP.md's cap_drop entry.
+    # tailscaled runs as root and manages its state store in the
+    # bind-mounted /var/lib/tailscale: it writes files (needs
+    # DAC_OVERRIDE - the dir is owned by PUID, not root) and `chmod 0700`s
+    # the dir itself (needs FOWNER - chmod on a file you don't own).
+    # Under cap_drop: ALL, without both: "state store failed to
+    # initialize ... chmod /var/lib/tailscale: operation not permitted",
+    # crash-loop. NET_ADMIN/NET_RAW are for the tun device. The earlier
+    # "sufficient as-is" check wrote into a root-owned dir, not a real
+    # non-root bind mount.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
+      - DAC_OVERRIDE
+      - FOWNER
     network_mode: host
     security_opt:
       - no-new-privileges:true
@@ -1199,6 +1238,56 @@ services:
           memory: "{{ limits.netdata.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'glances' in enabled %}
+  glances:
+    image: nicolargo/glances:latest
+    container_name: glances
+    pid: host
+    environment:
+      - GLANCES_OPT=-w
+      - TZ=${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "{{ ports['glances'] }}:61208"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glances.rule=Host(`glances.{{ domain }}`)"
+      - "traefik.http.routers.glances.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.glances.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.glances.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.glances.loadbalancer.server.port=61208"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.glances.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # nicolargo/glances:latest): the -w web server and REST API start
+    # clean with zero added capabilities (glances runs as root
+    # in-container, so it does no root -> PUID drop and no ownership
+    # fixup - nothing to bind-mount but the read-only docker socket). The
+    # one gap under cap_drop: ALL is per-process I/O attribution for
+    # processes NOT owned by root: reading /proc/<pid>/io (mode 0400)
+    # is denied and the widget silently shows zeros. DAC_READ_SEARCH
+    # restores it and SYS_PTRACE fills in the rest of the per-process
+    # detail - the same two caps netdata needed for the same reason.
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+      - SYS_PTRACE
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.glances.cpus }}"
+          memory: "{{ limits.glances.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'homepage' in enabled %}
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
@@ -1207,6 +1296,10 @@ services:
       - HOMEPAGE_ALLOWED_HOSTS={{ homepage_allowed_hosts }}
     volumes:
       - ./config/homepage:/app/config
+      # read-only so the resources widget can report real media-array
+      # free space (the widget reads a path *inside* the container - with
+      # only /app/config mounted it falls back to the container rootfs)
+      - ${MEDIA_PATH}:/media:ro
     ports:
       - "{{ ports['homepage'] }}:3000"
 {% if 'traefik' in enabled and domain and not homepage_private %}
@@ -1364,18 +1457,26 @@ services:
     volumes:
       - ./config/filebrowser:/config
       - ${MEDIA_PATH}:/srv
+{% if 'homepage' in enabled %}
+      # Homepage is YAML-only with no in-app editor - exposing just its
+      # config dir (NOT all of ./config, which holds Authelia secrets and
+      # VPN keys) gives a browser text editor for services.yaml /
+      # widgets.yaml / settings.yaml. Homepage hot-reloads on save.
+      - ./config/homepage:/srv/homepage-config
+{% endif %}
     ports:
-      - "{{ ports['filebrowser'] }}:8080"
+      # gtstef/filebrowser (Quantum) serves on :80, not the classic :8080
+      - "{{ ports['filebrowser'] }}:80"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.filebrowser.rule=Host(`files.{{ domain }}`)"
+      - "traefik.http.routers.filebrowser.rule=Host(`filebrowser.{{ domain }}`)"
       - "traefik.http.routers.filebrowser.entrypoints=websecure{{ tunnel_entrypoints }}"
       - "traefik.http.routers.filebrowser.tls=true"
 {% if cloudflare_dns %}
       - "traefik.http.routers.filebrowser.tls.certresolver=cloudflare"
 {% endif %}
-      - "traefik.http.services.filebrowser.loadbalancer.server.port=8080"
+      - "traefik.http.services.filebrowser.loadbalancer.server.port=80"
 {% if 'crowdsec' in enabled or 'authelia' in enabled %}
       - "traefik.http.routers.filebrowser.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}
@@ -1434,10 +1535,17 @@ services:
       - unbound
     environment:
       - TZ=${TZ}
-      - PIHOLE_DNS_=127.0.0.1#5335
-      - FTLCONF_dns_upstreams=
-      - PIHOLE_DNS=127.0.0.1#5335
-      - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
+      # pihole v6 reads upstreams from FTLCONF_dns_upstreams. This was
+      # shipped as an empty string, which pihole took literally - "no
+      # upstream servers configured", every lookup SERVFAIL. Point it at
+      # unbound (running in the same netns on :5335, see the unbound
+      # service + config/pihole/unbound/99-pihole-port.conf).
+      - FTLCONF_dns_upstreams=127.0.0.1#5335
+      # pihole v6 sets the web/API password from FTLCONF_webserver_api_password.
+      # The v5 name (WEBPASSWORD) is silently ignored by the v6 image - it
+      # boots with a random password instead, so the Homepage pihole widget
+      # (and a hand login) fail auth. Verified live against pihole/pihole:latest.
+      - FTLCONF_webserver_api_password=${PIHOLE_WEBPASSWORD}
       # Run pihole-FTL as root so it doesn't need to setcap itself at
       # start - no-new-privileges:true blocks that, and the image's own
       # error message names this exact env var as the fix.
@@ -1472,7 +1580,11 @@ services:
     environment:
       - TZ=${TZ}
     volumes:
-      - ./config/tracearr:/app/data
+      # the :supervised image bundles its own postgres/redis and declares
+      # VOLUMEs at /data/{postgres,redis,tracearr,backup} - it checks
+      # /data is a real bind mount on start ("incorrect volume mounts
+      # detected") and wants GeoLite2 dbs in /data/tracearr/. Not /app/data.
+      - ./config/tracearr:/data
     ports:
       - "{{ ports['tracearr'] }}:3000"
 {% if 'jellyfin' in enabled %}

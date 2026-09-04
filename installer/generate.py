@@ -45,6 +45,40 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
+def render_homepage_widgets(config: "GenerationConfig") -> str:
+    """
+    Seeded once into config/homepage/widgets.yaml (Homepage's top info
+    row), never overwritten. These are Homepage "info widgets" only:
+
+    - `resources` reads a path INSIDE the homepage container (`/media` is
+      the array, mounted :ro - without that mount it reports the container
+      rootfs), so it's real array free space.
+    - the `glances` info widget (when Glances is in the stack) adds a
+      CPU/RAM/temp/uptime view. It has NO `metric:` field - that belongs
+      to the glances *service* widget (services.yaml), which is
+      per-metric. Likewise `calendar` is a service widget, not an info
+      widget - putting either here just renders a "Missing ..." error.
+
+    Adding per-service widgets and the release calendar is a
+    fill-in-your-API-keys step the operator does by hand - see
+    docs/guides/homepage-widgets.md (easiest via FileBrowser).
+    """
+
+    if "glances" in enabled_service_keys(config):
+        blocks = [
+            "- resources:\n    label: Array\n    disk: /media\n    cpu: false\n    memory: false\n",
+            "- glances:\n    label: Host\n    url: http://glances:61208\n    version: 4\n"
+            "    cpu: true\n    mem: true\n    cputemp: true\n    uptime: true\n    expanded: true\n",
+        ]
+    else:
+        blocks = [
+            "- resources:\n    label: System\n    cpu: true\n    memory: true\n    disk: /media\n    uptime: true\n",
+        ]
+
+    blocks.append("- search:\n    provider: duckduckgo\n    target: _blank\n")
+
+    return "".join(blocks)
+
 # Every service with its own routable web UI - the single source of
 # truth both Homepage's tile groups (below) and the Traefik template's
 # per-service labels (templates/docker-compose.yml.j2) draw from,
@@ -67,7 +101,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
-    "adguardhome",
+    "adguardhome", "glances",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -91,7 +125,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Live TV": ["threadfin"],
-    "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
+    "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances"],
     "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
 }
@@ -126,6 +160,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "decluttarr": 9899,
     "flaresolverr": 8191,
     "netdata": 19999,
+    "glances": 61208,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -162,6 +197,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "metube": "Download videos from YouTube, Facebook, and hundreds of other sites straight into your library",
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
+    "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
@@ -359,6 +395,41 @@ def load_previous_state(output_dir: Path) -> dict | None:
         state = json.loads((output_dir / STATE_FILENAME).read_text())
         assert state["tier"] in TIERS
         return state
+
+    except (OSError, json.JSONDecodeError, KeyError, AssertionError):
+        return None
+
+
+def export_plan(state: dict, path: Path) -> None:
+    """
+    A "plan" is the portable subset of saved state: every field
+    _gather_generation_config()/_config_from_previous_state() read to
+    rebuild a GenerationConfig, minus `warnings`/`generated_at` (purely
+    informational, not a choice). Never contains secrets - those live
+    only in stack/.env, generated separately by `vulcan configure` -
+    so a plan is safe to commit to a repo or hand to someone else.
+    """
+
+    plan = {k: v for k, v in state.items() if k not in ("warnings", "generated_at")}
+    plan["plan_version"] = 1
+    path.write_text(json.dumps(plan, indent=2))
+
+
+def load_plan(path: Path) -> dict | None:
+    """
+    Same defensive shape as load_previous_state() - a plan is meant to
+    be hand-edited or come from someone else's machine, so a missing
+    file, corrupt JSON, or unknown tier name is a clean None, not a
+    crash. Unlike load_previous_state(), a caller that was explicitly
+    given a plan path should treat None as an error to report, not
+    silently fall back to "no previous state".
+    """
+
+    try:
+
+        plan = json.loads(path.read_text())
+        assert plan["tier"] in TIERS
+        return plan
 
     except (OSError, json.JSONDecodeError, KeyError, AssertionError):
         return None
@@ -876,8 +947,10 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
 
         dl_list = ", ".join(display_names[key] for key in download_clients)
         steps.append(
-            f"{dl_list}: set a real login (not the image's default) and connect it to each "
-            "*arr app above (Settings > Download Clients)."
+            f"{dl_list}: set a real login (not the image's default), set the save/complete "
+            "path to /data/downloads (the image default /downloads isn't mounted, so the "
+            "*arr apps can't follow finished downloads), then connect it to each *arr app "
+            "above (Settings > Download Clients)."
         )
 
     if "gluetun" in enabled:
@@ -941,13 +1014,13 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
         )
 
     dashboards = [
-        key for key in ("homepage", "dashy", "uptime-kuma", "netdata", "traefik") if key in enabled
+        key for key in ("homepage", "dashy", "uptime-kuma", "netdata", "glances", "traefik") if key in enabled
     ]
 
     if dashboards:
 
         steps.append(
-            "Homepage/Dashy/Uptime Kuma/Netdata/Traefik dashboard: check these last - they "
+            "Homepage/Dashy/Uptime Kuma/Netdata/Glances/Traefik dashboard: check these last - they "
             "only have something to show once the services above are actually running."
         )
 
@@ -1027,7 +1100,23 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         (output_dir / "config" / key).mkdir(parents=True, exist_ok=True)
 
     if "pihole" in enabled_service_keys(config):
-        (output_dir / "config" / "pihole" / "unbound").mkdir(parents=True, exist_ok=True)
+
+        unbound_dir = output_dir / "config" / "pihole" / "unbound"
+        unbound_dir.mkdir(parents=True, exist_ok=True)
+
+        # klutchell/unbound listens on :53 out of the box. pihole runs in
+        # unbound's network namespace (network_mode: service:unbound) and
+        # pihole-FTL also wants :53 - so without this, FTL fails to bind
+        # ("failed to create listening socket for port 53: Address in
+        # use") and DNS is dead. The compose env already points pihole's
+        # upstream at 127.0.0.1#5335; this is the other half. The image's
+        # own unbound.conf `include`s custom.conf.d/*.conf, and `port:`
+        # is last-wins, so this file alone moves it. Written once - a
+        # hand-edited override survives a regenerate.
+        unbound_conf = unbound_dir / "99-pihole-port.conf"
+
+        if not unbound_conf.exists():
+            unbound_conf.write_text("server:\n    port: 5335\n")
 
     if config.cloudflare_dns and "traefik" in enabled_service_keys(config):
 
@@ -1070,8 +1159,18 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             warnings.append(
                 "Homepage was pre-seeded with tiles for your enabled services at "
                 "stack/config/homepage/services.yaml - edit it directly to customize "
-                "further; Vulcan won't overwrite it on a later regenerate."
+                "further; Vulcan won't overwrite it on a later regenerate. Add "
+                "per-service widgets (qBittorrent speeds, *arr queues) and API keys "
+                "there; see docs/guides/homepage-widgets.md."
             )
+
+        # A minimal top-of-page widget set: real host resources (disk
+        # points at the media array via the /media:ro mount) + a search
+        # box. Seeded once, never overwritten - same as services.yaml.
+        widgets_yaml_path = output_dir / "config" / "homepage" / "widgets.yaml"
+
+        if not widgets_yaml_path.exists():
+            widgets_yaml_path.write_text(render_homepage_widgets(config))
 
     if "dashy" in enabled_service_keys(config):
 
@@ -1147,7 +1246,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         warnings.append(
             "Cloudflare Tunnel requires a real Tunnel token in stack/.env (TUNNEL_TOKEN) - "
             "create one at the Zero Trust dashboard's Networks > Tunnels > Create a tunnel > "
-            "Docker tab, then add a Public Hostname pointing at http://traefik:8081."
+            "Docker tab. Then add a Public Hostname: subdomain '*' (or one per service), "
+            "your domain, Service type HTTPS, URL 'traefik:8081', and under Additional "
+            "application settings > TLS turn ON 'No TLS Verify' (Traefik serves its own "
+            "self-signed cert on that entrypoint). HTTP (not HTTPS) 404s - every router "
+            "requires TLS."
         )
 
         if config.domain and "authelia" in enabled_service_keys(config):
@@ -1176,10 +1279,32 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         authelia_dir = output_dir / "config" / "authelia"
         generate_authelia_secrets(authelia_dir / "secrets")
 
+        # Always regenerated, like docker-compose.yml itself - it is
+        # fully derived from `config` (session cookie domain, authelia_url,
+        # the per-service access_control rules, RBAC groups). Guarding it
+        # with `if not exists()` meant a re-run that changed the domain
+        # or the service list left Authelia rejecting every forward-auth
+        # request ("no configured session cookie domain matches the url").
+        # users_database.yml below stays guarded - that one holds real
+        # hashed passwords a user may have hand-added.
         configuration_path = authelia_dir / "configuration.yml"
+        rendered_authelia_config = render_authelia_configuration(config, host_ip)
 
-        if not configuration_path.exists():
-            configuration_path.write_text(render_authelia_configuration(config, host_ip))
+        try:
+            configuration_path.write_text(rendered_authelia_config)
+        except PermissionError:
+            # Authelia's official image runs as its own internal root and
+            # can leave config/authelia/ root-owned - don't let one
+            # un-writable file abort the whole regenerate (compose + .env
+            # are already written). Warn loudly with the fix instead.
+            if configuration_path.read_text() != rendered_authelia_config:
+                warnings.append(
+                    "Could not update stack/config/authelia/configuration.yml - it's "
+                    "root-owned (Authelia's image runs as its own root). Authelia will "
+                    "keep using the old domain/rules until you fix it: "
+                    "`sudo chown -R $(id -u):$(id -g) stack/config/authelia` then "
+                    "re-run the generate step."
+                )
 
         users_database_path = authelia_dir / "users_database.yml"
 
@@ -1254,7 +1379,18 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
         warnings.append(
             "SABnzbd needs your Usenet provider's server details entered through "
-            "its own setup wizard on first login before it can download anything."
+            "its own setup wizard on first login before it can download anything. "
+            "Set its complete folder to /data/downloads (Config > Folders) so the "
+            "*arr apps can follow finished downloads."
+        )
+
+    if "flaresolverr" in enabled_service_keys(config):
+
+        warnings.append(
+            "FlareSolverr needs no setup of its own, but nothing uses it until you "
+            "wire it into Prowlarr: Settings > Indexers > add an Indexer Proxy > "
+            "FlareSolverr, Host http://flaresolverr:8191/, give it a tag, then add "
+            "that tag to each indexer that sits behind a Cloudflare challenge."
         )
 
     if "recyclarr" in enabled_service_keys(config):

@@ -30,10 +30,12 @@ nav:
   - Home: index.md
   - Getting Started: getting-started/index.md
   - Tiers & Custom Mode: tiers.md
+  - Services Catalog: services-catalog.md
   - Optional Integrations: integrations.md
   - Storage Planning: storage.md
   - Maintaining a Stack: maintenance.md
   - Post-Install Walkthrough: walkthrough.md
+  - "Guide: Homepage Widgets": guides/homepage-widgets.md
   - Roadmap: roadmap.md
 
 markdown_extensions:

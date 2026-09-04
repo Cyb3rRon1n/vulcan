@@ -1,3 +1,4 @@
+import json
 import re
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,8 @@ from installer.generate import (
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,
+    export_plan,
+    load_plan,
     load_previous_state,
     render_authelia_configuration,
     render_authelia_users_database,
@@ -20,6 +23,7 @@ from installer.generate import (
     render_env,
     render_dashy_config,
     render_homepage_services,
+    render_homepage_widgets,
     render_setup_order,
     render_stack_summary,
     resolve_ports,
@@ -472,6 +476,29 @@ def test_render_compose_qbittorrent_routed_when_gluetun_disabled():
     assert "traefik.http.services.qbittorrent.loadbalancer.server.port=8080" in qbittorrent_block
 
 
+def test_render_compose_filebrowser_routes_on_its_service_key():
+    # was Host(`files.<domain>`) - the only service whose route didn't
+    # match its key, so the homepage tile / `vulcan urls`
+    # (filebrowser.<domain>) 404'd.
+    output = render_compose(
+        make_config("heavy", custom_services={"filebrowser", "traefik"}, domain="media.example.com")
+    )
+    assert "traefik.http.routers.filebrowser.rule=Host(`filebrowser.media.example.com`)" in output
+    assert "files.media.example.com" not in output
+    # gtstef/filebrowser serves on :80, not :8080
+    assert "traefik.http.services.filebrowser.loadbalancer.server.port=80" in output
+
+
+def test_render_compose_filebrowser_exposes_homepage_config_only_when_both_enabled():
+    with_homepage = render_compose(make_config("light", custom_services={"filebrowser", "homepage"}))
+    assert "./config/homepage:/srv/homepage-config" in with_homepage
+    # never all of ./config (Authelia secrets, VPN keys live there)
+    assert "./config:/srv" not in with_homepage
+
+    without = render_compose(make_config("light", custom_services={"filebrowser"}))
+    assert "homepage-config" not in without
+
+
 def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
 
     output = render_compose(
@@ -586,12 +613,25 @@ def test_render_compose_crowdsec_creates_service_with_bouncer_middleware():
     assert "BOUNCER_KEY_TRAEFIK=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
     assert "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true" in crowdsec_block
     assert "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}" in crowdsec_block
+    # without a service+port the docker provider discards the whole
+    # container config and the middleware never registers (every route 404s)
+    assert "traefik.http.services.crowdsec.loadbalancer.server.port=8080" in crowdsec_block
 
     traefik_block = _service_block(output, "traefik", "crowdsec")
     assert "--accesslog=true" in traefik_block
     assert "--accesslog.filepath=/var/log/traefik/access.log" in traefik_block
     assert "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin" in traefik_block
     assert "./config/traefik/logs:/var/log/traefik" in traefik_block
+
+
+def test_vaultwarden_router_names_its_service_explicitly():
+    # two services on one container (main + -ws) -> the main router
+    # can't auto-link and the route is silently dropped without this.
+    output = render_compose(make_config(
+        "heavy", custom_services={"vaultwarden", "traefik"}, domain="media.example.com"
+    ))
+    block = _service_block(output, "vaultwarden", "recyclarr")
+    assert "traefik.http.routers.vaultwarden.service=vaultwarden" in block
 
 
 def test_render_compose_omits_crowdsec_when_disabled():
@@ -663,6 +703,14 @@ def test_render_compose_jellyfin_gets_crowdsec_middleware_despite_authelia_exclu
     assert "authelia@docker" not in jellyfin_block
 
 
+def test_render_compose_tracearr_binds_data_not_app_data():
+    # the :supervised image declares VOLUMEs at /data/* and refuses to
+    # start without /data bind-mounted ("incorrect volume mounts detected")
+    output = render_compose(make_config("heavy", custom_services={"tracearr", "jellyfin"}))
+    assert "./config/tracearr:/data" in output
+    assert "./config/tracearr:/app/data" not in output
+
+
 def test_render_compose_tailscale_uses_host_networking():
 
     output = render_compose(make_config("heavy", enabled_optional={"tailscale"}))
@@ -674,6 +722,27 @@ def test_render_compose_tailscale_uses_host_networking():
     assert "/dev/net/tun:/dev/net/tun" in tailscale_block
     assert "NET_ADMIN" in tailscale_block
     assert "NET_RAW" in tailscale_block
+
+
+def test_tailscale_accept_dns_off_when_a_local_dns_server_is_in_the_stack():
+    # network_mode: host - TS_ACCEPT_DNS=true would rewrite the host
+    # resolver, taking it away from pihole/adguardhome.
+    with_pihole = render_compose(make_config("heavy", custom_services={"tailscale", "pihole"}))
+    assert "TS_ACCEPT_DNS=false" in _service_block(with_pihole, "tailscale", "homepage")
+
+    solo = render_compose(make_config("heavy", custom_services={"tailscale", "jellyfin"}))
+    assert "TS_ACCEPT_DNS=true" in _service_block(solo, "tailscale", "jellyfin")
+
+
+def test_gluetun_and_tailscale_coexist():
+    # container-scoped egress VPN + host-mode ingress mesh - no longer
+    # mutually exclusive (installer.cli._SERVICE_CONFLICTS).
+    output = render_compose(make_config(
+        "heavy", custom_services={"gluetun", "tailscale", "qbittorrent", "jellyfin"}
+    ))
+    assert "container_name: gluetun" in output
+    assert "container_name: tailscale" in output
+    assert "network_mode: \"service:gluetun\"" in output  # qbittorrent still routes through gluetun
 
 
 def test_render_compose_omits_tailscale_when_disabled():
@@ -763,6 +832,38 @@ def test_render_compose_netdata_never_gets_traefik_labels():
     )
 
     assert "traefik.http.routers.netdata" not in output
+
+
+def test_render_compose_glances_web_mode_minimal_caps_and_docker_socket():
+    output = render_compose(make_config("light", enabled_optional={"glances"}))
+    block = _service_block(output, "glances", "homepage")
+
+    assert "nicolargo/glances" in block
+    assert "GLANCES_OPT=-w" in block
+    assert "pid: host" in block
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in block
+    assert "61208" in block
+    data = yaml.safe_load(output)
+    assert data["services"]["glances"]["cap_drop"] == ["ALL"]
+    assert data["services"]["glances"]["cap_add"] == ["DAC_READ_SEARCH", "SYS_PTRACE"]
+
+
+def test_render_compose_glances_routes_through_traefik_when_domain_set():
+    """Unlike netdata (host networking), glances has a normal ports:
+    mapping and Docker-network identity, so it routes like any other
+    service - and picks up the Authelia/CrowdSec middleware that gates
+    every routed service, which is what you want in front of raw host
+    metrics."""
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"glances", "traefik", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    assert "traefik.http.routers.glances.rule=Host(`glances.media.example.com`)" in output
+    assert "traefik.http.routers.glances.middlewares=" in output
 
 
 def test_render_compose_homepage_private_omits_traefik_labels():
@@ -1014,7 +1115,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # added capabilities - no privilege-drop or ownership-fixup step to
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
-    "downtify", "vaultwarden", "recyclarr", "decluttarr", "maintainerr",
+    "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
 }
@@ -1025,7 +1126,11 @@ ZERO_CAP_SERVICES = {
 # not researched from a blank slate.
 SPECIAL_CAP_SERVICES = {
     "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
-    "tailscale": ["NET_ADMIN", "NET_RAW"],
+    # tailscaled runs as root; under cap_drop: ALL it needs DAC_OVERRIDE
+    # to write its state store into the bind-mounted /var/lib/tailscale
+    # ("state store is unhealthy", crash-loop) - alongside NET_ADMIN/
+    # NET_RAW for the tun device. Same false-positive pattern as downtify.
+    "tailscale": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE", "FOWNER"],
     "unbound": ["NET_BIND_SERVICE", "SETGID", "SETUID"],
     "pihole": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "NET_BIND_SERVICE", "NET_ADMIN", "SETGID", "SETUID"],
     # netdata's own apps.plugin/debugfs.plugin log wanting CAP_DAC_READ_SEARCH
@@ -1036,6 +1141,13 @@ SPECIAL_CAP_SERVICES = {
         "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "SETGID", "SETUID",
         "SYS_PTRACE", "SYS_ADMIN",
     ],
+    # glances -w runs as root and does no privilege drop / ownership fixup
+    # (nothing bind-mounted but the read-only docker socket), so it starts
+    # clean with zero caps - except per-process I/O attribution for
+    # non-root processes reads /proc/<pid>/io (0400) and is silently
+    # zeroed under cap_drop: ALL. DAC_READ_SEARCH + SYS_PTRACE restore it,
+    # same two caps netdata needed for the same reason. Verified live.
+    "glances": ["DAC_READ_SEARCH", "SYS_PTRACE"],
     # AdGuard Home's binary carries file-based cap_net_bind_service/cap_net_raw
     # (dropped ALL blocks the exec), and its first-run data-dir setup needs
     # DAC_OVERRIDE once ALL is dropped - all three verified live against the
@@ -1045,6 +1157,17 @@ SPECIAL_CAP_SERVICES = {
     # bind-mounted /data (no root->PUID drop, so no SETGID/SETUID) -
     # verified live against a real bind mount under cap_drop: ALL.
     "portainer": ["CHOWN", "DAC_OVERRIDE", "FOWNER"],
+    # downtify runs its FastAPI app as root and writes its sqlite DB into
+    # the bind-mounted /data - under cap_drop: ALL a root process loses
+    # CAP_DAC_OVERRIDE and can't write a dir it doesn't own ("unable to
+    # open database file", crash-loop). Verified live: DAC_OVERRIDE alone
+    # is enough (it doesn't chown). Found on an Ubuntu homelab; the
+    # earlier zero-cap claim had been tested against a managed volume.
+    "downtify": ["DAC_OVERRIDE"],
+    # vaultwarden runs as root, writes its sqlite DB + rsa_key.pem into
+    # the bind-mounted /data - same DAC_OVERRIDE need as downtify, same
+    # stale "zero caps" verification (a managed volume, not a bind mount).
+    "vaultwarden": ["DAC_OVERRIDE"],
 }
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
@@ -1089,7 +1212,7 @@ def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
 
 def test_every_service_has_cap_drop_all():
     """
-    Regression lock, all 35 services: this pass covers every service known
+    Regression lock, all 36 services: this pass covers every service known
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
@@ -1567,6 +1690,41 @@ def test_write_stack_writes_files_and_creates_directories(tmp_path):
     assert (media_path / "media" / "tv").is_dir()
     assert (media_path / "media" / "music").is_dir()
     assert (media_path / "media" / "books").is_dir()
+
+
+def test_pihole_unbound_dns_wiring(tmp_path):
+    """pihole shares unbound's netns; both want :53. unbound must be
+    moved to :5335 (a config file write_stack drops in) and pihole's
+    v6 upstream must point at it - shipped once as an empty string,
+    which broke every lookup."""
+    output_dir = tmp_path / "stack"
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "m"),
+        puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"pihole"},
+    )
+
+    write_stack(config, output_dir=output_dir)
+
+    conf = output_dir / "config" / "pihole" / "unbound" / "99-pihole-port.conf"
+    assert conf.is_file()
+    assert "port: 5335" in conf.read_text()
+
+    services = yaml.safe_load((output_dir / "docker-compose.yml").read_text())["services"]
+    pihole_env = services["pihole"]["environment"]
+    assert "FTLCONF_dns_upstreams=127.0.0.1#5335" in pihole_env
+    assert "FTLCONF_dns_upstreams=" not in pihole_env  # not the empty-string form
+    # v6 sets the web/API password from FTLCONF_webserver_api_password;
+    # the v5 name (WEBPASSWORD) is silently ignored by the v6 image
+    assert "FTLCONF_webserver_api_password=${PIHOLE_WEBPASSWORD}" in pihole_env
+    assert not any(e.startswith("WEBPASSWORD=") for e in pihole_env)
+
+    # hand-edited override survives a regenerate
+    conf.write_text("server:\n    port: 9999\n")
+    write_stack(config, output_dir=output_dir)
+    assert "port: 9999" in conf.read_text()
 
 
 def test_write_stack_warns_when_tailscale_enabled(tmp_path):
@@ -2186,6 +2344,44 @@ def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
     assert "192.168.1.50" in services_yaml_path.read_text()
     assert any("pre-seeded" in warning for warning in result["warnings"])
 
+    # widgets.yaml is seeded too, disk widget pointed at the /media mount
+    widgets_yaml_path = tmp_path / "stack" / "config" / "homepage" / "widgets.yaml"
+    assert widgets_yaml_path.is_file()
+    text = widgets_yaml_path.read_text()
+    assert "disk: /media" in text
+    assert yaml.safe_load(text)  # valid YAML
+    # info-row widgets only - calendar / glances-metric blocks are
+    # service widgets and render "Missing ..." if put here
+    assert "- calendar:" not in text
+    assert "metric:" not in text
+    assert "glances:" not in text  # no glances in this config
+    # and the homepage container gets the read-only media mount
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+    assert "${MEDIA_PATH}:/media:ro" in compose
+
+
+def test_render_homepage_widgets_without_glances_is_a_plain_resources_row():
+    text = render_homepage_widgets(make_config("light", enabled_optional=set(), custom_services=set()))
+    data = yaml.safe_load(text)
+
+    assert "disk: /media" in text
+    assert not any("glances" in block for block in data)
+    assert not any("calendar" in block for block in data)
+    # info widgets never carry a metric: field
+    assert "metric:" not in text
+
+
+def test_render_homepage_widgets_uses_the_glances_info_widget_when_glances_enabled():
+    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "glances"}))
+    data = yaml.safe_load(text)
+
+    glances = next(block["glances"] for block in data if "glances" in block)
+    assert glances["url"] == "http://glances:61208"
+    assert glances["version"] == 4
+    assert glances["cputemp"] is True
+    # the info widget has no metric: - that's the service widget only
+    assert "metric" not in glances
+
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):
 
@@ -2647,6 +2843,65 @@ def test_load_previous_state_unknown_tier_returns_none(tmp_path):
     assert load_previous_state(tmp_path) is None
 
 
+def test_export_plan_strips_warnings_and_generated_at_but_keeps_everything_else(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path="/mnt/media",
+        puid=1000,
+        pgid=1000,
+        timezone="America/New_York",
+        custom_services={"jellyfin", "traefik", "authelia"},
+        domain="media.example.com",
+    )
+
+    save_state(config, tmp_path, warnings=["some warning"])
+    state = load_previous_state(tmp_path)
+
+    plan_path = tmp_path / "plan.json"
+    export_plan(state, plan_path)
+    plan = json.loads(plan_path.read_text())
+
+    assert plan["tier"] == "heavy"
+    assert sorted(plan["custom_services"]) == ["authelia", "jellyfin", "traefik"]
+    assert plan["domain"] == "media.example.com"
+    assert plan["plan_version"] == 1
+    assert "warnings" not in plan
+    assert "generated_at" not in plan
+
+
+def test_load_plan_round_trips_and_is_a_valid_previous_state(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["medium"], media_path="/mnt/media", puid=1000, pgid=1000, timezone="UTC",
+        enabled_optional={"homepage", "recyclarr"},
+    )
+    save_state(config, tmp_path)
+    plan_path = tmp_path / "plan.json"
+    export_plan(load_previous_state(tmp_path), plan_path)
+
+    plan = load_plan(plan_path)
+
+    assert plan["tier"] == "medium"
+    assert sorted(plan["enabled_optional"]) == ["homepage", "recyclarr"]
+    # every key _config_from_previous_state() reads is present
+    for key in ("media_path", "puid", "pgid", "timezone", "enabled_optional", "custom_services"):
+        assert key in plan
+
+
+def test_load_plan_missing_or_invalid_returns_none(tmp_path):
+
+    assert load_plan(tmp_path / "nope.json") is None
+
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json")
+    assert load_plan(bad) is None
+
+    unknown_tier = tmp_path / "unknown.json"
+    unknown_tier.write_text('{"tier": "ultra"}')
+    assert load_plan(unknown_tier) is None
+
+
 def test_render_env_defaults_match_original_placeholders():
 
     output = render_env(make_config("medium", {"gluetun"}))
@@ -3089,7 +3344,7 @@ def test_write_stack_creates_authelia_files_on_first_generate(tmp_path):
     assert parsed["users"]["admin"]["password"] == "$argon2id$fake$hash"
 
 
-def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
+def test_write_stack_preserves_authelia_users_and_secrets_but_regenerates_config(tmp_path):
 
     config = GenerationConfig(
         tier=TIERS["heavy"],
@@ -3111,11 +3366,11 @@ def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
     jwt_secret_path = authelia_dir / "secrets" / "JWT_SECRET"
 
     users_database_path.write_text("# hand-edited\nusers: {}\n")
-    configuration_path.write_text("# hand-edited\n")
+    configuration_path.write_text("# stale\n")
     original_secret = jwt_secret_path.read_text()
 
-    # A regenerate with no username/hash (mirrors a real second run, where
-    # the CLI/TUI skip prompting entirely once users_database.yml exists).
+    # A regenerate with a CHANGED domain - the exact case that used to
+    # leave Authelia rejecting every forward-auth request.
     second_config = GenerationConfig(
         tier=TIERS["heavy"],
         media_path=str(tmp_path / "media-root"),
@@ -3123,14 +3378,19 @@ def test_write_stack_never_overwrites_existing_authelia_files(tmp_path):
         pgid=1000,
         timezone="UTC",
         enabled_optional={"authelia", "traefik"},
-        domain="media.example.com"
+        domain="newdomain.example.com"
     )
 
     write_stack(second_config, output_dir=tmp_path / "stack")
 
+    # users + secrets: preserved (real hashed passwords live in users_database)
     assert users_database_path.read_text() == "# hand-edited\nusers: {}\n"
-    assert configuration_path.read_text() == "# hand-edited\n"
     assert jwt_secret_path.read_text() == original_secret
+    # configuration.yml: regenerated for the new domain
+    config_text = configuration_path.read_text()
+    assert "# stale" not in config_text
+    assert "newdomain.example.com" in config_text
+    assert "media.example.com" not in config_text
 
 
 def test_write_stack_warns_when_authelia_enabled_without_traefik_domain(tmp_path):

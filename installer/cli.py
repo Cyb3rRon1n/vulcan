@@ -31,11 +31,14 @@ from installer.docker_setup import (
 )
 from installer.generate import (
     STACK_DIR,
+    STATE_FILENAME,
     GenerationConfig,
     default_puid_pgid,
     default_timezone,
     enabled_service_keys,
+    export_plan,
     find_next_available_port,
+    load_plan,
     load_previous_state,
     render_setup_order,
     render_stack_summary,
@@ -97,6 +100,16 @@ storage_app = typer.Typer(
     help="Detect, provision, and tear down real storage on this machine."
 )
 app.add_typer(storage_app, name="storage")
+
+# A stack plan is the portable subset of saved state (tier, services,
+# domain, PUID/PGID/timezone - never secrets, those stay in .env) -
+# `export` writes it, `build --from-plan` reads it back in as this
+# run's "previous state" seed, same machinery a same-machine rebuild
+# already uses.
+plan_app = typer.Typer(
+    help="Export the current stack's shape (tier, services, settings - no secrets) to a shareable file."
+)
+app.add_typer(plan_app, name="plan")
 
 console = Console()
 
@@ -968,6 +981,12 @@ def build(
     auth_username: str | None = typer.Option(None, "--auth-username"),
     auth_password: str | None = typer.Option(None, "--auth-password"),
     auth_users: str | None = typer.Option(None, "--auth-users"),
+    from_plan: str | None = typer.Option(
+        None, "--from-plan",
+        help="Seed tier/services/settings from a file written by `vulcan plan export` "
+        "instead of this machine's own saved state - every other flag here still "
+        "overrides the plan's value for that one field."
+    ),
 ):
     """
     Generate stack/docker-compose.yml + .env from your choices and stop -
@@ -1009,6 +1028,7 @@ def build(
         auth_username=auth_username,
         auth_password=auth_password,
         auth_users_raw=auth_users,
+        plan_path=from_plan,
     )
 
 
@@ -1034,6 +1054,30 @@ def backup():
 
     for warning in result["warnings"]:
         console.print(f"[yellow]! {warning}[/yellow]")
+
+
+@plan_app.command(name="export")
+def plan_export(
+    file: str = typer.Argument("vulcan-plan.json", help="Where to write the plan"),
+):
+    """
+    Write the currently-generated stack's shape to a JSON file: tier,
+    enabled services, domain/routing settings, PUID/PGID/timezone.
+    No credentials - those live only in stack/.env. Reuse it with
+    `vulcan build --from-plan <file>` on this machine or another one.
+    """
+
+    state = load_previous_state(STACK_DIR)
+
+    if state is None:
+        console.print(
+            f"[red]No generated stack found ({STACK_DIR / STATE_FILENAME} is missing or "
+            "invalid) - run `vulcan build` first.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    export_plan(state, Path(file))
+    console.print(f"[green]Plan written to {file}[/green]")
 
 
 @app.command(name="export")
@@ -1361,6 +1405,12 @@ def main(
         "implies --no-start --non-interactive --yes"
     ),
     plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI"),
+    from_plan: str | None = typer.Option(
+        None, "--from-plan",
+        help="Seed tier/services/settings from a file written by `vulcan plan export` "
+        "instead of this machine's own saved state - every other flag here still "
+        "overrides the plan's value for that one field."
+    ),
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -1407,7 +1457,8 @@ def main(
         auth_username=auth_username,
         auth_password=auth_password,
         auth_users_raw=auth_users,
-        dry_run=dry_run
+        dry_run=dry_run,
+        plan_path=from_plan,
     )
 
 
@@ -1444,14 +1495,27 @@ def run_install(
     auth_username: str | None = None,
     auth_password: str | None = None,
     auth_users_raw: str | None = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    plan_path: str | None = None
 ):
 
     if non_interactive and not yes:
         console.print("[red]--yes is required alongside --non-interactive.[/red]")
         raise typer.Exit(code=1)
 
-    previous = load_previous_state(STACK_DIR)
+    if plan_path is not None:
+
+        previous = load_plan(Path(plan_path))
+
+        if previous is None:
+            console.print(
+                f"[red]Could not read a valid plan from {plan_path} (missing, invalid "
+                "JSON, or an unknown tier name).[/red]"
+            )
+            raise typer.Exit(code=1)
+
+    else:
+        previous = load_previous_state(STACK_DIR)
 
     if non_interactive and previous is None and (tier is None or media_path is None):
         console.print(
@@ -1764,13 +1828,20 @@ def _offer_storage_setup(non_interactive: bool) -> str | None:
     return mount_point
 
 
-_SERVICE_CONFLICTS: list[tuple[set[str], set[str], str]] = [
-    (
-        {"gluetun", "tailscale"}, set(),
-        "Gluetun (container VPN) and Tailscale (host VPN) both manage network "
-        "routing and cannot run together. Pick one.",
-    ),
-]
+# (required_both, required_neither, message) - an error fires if a stack
+# contains all of `required_both`, or all of `required_neither`.
+#
+# gluetun + tailscale used to live here as mutually exclusive. They're
+# not: gluetun is container-scoped (only whatever opts into
+# `network_mode: service:gluetun` - qbittorrent - routes through it, the
+# host routing table is never touched), and tailscale runs
+# `network_mode: host` for inbound mesh access to the management UIs.
+# The common split - gluetun for download egress, tailscale for admin
+# ingress - is a real, supported layout. The one interaction is
+# TS_ACCEPT_DNS, handled in the compose template (off when pihole/
+# adguardhome is also enabled so tailscale doesn't take the host
+# resolver from them).
+_SERVICE_CONFLICTS: list[tuple[set[str], set[str], str]] = []
 
 
 _SERVICE_DEPS: list[tuple[str, str, str]] = [
@@ -1849,9 +1920,15 @@ def _gather_generation_config(
 
     if previous is not None:
 
+        # A plan loaded via --from-plan has no generated_at (deliberately
+        # stripped on export - see export_plan()) and isn't necessarily
+        # "an existing stack" at all, just a previous choice to seed
+        # defaults from - previous['generated_at'] would KeyError there.
+        generated_note = f", generated {previous['generated_at']}" if previous.get("generated_at") else ""
+
         panel.note(
-            f"Found an existing [bold]{previous['tier']}[/bold] stack, generated "
-            f"{previous['generated_at']}. Using it as defaults - pass flags to override."
+            f"Found an existing [bold]{previous['tier']}[/bold] configuration{generated_note}. "
+            "Using it as defaults - pass flags to override."
         )
 
     if media_path is None:
