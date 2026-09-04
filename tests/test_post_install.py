@@ -1075,6 +1075,12 @@ def test_backup_survives_sockets_fifos_and_unreadable_files(tmp_path):
     sock.bind(str(stack / "config" / "netdata" / "cache" / "ipc-socket"))
     os.mkfifo(stack / "config" / "netdata" / "cache" / "fifo")
 
+    # netdata drops a symlink pointing outside stack/config; following it
+    # both drags in unrelated files and crashed the error handler
+    # (relative_to on an out-of-tree path). Regression.
+    (stack / "config" / "netdata" / "config").mkdir(parents=True)
+    os.symlink("/usr/lib/netdata/conf.d", stack / "config" / "netdata" / "config" / "orig")
+
     result = backup_stack(stack_dir=stack, backup_dir=tmp_path / "backups")
 
     assert result["success"] is True
@@ -1082,5 +1088,7 @@ def test_backup_survives_sockets_fifos_and_unreadable_files(tmp_path):
     import tarfile
     with tarfile.open(result["backup_path"]) as tar:
         names = tar.getnames()
+        orig = tar.getmember("config/netdata/config/orig")
     assert "config/app.conf" in names
     assert ".env" in names
+    assert orig.issym()  # stored as a link, not followed
