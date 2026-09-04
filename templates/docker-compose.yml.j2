@@ -1246,6 +1246,10 @@ services:
       - HOMEPAGE_ALLOWED_HOSTS={{ homepage_allowed_hosts }}
     volumes:
       - ./config/homepage:/app/config
+      # read-only so the resources widget can report real media-array
+      # free space (the widget reads a path *inside* the container - with
+      # only /app/config mounted it falls back to the container rootfs)
+      - ${MEDIA_PATH}:/media:ro
     ports:
       - "{{ ports['homepage'] }}:3000"
 {% if 'traefik' in enabled and domain and not homepage_private %}

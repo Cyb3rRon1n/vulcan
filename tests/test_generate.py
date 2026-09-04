@@ -2266,6 +2266,14 @@ def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
     assert "192.168.1.50" in services_yaml_path.read_text()
     assert any("pre-seeded" in warning for warning in result["warnings"])
 
+    # widgets.yaml is seeded too, disk widget pointed at the /media mount
+    widgets_yaml_path = tmp_path / "stack" / "config" / "homepage" / "widgets.yaml"
+    assert widgets_yaml_path.is_file()
+    assert "disk: /media" in widgets_yaml_path.read_text()
+    # and the homepage container gets the read-only media mount
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+    assert "${MEDIA_PATH}:/media:ro" in compose
+
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):
 
