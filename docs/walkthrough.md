@@ -337,6 +337,11 @@ native-app login of its own, so Authelia protects all of those cleanly.
        **off**.
      Cloudflare's edge still terminates the *public* TLS; this is only the
      internal hop.
+
+     <p align="center">
+       <img src="images/screenshots/cloudflare-tunnel-route.svg" alt="Cloudflare Tunnel route: subdomain *, service https://traefik:8081, Disable TLS certificate verification ON" style="max-width: 100%; width: 820px;">
+     </p>
+
   3. **No manual DNS step** - saving the route creates its own proxied
      CNAME. If it errors with *"a record with that host already exists"*,
      an old A/CNAME is in the way: **DNS → Records**, delete the record at
