@@ -1713,6 +1713,10 @@ def test_pihole_unbound_dns_wiring(tmp_path):
     pihole_env = services["pihole"]["environment"]
     assert "FTLCONF_dns_upstreams=127.0.0.1#5335" in pihole_env
     assert "FTLCONF_dns_upstreams=" not in pihole_env  # not the empty-string form
+    # v6 sets the web/API password from FTLCONF_webserver_api_password;
+    # the v5 name (WEBPASSWORD) is silently ignored by the v6 image
+    assert "FTLCONF_webserver_api_password=${PIHOLE_WEBPASSWORD}" in pihole_env
+    assert not any(e.startswith("WEBPASSWORD=") for e in pihole_env)
 
     # hand-edited override survives a regenerate
     conf.write_text("server:\n    port: 9999\n")
@@ -2342,41 +2346,38 @@ def test_write_stack_creates_homepage_services_yaml_on_first_generate(tmp_path):
     assert widgets_yaml_path.is_file()
     text = widgets_yaml_path.read_text()
     assert "disk: /media" in text
-    # heavy config has radarr+sonarr but no glances -> calendar, no glances block
     assert yaml.safe_load(text)  # valid YAML
-    assert "- calendar:" in text
-    assert "service_name: Radarr" in text
-    assert "glances:" not in text
+    # info-row widgets only - calendar / glances-metric blocks are
+    # service widgets and render "Missing ..." if put here
+    assert "- calendar:" not in text
+    assert "metric:" not in text
+    assert "glances:" not in text  # no glances in this config
     # and the homepage container gets the read-only media mount
     compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
     assert "${MEDIA_PATH}:/media:ro" in compose
 
 
-def test_render_homepage_widgets_base_is_valid_yaml_without_optional_blocks():
+def test_render_homepage_widgets_without_glances_is_a_plain_resources_row():
     text = render_homepage_widgets(make_config("light", enabled_optional=set(), custom_services=set()))
-
-    assert yaml.safe_load(text)
-    assert "disk: /media" in text
-    assert "glances:" not in text
-    assert "- calendar:" not in text
-
-
-def test_render_homepage_widgets_adds_glances_blocks_only_when_glances_enabled():
-    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "glances"}))
-
-    assert yaml.safe_load(text)
-    assert "url: http://glances:61208" in text
-    assert "metric: info" in text
-    assert "metric: process" in text
-
-
-def test_render_homepage_widgets_calendar_lists_only_enabled_arrs():
-    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "radarr"}))
     data = yaml.safe_load(text)
 
-    calendar = next(block["calendar"] for block in data if "calendar" in block)
-    types = {integration["type"] for integration in calendar["integrations"]}
-    assert types == {"radarr"}
+    assert "disk: /media" in text
+    assert not any("glances" in block for block in data)
+    assert not any("calendar" in block for block in data)
+    # info widgets never carry a metric: field
+    assert "metric:" not in text
+
+
+def test_render_homepage_widgets_uses_the_glances_info_widget_when_glances_enabled():
+    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "glances"}))
+    data = yaml.safe_load(text)
+
+    glances = next(block["glances"] for block in data if "glances" in block)
+    assert glances["url"] == "http://glances:61208"
+    assert glances["version"] == 4
+    assert glances["cputemp"] is True
+    # the info widget has no metric: - that's the service widget only
+    assert "metric" not in glances
 
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):

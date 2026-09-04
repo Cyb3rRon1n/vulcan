@@ -48,41 +48,34 @@ _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type
 def render_homepage_widgets(config: "GenerationConfig") -> str:
     """
     Seeded once into config/homepage/widgets.yaml (Homepage's top info
-    row), never overwritten. `disk: /media` reads the media array mounted
-    read-only into the homepage container - without that mount the widget
-    reports the container rootfs instead. Extra blocks are added only for
-    services actually in the stack: a Glances block (host quick-look +
-    top processes, the rest documented in docs/guides/homepage-widgets.md
-    since disk/interface/sensor ids are host-specific) when Glances is
-    enabled, and an upcoming-releases calendar when any *arr is.
+    row), never overwritten. These are Homepage "info widgets" only:
+
+    - `resources` reads a path INSIDE the homepage container (`/media` is
+      the array, mounted :ro - without that mount it reports the container
+      rootfs), so it's real array free space.
+    - the `glances` info widget (when Glances is in the stack) adds a
+      CPU/RAM/temp/uptime view. It has NO `metric:` field - that belongs
+      to the glances *service* widget (services.yaml), which is
+      per-metric. Likewise `calendar` is a service widget, not an info
+      widget - putting either here just renders a "Missing ..." error.
+
+    Adding per-service widgets and the release calendar is a
+    fill-in-your-API-keys step the operator does by hand - see
+    docs/guides/homepage-widgets.md (easiest via FileBrowser).
     """
 
-    enabled = enabled_service_keys(config)
+    if "glances" in enabled_service_keys(config):
+        blocks = [
+            "- resources:\n    label: Array\n    disk: /media\n    cpu: false\n    memory: false\n",
+            "- glances:\n    label: Host\n    url: http://glances:61208\n    version: 4\n"
+            "    cpu: true\n    mem: true\n    cputemp: true\n    uptime: true\n    expanded: true\n",
+        ]
+    else:
+        blocks = [
+            "- resources:\n    label: System\n    cpu: true\n    memory: true\n    disk: /media\n    uptime: true\n",
+        ]
 
-    blocks = [
-        "- resources:\n    cpu: true\n    memory: true\n    disk: /media\n",
-        "- search:\n    provider: duckduckgo\n    target: _blank\n",
-    ]
-
-    if "glances" in enabled:
-        blocks.append(
-            "- glances:\n    url: http://glances:61208\n    version: 4\n    metric: info\n"
-            "- glances:\n    url: http://glances:61208\n    version: 4\n    metric: process\n"
-        )
-
-    calendar_arr = [
-        (key, name) for key, name in (("radarr", "Radarr"), ("sonarr", "Sonarr"), ("lidarr", "Lidarr"))
-        if key in enabled
-    ]
-    if calendar_arr:
-        integrations = "".join(
-            f"      - type: {key}\n        service_group: Media Management\n        service_name: {name}\n"
-            for key, name in calendar_arr
-        )
-        blocks.append(
-            "- calendar:\n    firstDayInWeek: monday\n    view: monthly\n"
-            "    maxEvents: 10\n    integrations:\n" + integrations
-        )
+    blocks.append("- search:\n    provider: duckduckgo\n    target: _blank\n")
 
     return "".join(blocks)
 
