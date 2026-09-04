@@ -390,3 +390,16 @@ that file ended up root-owned (Authelia's image runs as its own root),
 After a domain change, also update the Cloudflare route's subdomain/domain
 (above) and restart `crowdsec` + `traefik` + `authelia` so their plugins
 reconnect.
+
+**Homepage / Dashy tiles keep the old domain.** `stack/config/homepage/services.yaml`
+(and Dashy's config) are seeded once and never overwritten - by design, so
+your edits survive. On a domain change they still point at the old
+hostnames. Delete them and rebuild to re-seed:
+
+```
+rm stack/config/homepage/services.yaml stack/config/dashy/*.yml
+vulcan build --non-interactive --yes
+docker compose -f stack/docker-compose.yml --env-file stack/.env up -d homepage dashy
+```
+(If `rm` is permission-denied, do it from a container:
+`docker run --rm -v "$PWD/stack:/s" alpine rm -f /s/config/homepage/services.yaml`.)
