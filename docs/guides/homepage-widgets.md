@@ -135,11 +135,28 @@ enabled:
         service_name: Radarr
 ```
 
-Each `integration` points at a **tile that already has a working
+Each *arr `integration` points at a **tile that already has a working
 `widget:` block** (same `type`, with its API key) in `services.yaml` — so
 the calendar stays empty until you fill those keys in. `service_group` /
 `service_name` are the group heading and tile name exactly as they appear
 in `services.yaml`.
+
+For **maintenance windows / update schedules / anything non-*arr**, add an
+`ical` integration pointing at any calendar feed (a Google Calendar's
+"secret .ics address", a shared `.ics`, or an *arr app's own Calendar-page
+iCal link):
+
+```yaml
+      - type: ical
+        url: https://example.com/homelab-maintenance.ics
+        name: Maintenance
+        color: orange
+```
+
+Related: **Watchtower** (in the stack) is what actually applies container
+updates on a schedule — point it at a notifier for a change log —, and
+**Uptime Kuma** has real scheduled *maintenance windows* that suppress
+alerts during planned downtime.
 
 ## Glances
 
@@ -178,6 +195,17 @@ metric:
 | `cpu` / `memory` | single-stat gauges | — |
 
 Add `chart: false` to any block for a compact number-only readout.
+
+**What works out of the box:** CPU, RAM, load, top processes (via
+`pid: host`), all host **disk I/O** (`/proc/diskstats` is host-global),
+and **hardware sensors** (Docker mounts `/sys` read-only by default) — all
+without extra config. **Host network interfaces and host filesystem usage
+do _not_ show** in this routed setup — the container has its own network
+namespace, so `network:` sees only `eth0`. If you need per-NIC WAN
+throughput, add `network_mode: host` to the `glances:` service in
+`stack/docker-compose.yml` (you then lose the Traefik route, same trade-off
+netdata makes) — otherwise use the native `resources` widget for array
+space and skip `network:`/`fs:`.
 
 `version: 4` matches the `nicolargo/glances:latest` image Vulcan pins (the
 widget defaults to the older v3 API and silently shows nothing against a
