@@ -124,6 +124,8 @@ Commands reachable from the Main Menu (not CLI-only):
 | `sudo vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup |
 | `sudo vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |
+| `vulcan plan export [file]` | Writes the current stack's shape (tier, services, settings — no credentials) to a shareable JSON file |
+| `vulcan build --from-plan <file>` | Builds a new stack from an exported plan, on this machine or another — every other flag still overrides the plan's value for that field |
 
 Airgap/offline: `vulcan export`/`import` move a stack's images to a machine never online at all.
 
