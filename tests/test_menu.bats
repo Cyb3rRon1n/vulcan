@@ -223,6 +223,22 @@ export -f _detect
     [[ "$output" == *"--gpu"* ]]
 }
 
+@test "customize-services SERVICE_LIST covers every key in ALL_SERVICES" {
+
+    # Drift guard: the bash-native service picker hardcodes its list;
+    # ALL_SERVICES (tiers.py) is the real registry. Every key there must
+    # be selectable in the TUI or that service is CLI-only by accident.
+    keys=$(cd "$BATS_TEST_DIRNAME/.." && python -c "
+from installer.tiers import ALL_SERVICES
+print(' '.join(s.key for s in ALL_SERVICES))
+")
+    list=$(sed -n 's/^ *"\([a-z-]*\):.*/\1/p' "$MENU_SH" | tr '\n' ' ')
+
+    for k in $keys; do
+        [[ " $list " == *" $k "* ]] || { echo "missing from menu.sh SERVICE_LIST: $k"; false; }
+    done
+}
+
 @test "customize-services builds --services from the core seed and skips domain flags without traefik" {
 
     # The category picker seeds the core services pre-checked; hitting

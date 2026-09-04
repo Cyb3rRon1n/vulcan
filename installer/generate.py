@@ -45,18 +45,46 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
-# Seeded once into config/homepage/widgets.yaml. `disk: /media` reads the
-# media array (mounted read-only into the homepage container); without
-# that mount the widget would report the container rootfs instead.
-_HOMEPAGE_WIDGETS = (
-    "- resources:\n"
-    "    cpu: true\n"
-    "    memory: true\n"
-    "    disk: /media\n"
-    "- search:\n"
-    "    provider: duckduckgo\n"
-    "    target: _blank\n"
-)
+def render_homepage_widgets(config: "GenerationConfig") -> str:
+    """
+    Seeded once into config/homepage/widgets.yaml (Homepage's top info
+    row), never overwritten. `disk: /media` reads the media array mounted
+    read-only into the homepage container - without that mount the widget
+    reports the container rootfs instead. Extra blocks are added only for
+    services actually in the stack: a Glances block (host quick-look +
+    top processes, the rest documented in docs/guides/homepage-widgets.md
+    since disk/interface/sensor ids are host-specific) when Glances is
+    enabled, and an upcoming-releases calendar when any *arr is.
+    """
+
+    enabled = enabled_service_keys(config)
+
+    blocks = [
+        "- resources:\n    cpu: true\n    memory: true\n    disk: /media\n",
+        "- search:\n    provider: duckduckgo\n    target: _blank\n",
+    ]
+
+    if "glances" in enabled:
+        blocks.append(
+            "- glances:\n    url: http://glances:61208\n    version: 4\n    metric: info\n"
+            "- glances:\n    url: http://glances:61208\n    version: 4\n    metric: process\n"
+        )
+
+    calendar_arr = [
+        (key, name) for key, name in (("radarr", "Radarr"), ("sonarr", "Sonarr"), ("lidarr", "Lidarr"))
+        if key in enabled
+    ]
+    if calendar_arr:
+        integrations = "".join(
+            f"      - type: {key}\n        service_group: Media Management\n        service_name: {name}\n"
+            for key, name in calendar_arr
+        )
+        blocks.append(
+            "- calendar:\n    firstDayInWeek: monday\n    view: monthly\n"
+            "    maxEvents: 10\n    integrations:\n" + integrations
+        )
+
+    return "".join(blocks)
 
 # Every service with its own routable web UI - the single source of
 # truth both Homepage's tile groups (below) and the Traefik template's
@@ -80,7 +108,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
-    "adguardhome",
+    "adguardhome", "glances",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -104,7 +132,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Live TV": ["threadfin"],
-    "Monitoring": ["uptime-kuma", "tracearr", "netdata"],
+    "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances"],
     "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
 }
@@ -139,6 +167,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "decluttarr": 9899,
     "flaresolverr": 8191,
     "netdata": 19999,
+    "glances": 61208,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -175,6 +204,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "metube": "Download videos from YouTube, Facebook, and hundreds of other sites straight into your library",
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
+    "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
@@ -956,13 +986,13 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
         )
 
     dashboards = [
-        key for key in ("homepage", "dashy", "uptime-kuma", "netdata", "traefik") if key in enabled
+        key for key in ("homepage", "dashy", "uptime-kuma", "netdata", "glances", "traefik") if key in enabled
     ]
 
     if dashboards:
 
         steps.append(
-            "Homepage/Dashy/Uptime Kuma/Netdata/Traefik dashboard: check these last - they "
+            "Homepage/Dashy/Uptime Kuma/Netdata/Glances/Traefik dashboard: check these last - they "
             "only have something to show once the services above are actually running."
         )
 
@@ -1112,7 +1142,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         widgets_yaml_path = output_dir / "config" / "homepage" / "widgets.yaml"
 
         if not widgets_yaml_path.exists():
-            widgets_yaml_path.write_text(_HOMEPAGE_WIDGETS)
+            widgets_yaml_path.write_text(render_homepage_widgets(config))
 
     if "dashy" in enabled_service_keys(config):
 

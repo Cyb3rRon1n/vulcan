@@ -1238,6 +1238,56 @@ services:
           memory: "{{ limits.netdata.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'glances' in enabled %}
+  glances:
+    image: nicolargo/glances:latest
+    container_name: glances
+    pid: host
+    environment:
+      - GLANCES_OPT=-w
+      - TZ=${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "{{ ports['glances'] }}:61208"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glances.rule=Host(`glances.{{ domain }}`)"
+      - "traefik.http.routers.glances.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.glances.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.glances.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.glances.loadbalancer.server.port=61208"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.glances.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # nicolargo/glances:latest): the -w web server and REST API start
+    # clean with zero added capabilities (glances runs as root
+    # in-container, so it does no root -> PUID drop and no ownership
+    # fixup - nothing to bind-mount but the read-only docker socket). The
+    # one gap under cap_drop: ALL is per-process I/O attribution for
+    # processes NOT owned by root: reading /proc/<pid>/io (mode 0400)
+    # is denied and the widget silently shows zeros. DAC_READ_SEARCH
+    # restores it and SYS_PTRACE fills in the rest of the per-process
+    # detail - the same two caps netdata needed for the same reason.
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
+      - SYS_PTRACE
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.glances.cpus }}"
+          memory: "{{ limits.glances.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'homepage' in enabled %}
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
@@ -1407,6 +1457,13 @@ services:
     volumes:
       - ./config/filebrowser:/config
       - ${MEDIA_PATH}:/srv
+{% if 'homepage' in enabled %}
+      # Homepage is YAML-only with no in-app editor - exposing just its
+      # config dir (NOT all of ./config, which holds Authelia secrets and
+      # VPN keys) gives a browser text editor for services.yaml /
+      # widgets.yaml / settings.yaml. Homepage hot-reloads on save.
+      - ./config/homepage:/srv/homepage-config
+{% endif %}
     ports:
       # gtstef/filebrowser (Quantum) serves on :80, not the classic :8080
       - "{{ ports['filebrowser'] }}:80"
