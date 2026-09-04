@@ -242,7 +242,7 @@ menu_install() {
             "guided"        "Guided Setup → detect hardware, generate stack (no start)" \
             "storage"       "Media Storage Setup → provision blank drives as RAID/media volume" \
             "back"          "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             complete) complete_setup_flow ;;
             guided)   guided_setup ;;
@@ -261,12 +261,14 @@ menu_configure() {
             "services"    "Configure Services → VPN, Tailscale, Cloudflare, Traefik, Authelia, etc." \
             "credentials" "Configure Credentials → VPN, domain, tunnel token, passwords" \
             "storage"     "Reconfigure Media Storage → change RAID, mount point, drives" \
+            "reset-storage" "Reset Media Storage → unmount and wipe the media volume" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             services) configure_services_flow ;;
             credentials) "$VULCAN_BIN" configure; read -rp "Press Enter to return to the menu..." _ ;;
             storage)  storage_setup_flow ;;
+            reset-storage) storage_teardown_flow ;;
             back)     return ;;
         esac
     done
@@ -285,7 +287,7 @@ menu_stack() {
             "backup"      "Backup Stack → archive config/compose/env to backups/" \
             "restore"     "Restore Stack → from most recent backup" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             start)   confirm_and_run "Start Stack" "This will start stack/docker-compose.yml, reassigning any port already in use." "$VULCAN_BIN" start ;;
             status)  stack_status_flow ;;
@@ -307,7 +309,7 @@ menu_system() {
             "update"      "Update Vulcan → fast-forward this checkout" \
             "uninstall"   "Uninstall Stack → stop and delete stack/ entirely" \
             "back"        "Back to main menu" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || return 0
         case "$choice" in
             update)     confirm_and_run "Update Vulcan" "This will fast-forward this Vulcan checkout to the latest origin/main." "$VULCAN_BIN" update-self --non-interactive --yes ;;
             uninstall)  uninstall_flow ;;
@@ -330,14 +332,14 @@ main_menu() {
             "stack"       "Stack → Start, Status, Update, Pull, Backup, Restore" \
             "system"      "System → Update, Uninstall" \
             "exit"        "Exit" \
-            3>&1 1>&2 2>&3) || return
+            3>&1 1>&2 2>&3) || { clear; return 0; }
 
         case "$choice" in
             install)    menu_install ;;
             configure)  menu_configure ;;
             stack)      menu_stack ;;
             system)     menu_system ;;
-            exit)       clear; exit 0 ;;
+            exit)       clear; return 0 ;;
         esac
     done
 }
@@ -520,7 +522,6 @@ complete_setup_flow() {
     log_info "Starting complete linear setup flow"
 
     # Track completed phases
-    local -a phase_done=(false false false false false)  # setup, plan, build, config, start
     local phase_names=("SETUP (storage, tools)" "PLAN (tier, services)" "BUILD (generate stack)" "CONFIGURE (vpn, domain, etc.)" "START (launch stack)")
 
     # Helper: show progress checklist
@@ -556,7 +557,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 0: SETUP - Storage & Tools
     # ============================================================
-    phase_done[0]=true
     show_checklist 1
 
     # Phase 0: Storage setup (if blank devices available)
@@ -580,7 +580,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 1: PLAN - System Detection & Tier Selection
     # ============================================================
-    phase_done[1]=true
     show_checklist 2
 
     log_title "PLAN: System Detection & Tier"
@@ -609,7 +608,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 2: BUILD - Stack Generated (already done by guided_setup_no_start)
     # ============================================================
-    phase_done[2]=true
     show_checklist 3
 
     log_title "BUILD: Stack Generated"
@@ -618,7 +616,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 3: CONFIGURE - Services needing credentials
     # ============================================================
-    phase_done[3]=true
     show_checklist 4
 
     log_title "CONFIGURE: Service Credentials"
@@ -631,7 +628,6 @@ complete_setup_flow() {
     # ============================================================
     # PHASE 4: START - Launch Stack
     # ============================================================
-    phase_done[4]=true
     show_checklist 5
 
     log_title "START: Launch Stack"
@@ -643,7 +639,6 @@ complete_setup_flow() {
     fi
 
     # Final checklist - all done
-    phase_done[4]=true
     show_checklist 5
 
     log_info "Complete Setup finished"
@@ -678,9 +673,8 @@ stack_status_flow() {
     local -a status_lines=()
     while IFS= read -r line; do
         [ -z "$line" ] && continue
-        local name image status health ports
+        local name status health ports
         name=$(echo "$line" | jq -r '.Name // .Service // "unknown"')
-        image=$(echo "$line" | jq -r '.Image // "unknown"')
         status=$(echo "$line" | jq -r '.State // "unknown"')
         health=$(echo "$line" | jq -r '.Health // "none"')
         ports=$(echo "$line" | jq -r '.Publishers // [] | map(.URL) | join(", ")')
@@ -799,29 +793,35 @@ configure_services_flow() {
         # gluetun - needs VPN credentials
         if grep -q "gluetun" stack/docker-compose.yml; then
             local status="NOT CONFIGURED"
-            [ -n "${VPN_SERVICE_PROVIDER:-}" ] && [ -n "${VPN_TYPE:-}" ] && [ -n "${WIREGUARD_PRIVATE_KEY:-}${OPENVPN_USER:-}${OPENVPN_PASSWORD:-}" ] && status="CONFIGURED"
+            # .env ships these as the literal "changeme" - only real once both are replaced
+            [ "${VPN_SERVICE_PROVIDER:-changeme}" != "changeme" ] \
+                && { [ "${WIREGUARD_PRIVATE_KEY:-changeme}" != "changeme" ] || [ -n "${OPENVPN_USER:-}" ]; } \
+                && status="CONFIGURED"
             config_items+=("gluetun" "Gluetun VPN - $status (needs VPN provider credentials)")
         fi
 
-        # cloudflared - needs tunnel token
+        # cloudflared - needs a real TUNNEL_TOKEN in stack/.env (the var
+        # name templates/env.j2 actually writes - not CLOUDFLARE_TUNNEL_TOKEN)
         if grep -q "cloudflared" stack/docker-compose.yml; then
             local status="NOT CONFIGURED"
-            [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ] && status="CONFIGURED"
+            [ -n "${TUNNEL_TOKEN:-}" ] && [ "${TUNNEL_TOKEN:-}" != "changeme" ] && status="CONFIGURED"
             config_items+=("cloudflared" "Cloudflare Tunnel - $status (needs tunnel token from Cloudflare Zero Trust)")
         fi
 
-        # tailscale - needs auth key
+        # tailscale - needs a real TS_AUTHKEY in stack/.env (the var name
+        # templates/env.j2 actually writes - not TAILSCALE_AUTHKEY)
         if grep -q "tailscale" stack/docker-compose.yml; then
             local status="NOT CONFIGURED"
-            [ -n "${TAILSCALE_AUTHKEY:-}" ] && status="CONFIGURED"
+            [ -n "${TS_AUTHKEY:-}" ] && [ "${TS_AUTHKEY:-}" != "changeme" ] && status="CONFIGURED"
             config_items+=("tailscale" "Tailscale - $status (needs auth key from Tailscale admin console)")
         fi
 
-        # traefik - needs domain (handled in guided setup, but check DNS)
+        # traefik - domain is baked in at build time (`vulcan build --domain`),
+        # not an .env value; here we just remind about the DNS + cert steps.
         if grep -q "traefik" stack/docker-compose.yml; then
-            local status="NOT CONFIGURED"
-            [ -n "${DOMAIN:-}" ] && status="DOMAIN SET"
-            config_items+=("traefik" "Traefik - $status (needs domain + DNS A records pointing to this host)")
+            local status="NO DOMAIN"
+            [ -n "${PREVIOUS_DOMAIN:-}" ] && status="DOMAIN: $PREVIOUS_DOMAIN"
+            config_items+=("traefik" "Traefik - $status (needs DNS records pointing to this host)")
         fi
 
         # authelia - needs admin user (done in guided setup)
@@ -831,11 +831,13 @@ configure_services_flow() {
             config_items+=("authelia" "Authelia SSO - $status (admin user created during setup)")
         fi
 
-        # pihole - needs admin password
+        # pihole - PIHOLE_WEBPASSWORD in stack/.env (the var name
+        # templates/env.j2 actually writes - not PIHOLE_PASSWORD). Vulcan
+        # pre-generates a random one, so this is really "change it if you want".
         if grep -q "pihole" stack/docker-compose.yml; then
-            local status="NOT CONFIGURED"
-            [ -n "${PIHOLE_PASSWORD:-}" ] && status="CONFIGURED"
-            config_items+=("pihole" "Pi-hole - $status (needs admin password)")
+            local status="AUTO-GENERATED"
+            [ -z "${PIHOLE_WEBPASSWORD:-}" ] && status="NOT SET"
+            config_items+=("pihole" "Pi-hole - $status (web admin password)")
         fi
 
         if [ ${#config_items[@]} -eq 0 ]; then
@@ -875,23 +877,21 @@ configure_services_flow() {
             cloudflared)
                 if ! prompt_edit_then_restart "cloudflared" \
                     "Cloudflare Tunnel Setup" \
-                    $'Cloudflare Tunnel needs a tunnel token from Cloudflare Zero Trust:\n\n1. Go to https://one.dash.cloudflare.com → Access → Tunnels\n2. Create a tunnel → Copy the token (starts with ey...)\n3. Edit stack/.env and set:\n   CLOUDFLARE_TUNNEL_TOKEN=<your_token>\n\nNote: Tunnel must have public hostnames configured for your services.'; then
+                    $'Cloudflare Tunnel needs a tunnel token from the Cloudflare\nZero Trust dashboard (https://one.dash.cloudflare.com):\n\n1. Networks > Tunnels > Create a tunnel > "Cloudflared"\n2. On the "Install and run a connector" step, Docker tab:\n   copy just the token (the long "ey..." string in the\n   run command, not the whole command)\n3. Edit stack/.env and set:\n   TUNNEL_TOKEN=<your_token>\n4. Back in the tunnel, add a Public Hostname:\n   Subdomain "*", your domain, Service http://traefik:8081\n   (Traefik then routes each subdomain as normal.)'; then
                     continue
                 fi
                 ;;
             tailscale)
                 if ! prompt_edit_then_restart "tailscale" \
                     "Tailscale Setup" \
-                    $'Tailscale needs an auth key:\n\n1. Go to https://login.tailscale.com/admin/settings/keys\n2. Generate an auth key (reusable, ephemeral, pre-authorized)\n3. Edit stack/.env and set:\n   TAILSCALE_AUTHKEY=<your_auth_key>\n\nOptional: TAILSCALE_HOSTNAME=<custom_name>'; then
+                    $'Tailscale needs an auth key:\n\n1. Go to https://login.tailscale.com/admin/settings/keys\n2. Generate an auth key (reusable + pre-authorized is\n   easiest; ephemeral is fine too)\n3. Edit stack/.env and set:\n   TS_AUTHKEY=<your_auth_key>\n\nOnce connected, every host-published port in this stack\n(Jellyfin, Radarr, ...) is reachable at this host\'s\nTailscale address from any device on your tailnet - no\nper-service setup.'; then
                     continue
                 fi
                 ;;
             traefik)
-                if ! prompt_edit_then_restart "traefik" \
-                    "Traefik Domain Setup" \
-                    $'Traefik needs a domain with DNS pointing to this host:\n\n1. Own a domain (e.g. example.com)\n2. Create DNS A records pointing to this host\'s public IP:\n   *.example.com → YOUR_PUBLIC_IP\n3. Edit stack/.env and set:\n   DOMAIN=example.com\n\n3. For real Let\'s Encrypt certs (optional):\n   CLOUDFLARE_DNS=true\n   CLOUDFLARE_EMAIL=your@email.com\n   (requires Cloudflare DNS)'; then
-                    continue
-                fi
+                whiptail --backtitle "$BACKTITLE" --title "Traefik Domain Setup" --msgbox \
+                    $'The routing domain is set when the stack is built, not in\nstack/.env. To change it, re-run Install > Guided Setup (or\n`vulcan build --domain <domain>`) and regenerate.\n\nWhat you still do yourself, outside Vulcan:\n\n1. DNS: point a wildcard record at this host -\n   *.<your-domain>  ->  this host\'s IP\n   (A record for a LAN/Tailscale IP, or use Cloudflare\n   Tunnel instead of opening ports - see that entry.)\n\n2. Real certificates (optional): if you built with\n   Cloudflare DNS, set these in stack/.env, then\n   restart traefik:\n   CF_DNS_API_TOKEN=<scoped token, Zone:DNS:Edit>\n   CLOUDFLARE_ACME_EMAIL=<your email>\n   Otherwise Traefik serves its own self-signed cert.' \
+                    "$DLG_ROWS" "$DLG_COLS"
                 ;;
             authelia)
                 whiptail --backtitle "$BACKTITLE" --title "Authelia SSO Setup" --msgbox \
@@ -900,16 +900,13 @@ configure_services_flow() {
 - Password was hashed during setup\n\n\
 To add users: edit stack/config/authelia/users_database.yml\n\
 and run: docker compose -f stack/docker-compose.yml restart authelia\n\n\
-Access: https://authelia.${DOMAIN:-yourdomain.com}" \
+Access: https://authelia.${PREVIOUS_DOMAIN:-yourdomain.com}" \
                     "$DLG_ROWS" "$DLG_COLS"
                 ;;
             pihole)
                 if ! prompt_edit_then_restart "pihole" \
                     "Pi-hole Setup" \
-                    "Pi-hole needs an admin password:\n\n\
-1. Edit stack/.env and set:\n\
-   PIHOLE_PASSWORD=<your_admin_password>\n\n\
-Default login: admin / your_password"; then
+                    $'Vulcan already generated a random Pi-hole admin password\n(PIHOLE_WEBPASSWORD in stack/.env). To set your own:\n\n1. Edit stack/.env and change:\n   PIHOLE_WEBPASSWORD=<your_admin_password>\n\nLog in at http://<this-host>/admin with that password.'; then
                     continue
                 fi
                 ;;
@@ -925,7 +922,7 @@ prompt_edit_then_restart() {
 
     while true; do
         whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
-            $'$instructions\n\nAfter editing .env, choose an option below:' "$DLG_ROWS" "$DLG_COLS"
+            "$instructions"$'\n\n'"After editing .env, choose an option below:" "$DLG_ROWS" "$DLG_COLS"
 
         local action
         action=$(whiptail --backtitle "$BACKTITLE" --title "$title" \
@@ -944,10 +941,10 @@ prompt_edit_then_restart() {
                 fi
                 if docker compose -f stack/docker-compose.yml up -d "$service" 2>/dev/null; then
                     whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
-                        $'$service restarted successfully.\n\nRe-checking status...' "$DLG_ROWS" "$DLG_COLS"
+                        "$service restarted successfully."$'\n\n'"Re-checking status..." "$DLG_ROWS" "$DLG_COLS"
                 else
                     whiptail --backtitle "$BACKTITLE" --title "$title - Error" --msgbox \
-                        $'Failed to restart $service. Check logs:\n  docker compose -f stack/docker-compose.yml logs $service' "$DLG_ROWS" "$DLG_COLS"
+                        "Failed to restart $service. Check logs:"$'\n'"  docker compose -f stack/docker-compose.yml logs $service" "$DLG_ROWS" "$DLG_COLS"
                 fi
                 ;;
             recheck)
@@ -1546,9 +1543,9 @@ _guided_setup_customize_services() {
     # Build category -> services map
     declare -A CATEGORY_SERVICES
     local -a CATEGORIES=()
-    local entry key display category
+    local entry key category
     for entry in "${SERVICE_LIST[@]}"; do
-        IFS=':' read -r key display category <<< "$entry"
+        IFS=':' read -r key _ category <<< "$entry"
         if [[ -z "${CATEGORY_SERVICES[$category]:-}" ]]; then
             CATEGORIES+=("$category")
         fi
@@ -1586,7 +1583,7 @@ _guided_setup_customize_services() {
             local selected_count=0
             IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat]}"
             for svc_entry in "${cat_svcs[@]}"; do
-                IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
+                IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
                 [[ -n "${SELECTED_MAP[$svc_key]:-}" ]] && ((selected_count++))
             done
             local total_count=${#cat_svcs[@]}
@@ -1607,7 +1604,7 @@ _guided_setup_customize_services() {
         local -a cat_keys=()
         IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
         for svc_entry in "${cat_svcs[@]}"; do
-            IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
+            IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
             cat_checklist+=("$svc_key" "$svc_display" "$(_svc_on "$svc_key")")
             cat_keys+=("$svc_key")
         done
@@ -1625,11 +1622,15 @@ _guided_setup_customize_services() {
         # First clear all in this category
         IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
         for svc_entry in "${cat_svcs[@]}"; do
-            IFS=':' read -r svc_key svc_display svc_cat <<< "$svc_entry"
-            unset SELECTED_MAP["$svc_key"]
+            IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
+            unset "SELECTED_MAP[$svc_key]"
         done
-        # Then set chosen ones (filter out pseudo-items)
-        eval "local -a cat_selected=($cat_chosen)"
+        # Then set chosen ones (filter out pseudo-items). whiptail's
+        # --checklist output is already properly double-quoted
+        # space-separated tags, so eval is the standard idiom for
+        # splitting it (same as storage_setup_flow's own checklist).
+        local -a cat_selected=()
+        eval "cat_selected=($cat_chosen)"
         for svc in "${cat_selected[@]}"; do
             if [[ "$svc" != "__select_all__" && "$svc" != "__deselect_all__" ]]; then
                 SELECTED_MAP["$svc"]=1
@@ -1643,7 +1644,7 @@ _guided_setup_customize_services() {
                 done
             elif [[ "$svc" == "__deselect_all__" ]]; then
                 for key in "${cat_keys[@]}"; do
-                    unset SELECTED_MAP["$key"]
+                    unset "SELECTED_MAP[$key]"
                 done
             fi
         done
@@ -1673,12 +1674,7 @@ _guided_setup_customize_services() {
 
     SERVICES_FLAG=(--services "$joined")
 
-    local has_traefik=false
-    for item in "${SELECTED[@]:-}"; do
-        [ "$item" = "traefik" ] && has_traefik=true
-    done
-
-    if [ "$has_traefik" = true ]; then
+    if [[ ",$joined," == *",traefik,"* ]]; then
 
         DOMAIN=$(whiptail --backtitle "$BACKTITLE" --title "Domain Routing" \
             --inputbox "Base domain for Traefik routing, e.g. media.example.com (leave blank to skip - Traefik uses a self-signed cert either way)" \
