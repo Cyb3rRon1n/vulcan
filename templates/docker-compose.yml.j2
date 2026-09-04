@@ -1408,7 +1408,8 @@ services:
       - ./config/filebrowser:/config
       - ${MEDIA_PATH}:/srv
     ports:
-      - "{{ ports['filebrowser'] }}:8080"
+      # gtstef/filebrowser (Quantum) serves on :80, not the classic :8080
+      - "{{ ports['filebrowser'] }}:80"
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -1418,7 +1419,7 @@ services:
 {% if cloudflare_dns %}
       - "traefik.http.routers.filebrowser.tls.certresolver=cloudflare"
 {% endif %}
-      - "traefik.http.services.filebrowser.loadbalancer.server.port=8080"
+      - "traefik.http.services.filebrowser.loadbalancer.server.port=80"
 {% if 'crowdsec' in enabled or 'authelia' in enabled %}
       - "traefik.http.routers.filebrowser.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
 {% endif %}

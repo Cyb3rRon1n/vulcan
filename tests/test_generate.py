@@ -481,6 +481,8 @@ def test_render_compose_filebrowser_routes_on_its_service_key():
     )
     assert "traefik.http.routers.filebrowser.rule=Host(`filebrowser.media.example.com`)" in output
     assert "files.media.example.com" not in output
+    # gtstef/filebrowser serves on :80, not :8080
+    assert "traefik.http.services.filebrowser.loadbalancer.server.port=80" in output
 
 
 def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
