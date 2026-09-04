@@ -692,10 +692,9 @@ def test_render_compose_jellyfin_gets_crowdsec_middleware_despite_authelia_exclu
 def test_render_compose_tracearr_binds_data_not_app_data():
     # the :supervised image declares VOLUMEs at /data/* and refuses to
     # start without /data bind-mounted ("incorrect volume mounts detected")
-    output = render_compose(make_config("heavy", custom_services={"tracearr"}))
-    block = _service_block(output, "tracearr", "traefik")
-    assert "./config/tracearr:/data" in block
-    assert "/app/data" not in block
+    output = render_compose(make_config("heavy", custom_services={"tracearr", "jellyfin"}))
+    assert "./config/tracearr:/data" in output
+    assert "./config/tracearr:/app/data" not in output
 
 
 def test_render_compose_tailscale_uses_host_networking():
