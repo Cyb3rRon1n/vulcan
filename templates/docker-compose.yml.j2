@@ -1519,7 +1519,11 @@ services:
     environment:
       - TZ=${TZ}
     volumes:
-      - ./config/tracearr:/app/data
+      # the :supervised image bundles its own postgres/redis and declares
+      # VOLUMEs at /data/{postgres,redis,tracearr,backup} - it checks
+      # /data is a real bind mount on start ("incorrect volume mounts
+      # detected") and wants GeoLite2 dbs in /data/tracearr/. Not /app/data.
+      - ./config/tracearr:/data
     ports:
       - "{{ ports['tracearr'] }}:3000"
 {% if 'jellyfin' in enabled %}
