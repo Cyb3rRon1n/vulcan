@@ -21,6 +21,8 @@ ruff check .
 # Tests
 python -m pytest tests/
 python -m pytest tests/test_generate.py -v
+bats tests/test_menu.bats tests/test_install.bats   # menu.sh argv logic (mocked whiptail)
+bats tests/test_menu_pty.bats                       # menu.sh in a real pty (needs tmux + real whiptail)
 ```
 
 ## Architecture Overview

@@ -608,6 +608,59 @@ def test_restore_stack_removes_stray_files_not_in_the_archive(tmp_path):
     assert (stack_dir / "config" / "jellyfin" / "settings.xml").read_text() == "<new/>"
 
 
+def test_restore_stack_falls_back_to_docker_removal_when_config_dir_is_root_owned(tmp_path):
+    """
+    A real bug hit against a real running stack: Homepage writes
+    stack/config/homepage/logs/ as root:root, so restore_stack()'s
+    `shutil.rmtree(config_dir)` (clearing config/ before extracting the
+    archive over it) fails with PermissionError for the non-root host
+    user. Same class as the uninstall_stack() fallback - _force_rmtree()
+    empties the dir from a throwaway root container, then removes it.
+    """
+
+    stack_dir = tmp_path / "stack"
+    (stack_dir / "config" / "homepage").mkdir(parents=True)
+    (stack_dir / "docker-compose.yml").write_text("services: {stale: true}\n")
+    (stack_dir / ".env").write_text("PUID=9999\n")
+
+    backup_path = tmp_path / "vulcan-backup-20260101T000000Z.tar.gz"
+    fresh_dir = tmp_path / "fresh"
+    (fresh_dir / "config" / "jellyfin").mkdir(parents=True)
+    (fresh_dir / "config" / "jellyfin" / "settings.xml").write_text("<new/>")
+    (fresh_dir / "docker-compose.yml").write_text("services: {stale: false}\n")
+    (fresh_dir / ".env").write_text("PUID=1000\n")
+    with tarfile.open(backup_path, "w:gz") as tar:
+        tar.add(fresh_dir / "config", arcname="config")
+        tar.add(fresh_dir / "docker-compose.yml", arcname="docker-compose.yml")
+        tar.add(fresh_dir / ".env", arcname=".env")
+
+    def fake_rmtree(path, *args, **kwargs):
+        if kwargs.get("ignore_errors"):
+            return
+        raise PermissionError(13, "Permission denied", str(path))
+
+    down_proc = MagicMock(returncode=0)
+
+    with patch("installer.post_install.shutil.rmtree", side_effect=fake_rmtree), patch(
+        "installer.post_install.run_docker_command", return_value=down_proc
+    ) as mock_run:
+
+        result = restore_stack(
+            backup_path,
+            str(stack_dir / "docker-compose.yml"),
+            str(stack_dir / ".env"),
+            stack_dir=stack_dir
+        )
+
+    assert result == {"success": True, "error": None}
+    # the config/ dir was cleared via a throwaway root container
+    docker_calls = [c.args[0] for c in mock_run.call_args_list if c.args[0][:3] == ["docker", "run", "--rm"]]
+    assert docker_calls, "expected a `docker run --rm` fallback to clear the root-owned config dir"
+    assert f"{(stack_dir / 'config').resolve()}:/target" in docker_calls[0]
+    # and the archive still extracted over the top
+    assert (stack_dir / "config" / "jellyfin" / "settings.xml").read_text() == "<new/>"
+
+
 def test_restore_stack_stops_running_stack_before_extracting(tmp_path):
 
     stack_dir = tmp_path / "stack"

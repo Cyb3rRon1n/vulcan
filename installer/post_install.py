@@ -412,7 +412,7 @@ def restore_stack(
     config_dir = stack_dir / "config"
 
     if config_dir.exists():
-        shutil.rmtree(config_dir)
+        _force_rmtree(config_dir)
 
     try:
         with tarfile.open(backup_path, "r:gz") as tar:
@@ -433,7 +433,7 @@ def remove_orphaned_containers(project_name: str) -> dict:
     remediation flow calls this for the "your own orphaned containers"
     case, where stack/ is *not* stale - it's the freshly-generated
     stack the current run is actively trying to start, so
-    uninstall_stack()'s own unconditional _remove_stack_dir() would
+    uninstall_stack()'s own unconditional _force_rmtree() would
     delete the very compose file this run just wrote.
     """
 
@@ -497,7 +497,7 @@ def uninstall_stack(
             return {"success": False, "error": "Failed to stop orphaned containers - check `docker compose logs`."}
 
     if stack_dir.exists():
-        _remove_stack_dir(stack_dir)
+        _force_rmtree(stack_dir)
 
     if purge_artifacts:
 
@@ -510,27 +510,30 @@ def uninstall_stack(
     return {"success": True, "error": None}
 
 
-def _remove_stack_dir(stack_dir: Path) -> None:
+def _force_rmtree(target: Path) -> None:
     """
-    A plain shutil.rmtree() is enough for every service Vulcan generates
-    except one: Authelia's official image runs as its own internal user
-    (root, confirmed by inspecting real file ownership after running it),
-    not PUID/PGID like every LinuxServer.io image here - files it creates
-    at runtime (its SQLite db, notification log) can end up owned by a
-    UID the host user can't delete directly. Confirmed by hitting a real
-    PermissionError against a real running Authelia container, not
-    assumed. Falls back to emptying the directory from inside a
-    throwaway root container - the same real technique already used to
-    clean up stray test state in this project's own history - then
-    removing the now-empty tree normally.
+    A plain shutil.rmtree() is enough for most of what Vulcan generates,
+    but not all of it: some images run as their own internal root user,
+    not PUID/PGID like every LinuxServer.io image here, and files they
+    create at runtime end up owned by a UID the host user can't delete
+    directly. Confirmed against a real running Authelia container (its
+    SQLite db / notification log) and again against a real Homepage
+    container (its `logs/` dir, root:root) hit during `vulcan restore`.
+    Falls back to emptying the directory from inside a throwaway root
+    container - the same real technique already used to clean up stray
+    test state in this project's own history - then removing the
+    now-empty tree normally.
+
+    Used by both `vulcan uninstall` (whole stack/) and `vulcan restore`
+    (just stack/config/, cleared before extracting the archive over it).
     """
 
     try:
-        shutil.rmtree(stack_dir)
+        shutil.rmtree(target)
     except PermissionError:
 
         run_docker_command(
-            ["docker", "run", "--rm", "-v", f"{stack_dir.resolve()}:/target", "alpine", "sh", "-c", "rm -rf /target/*"]
+            ["docker", "run", "--rm", "-v", f"{target.resolve()}:/target", "alpine", "sh", "-c", "rm -rf /target/*"]
         )
 
-        shutil.rmtree(stack_dir, ignore_errors=True)
+        shutil.rmtree(target, ignore_errors=True)
