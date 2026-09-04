@@ -146,7 +146,18 @@ For each one you enabled:
 ## 5. qBittorrent / SABnzbd
 
 Set a real login on first visit (not the container image's documented
-default) - save it in Vaultwarden. Then connect each *arr app above to it:
+default) - save it in Vaultwarden.
+
+**Set the save path first.** qBittorrent's image defaults to `/downloads`,
+which it doesn't have mounted - the *arr apps then can't follow completed
+downloads ("this directory does not appear to exist inside the
+container"). In qBittorrent **Tools > Options > Downloads** set **Default
+Save Path** to `/data/downloads`. Every *arr app and qBittorrent all see
+your media library at `/data`, so this one path lines up everywhere and
+no "remote path mapping" is needed. SABnzbd: same idea, set its complete
+folder to `/data/downloads` under Config > Folders.
+
+Then connect each *arr app above to the client:
 Settings > Download Clients > Add.
 
 If Gluetun is enabled, qBittorrent shares its network namespace - the
