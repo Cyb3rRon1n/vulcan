@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/walkthrough.md">Walkthrough</a> · <a href="https://cyb3rron1n.github.io/">Sibling Projects</a> · <a href="docs/images/favicon.svg">Favicon</a>
+  📖 <a href="https://cyb3rron1n.github.io/vulcan/">Documentation</a> · <a href="docs/getting-started/index.md">Getting Started</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/walkthrough.md">Walkthrough</a> · <a href="docs/guides/homepage-widgets.md">Dashboard Widgets Guide</a> · <a href="https://cyb3rron1n.github.io/">Sibling Projects</a> · <a href="docs/images/favicon.svg">Favicon</a>
 </p>
 
 **Deploy a self-hosted media homelab, sized to your hardware.** Vulcan inspects your Linux host's real hardware and generates a Docker Compose media stack — Light, Medium, or Heavy — sized to what your machine can actually handle. Deterministic tier recommendations from detected CPU, RAM, disk, and GPU. No LLM in the decision path.
@@ -71,13 +71,13 @@ Each tier's actual services are shown before you pick — not just the name.
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + Jellyseerr, Bazarr, FlareSolverr |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + Uptime Kuma, Watchtower |
 
-Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube/Downtify (downloaders), Netdata (monitoring), Vaultwarden (password manager). Heavy adds GPU transcoding (when a GPU is detected), plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, and Tailscale via custom mode.
+Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube/Downtify (downloaders), Netdata/Glances (monitoring), Vaultwarden (password manager), Pi-hole/AdGuard Home (DNS ad-blocking), FileBrowser (web file manager), Portainer (container management). Heavy adds GPU transcoding (when a GPU is detected), plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale, Cloudflare Tunnel, Sportarr, and Threadfin via custom mode.
 
 All tiers share the same directory layout and volume naming, so re-running later to move up a tier shouldn't lose data.
 
 ### Custom mode
 
-Pick exactly which services to include, from all 28 known services regardless of tier, pre-checked based on your hardware:
+Pick exactly which services to include, from all 36 known services regardless of tier, pre-checked based on your hardware:
 
 ```bash
 sudo ./install --plain --tier medium --services qbittorrent,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
@@ -89,7 +89,9 @@ Resource limits scale using whichever tier you choose — picking Homepage along
 
 ## Optional Integrations
 
-Beyond the core stack, custom mode (`--services` list) unlocks: Traefik (domain-based `<service>.<domain>` routing, self-signed HTTPS by default), Cloudflare DNS (real Let's Encrypt certs) and Cloudflare Tunnel (no forwarded ports at all), Tailscale (private remote access, no public exposure), Authelia (login wall for routed services), CrowdSec (blocks malicious IPs at the edge), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
+Beyond the core stack, custom mode (`--services` list) unlocks: Traefik (domain-based `<service>.<domain>` routing, self-signed HTTPS by default), Cloudflare DNS (real Let's Encrypt certs) and Cloudflare Tunnel (no forwarded ports at all), Tailscale (private remote access, no public exposure), Authelia (login wall for routed services), CrowdSec (blocks malicious IPs at the edge), Pi-hole/AdGuard Home (DNS-level ad blocking), Glances (per-service monitoring widgets), plus Homepage/Dashy pre-seeded dashboards, Decluttarr/Maintainerr automation, and MeTube/Downtify downloaders.
+
+Homepage/Dashy tiles come pre-seeded with real links on first build and are never overwritten after that — customize tabs, layout, and widgets by editing plain YAML (`stack/config/homepage/`), easiest done in-browser via FileBrowser (mounted automatically when both are enabled) rather than SSH. See the [Dashboard Widgets Guide](docs/guides/homepage-widgets.md).
 
 Full detail, gotchas, and copy-pasteable commands for each: [Optional Integrations →](https://cyb3rron1n.github.io/vulcan/integrations/) (or [docs/integrations.md](docs/integrations.md)).
 

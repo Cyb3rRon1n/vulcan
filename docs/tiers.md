@@ -8,13 +8,13 @@ Both the guided menu and the plain CLI show what each tier actually contains bef
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Uptime Kuma, Watchtower |
 
-Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage or Dashy (dashboard), MeTube/Downtify (downloaders), Netdata (monitoring), and Vaultwarden (password manager). Heavy tier adds GPU transcoding when a GPU is detected, plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, and Tailscale via custom mode.
+Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage or Dashy (dashboard), MeTube/Downtify (downloaders), Netdata/Glances (monitoring), Vaultwarden (password manager), Pi-hole/AdGuard Home (DNS ad-blocking), FileBrowser (web file manager), and Portainer (container management). Heavy tier adds GPU transcoding when a GPU is detected, plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale, Cloudflare Tunnel, Sportarr, and Threadfin via custom mode.
 
 All tiers share the same directory layout and volume naming, so re-running the installer later to move up a tier shouldn't lose data.
 
 ## Custom mode
 
-Pick exactly which services to include, from all 28 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+Pick exactly which services to include, from all 36 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
