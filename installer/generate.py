@@ -889,8 +889,10 @@ def render_setup_order(config: GenerationConfig, host_ip: str | None) -> str:
 
         dl_list = ", ".join(display_names[key] for key in download_clients)
         steps.append(
-            f"{dl_list}: set a real login (not the image's default) and connect it to each "
-            "*arr app above (Settings > Download Clients)."
+            f"{dl_list}: set a real login (not the image's default), set the save/complete "
+            "path to /data/downloads (the image default /downloads isn't mounted, so the "
+            "*arr apps can't follow finished downloads), then connect it to each *arr app "
+            "above (Settings > Download Clients)."
         )
 
     if "gluetun" in enabled:
@@ -1319,7 +1321,9 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
         warnings.append(
             "SABnzbd needs your Usenet provider's server details entered through "
-            "its own setup wizard on first login before it can download anything."
+            "its own setup wizard on first login before it can download anything. "
+            "Set its complete folder to /data/downloads (Config > Folders) so the "
+            "*arr apps can follow finished downloads."
         )
 
     if "flaresolverr" in enabled_service_keys(config):
