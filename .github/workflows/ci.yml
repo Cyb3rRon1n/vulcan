@@ -30,8 +30,8 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --cov=installer --cov-report=term-missing
 
-      - name: Install whiptail, shellcheck, bats
-        run: sudo apt-get update && sudo apt-get install -y whiptail shellcheck bats
+      - name: Install whiptail, shellcheck, bats, tmux
+        run: sudo apt-get update && sudo apt-get install -y whiptail shellcheck bats tmux
 
       - name: Shellcheck installer/menu.sh
         # -S warning, not the default (which also flags style/info
@@ -47,3 +47,8 @@ jobs:
 
       - name: Bats tests for install bootstrap
         run: bats tests/test_install.bats
+
+      - name: Bats real-pty tests for installer/menu.sh (tmux + real whiptail)
+        # `vulcan` is already on PATH from the editable install above;
+        # the pty harness picks it up via its command -v fallback.
+        run: bats tests/test_menu_pty.bats
