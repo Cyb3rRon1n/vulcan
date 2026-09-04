@@ -189,3 +189,42 @@ def test_fix_compose_v2_only_needs_root_when_not_root():
 
     assert report["needs_root"] is True
     ensure_compose_v2.assert_not_called()
+
+
+def test_offline_never_attempts_install_even_with_fix_true():
+    with patch("installer.phase0.ensure_system_deps", return_value={
+        "success": False, "packages": ["mdadm"], "installed": [], "missing_after": [], "needs_reboot": False,
+    }) as ensure_deps, \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_ABSENT), \
+        patch("installer.phase0.os.geteuid", return_value=0), \
+        patch("installer.phase0.install_docker") as install_docker:
+
+        report = phase0.ensure_system_ready(fix=True, offline=True, user="sentinel")
+
+    # offline forces report-only regardless of fix=True - dry_run=True is
+    # the only ensure_system_deps() call, nothing installed
+    ensure_deps.assert_called_once_with(dry_run=True)
+    install_docker.assert_not_called()
+    assert report["ready"] is False
+    assert report["offline_rows"] is not None
+
+
+def test_offline_rows_present_for_ready_system():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_READY):
+
+        report = phase0.ensure_system_ready(fix=False, offline=True, user="sentinel")
+
+    assert report["ready"] is True
+    names = {row["name"] for row in report["offline_rows"]}
+    assert "docker" in names
+    assert all(row["present"] for row in report["offline_rows"])
+
+
+def test_not_offline_leaves_offline_rows_none():
+    with patch("installer.phase0.ensure_system_deps", return_value=_DEPS_OK), \
+        patch("installer.phase0.detect_docker", return_value=DOCKER_READY):
+
+        report = phase0.ensure_system_ready(fix=False)
+
+    assert report["offline_rows"] is None

@@ -44,12 +44,12 @@ def test_ensure_system_deps_all_present_short_circuits():
     assert plan["packages"] == []
     assert plan["success"] is True
     assert plan["missing_after"] == []
-    assert plan["already_present"] == ["python3", "whiptail", "mdadm", "git"]
+    assert plan["already_present"] == ["python3", "whiptail", "mdadm", "git", "curl"]
 
 
 def test_ensure_system_deps_installs_missing_and_rechecks():
 
-    present = {"python3": True, "whiptail": True, "mdadm": False, "git": True}
+    present = {"python3": True, "whiptail": True, "mdadm": False, "git": True, "curl": True}
 
     def fake_which(binary):
         return "/usr/bin/x" if present.get(binary) else None
@@ -81,7 +81,7 @@ def test_ensure_system_deps_unknown_distro_reports_missing():
         plan = ensure_system_deps()
 
     assert plan["success"] is False
-    assert plan["missing_after"] == ["python3", "whiptail", "mdadm", "git"]
+    assert plan["missing_after"] == ["python3", "whiptail", "mdadm", "git", "curl"]
 
 
 def test_git_is_in_the_debian_install_plan_when_missing(monkeypatch):

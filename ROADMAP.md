@@ -16,7 +16,7 @@ All three originally-planned phases are complete; everything below shipped after
 - [x] **Homepage dashboard pre-seeding** — real service tiles (correct icon, correct link) instead of a blank dashboard on first boot; never overwrites a hand-edited `services.yaml` on a later regenerate
 - [x] **Readarr** — books/ebooks `*arr` app, placed identically to Lidarr, pinned to the only real working image tag LinuxServer currently publishes (see Next — that tag is stale)
 - [x] **Pre-pull mode** — `vulcan pull`
-- [x] **Airgap mode** — `vulcan export`/`vulcan import` (pre-install Docker on a machine with no connection; Phase 0 skips the install step when Docker is already present)
+- [x] **Airgap mode** — `vulcan export`/`vulcan import` (pre-install Docker on a machine with no connection; Phase 0 skips the install step when Docker is already present); plus **offline bootstrap** — `--offline` skips the Docker install attempt, and `vulcan export-bundle`/`install-bundle` carry Vulcan's own Python deps (arch-correct wheelhouse, `./install --bundle FILE` for a zero-network first boot)
 - [x] **Read-only media-path redundancy detection** — reports whether the media path has real drive-level redundancy (mdadm/btrfs/ZFS); never creates or modifies storage itself
 - [x] **Safe SQLite snapshotting in `vulcan backup`** — via sqlite3's own online-backup API, so a live `*arr`/Jellyfin database is never archived mid-write
 - [x] **Uptime Kuma setup reference** — warning + real service URLs, scoped down from full pre-seeding once its Socket.IO-only API made that a materially bigger ask

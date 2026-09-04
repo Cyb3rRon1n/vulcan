@@ -1,12 +1,13 @@
 """
 Install the system packages a Vulcan first run needs but a fresh OS may
 not ship with: python3 (+ venv), whiptail (the TUI), mdadm (software
-RAID), and git. The bash `install` bootstrap uses this same family mapping to get
-python3 in place before any Python exists; ensure_system_deps() runs from
-within the Python flow for everything else. Mirrors docker_setup.py's
-shape - a per-distro install plan plus a run_privileged execution half,
-same result-dict convention, same "not present isn't an error, but the
-caller sees what's still missing" rule.
+RAID), git, and curl (the get.docker.com bootstrap fetches with it). The
+bash `install` bootstrap uses this same family mapping to get python3 in
+place before any Python exists; ensure_system_deps() runs from within the
+Python flow for everything else. Mirrors docker_setup.py's shape - a
+per-distro install plan plus a run_privileged execution half, same
+result-dict convention, same "not present isn't an error, but the caller
+sees what's still missing" rule.
 """
 
 import shutil
@@ -42,6 +43,7 @@ _TOOL_PACKAGES = {
     "whiptail": {"debian": ["whiptail"], "fedora": ["newt"], "arch": ["libnewt"]},
     "mdadm": {"debian": ["mdadm"], "fedora": ["mdadm"], "arch": ["mdadm"]},
     "git": {"debian": ["git"], "fedora": ["git"], "arch": ["git"]},
+    "curl": {"debian": ["curl"], "fedora": ["curl"], "arch": ["curl"]},
 }
 
 
@@ -73,7 +75,7 @@ def ensure_system_deps(dry_run: bool = False) -> dict:
 
     to_install: list[str] = []
 
-    for tool in ("python3", "whiptail", "mdadm", "git"):
+    for tool in ("python3", "whiptail", "mdadm", "git", "curl"):
 
         if _tool_present(tool):
             result["already_present"].append(tool)
@@ -102,7 +104,7 @@ def ensure_system_deps(dry_run: bool = False) -> dict:
 
         ok = run_privileged([*_INSTALL_CMD[family], *result["packages"]])["success"]
 
-    for tool in ("python3", "whiptail", "mdadm", "git"):
+    for tool in ("python3", "whiptail", "mdadm", "git", "curl"):
 
         if _tool_present(tool):
             if tool not in result["already_present"]:
@@ -116,3 +118,44 @@ def ensure_system_deps(dry_run: bool = False) -> dict:
         result["error"] = f"failed to install: {', '.join(result['packages'])}"
 
     return result
+
+
+def offline_preflight(
+    docker_installed: bool,
+    docker_running: bool,
+    docker_compose_v2: bool,
+) -> list[dict]:
+    """
+    Host-dependency status for a no-network boot (`--offline` or a host
+    with no route to the package mirrors). Unlike ensure_system_deps()
+    this never tries to install anything - it reports what a fresh,
+    disconnected box still lacks so the front end can tell the user
+    exactly what to bring in (or install on a connected machine and
+    transfer). Returns a display-ready list of rows, each
+    {"name", "present", "remediation"}; the caller chooses how to render
+    them (console table, plain lines, whiptail msgbox, ...).
+    """
+    plan = ensure_system_deps(dry_run=True)
+
+    rows: list[dict] = []
+
+    for tool in ("python3", "whiptail", "mdadm", "git", "curl"):
+        rows.append({
+            "name": tool,
+            "present": tool not in plan["missing_after"],
+            "remediation": f"install {tool} on a connected box, copy the .deb/.rpm onto this machine, and `apt install ./<pkg>.deb`",
+        })
+
+    rows.append({
+        "name": "docker",
+        "present": docker_installed and docker_running,
+        "remediation": "install Docker on a connected box, copy the docker-ce .deb packages across, and `dpkg -i *.deb` + `apt-get install -f`",
+    })
+
+    rows.append({
+        "name": "docker compose v2",
+        "present": docker_compose_v2,
+        "remediation": "install the docker-compose-plugin (or docker-compose-v2) package alongside Docker",
+    })
+
+    return rows
