@@ -307,16 +307,17 @@ def preflight(
     Docker setup a first run needs. Idempotent - safe to re-run."""
 
     report = ensure_system_ready(fix=fix, offline=offline)
+    offline_rows = report.get("offline_rows")
 
-    if report["offline_rows"] is not None:
+    if offline_rows is not None:
 
         console.print(
             "[yellow]Offline mode - nothing will be fetched from the network. "
             "Here's what this machine still needs:[/yellow]"
         )
 
-        present = [row["name"] for row in report["offline_rows"] if row["present"]]
-        missing = [row for row in report["offline_rows"] if not row["present"]]
+        present = [row["name"] for row in offline_rows if row["present"]]
+        missing = [row for row in offline_rows if not row["present"]]
 
         if present:
             console.print(f"[green]Already present:[/green] {', '.join(present)}")
