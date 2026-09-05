@@ -866,6 +866,68 @@ def test_render_compose_glances_routes_through_traefik_when_domain_set():
     assert "traefik.http.routers.glances.middlewares=" in output
 
 
+def test_render_compose_navidrome_zero_caps_and_readonly_music_mount():
+    output = render_compose(make_config("light", enabled_optional={"navidrome"}))
+    block = _service_block(output, "navidrome", "kavita")
+
+    assert "deluan/navidrome" in block
+    assert "ND_MUSICFOLDER=/music" in block
+    assert "${MEDIA_PATH}/media/music:/music:ro" in block
+    assert "4533" in block
+    data = yaml.safe_load(output)
+    assert data["services"]["navidrome"]["cap_drop"] == ["ALL"]
+    assert "cap_add" not in data["services"]["navidrome"]
+
+
+def test_render_compose_navidrome_never_gets_authelia_middleware():
+    """
+    Like Jellyfin, Navidrome is deliberately excluded from authelia@docker -
+    every Subsonic-compatible mobile/desktop client authenticates directly
+    against /rest/* with its own query-string token, not a browser login,
+    and this template has no per-path middleware split to protect
+    everything else while carving that path out. crowdsec@docker is
+    unaffected (IP-reputation blocking, not an auth challenge).
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"navidrome", "kavita", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    navidrome_block = _service_block(output, "navidrome", "kavita")
+
+    assert "traefik.http.routers.navidrome.middlewares=crowdsec@docker" in navidrome_block
+    assert "authelia@docker" not in navidrome_block
+
+
+def test_render_compose_kavita_standard_linuxserver_caps_and_readonly_books_mount():
+    output = render_compose(make_config("light", enabled_optional={"kavita"}))
+    block = _service_block(output, "kavita", "traefik")
+
+    assert "lscr.io/linuxserver/kavita" in block
+    assert "${MEDIA_PATH}/media/books:/books:ro" in block
+    assert "5000" in block
+    data = yaml.safe_load(output)
+    assert data["services"]["kavita"]["cap_drop"] == ["ALL"]
+    assert data["services"]["kavita"]["cap_add"] == [
+        "CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"
+    ]
+
+
+def test_render_compose_kavita_routes_through_traefik_with_full_middleware():
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"kavita", "traefik", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    assert "traefik.http.routers.kavita.rule=Host(`kavita.media.example.com`)" in output
+    assert "traefik.http.routers.kavita.middlewares=authelia@docker" in output
+
+
 def test_render_compose_homepage_private_omits_traefik_labels():
 
     output = render_compose(
@@ -1108,6 +1170,7 @@ FIVE_CAP_SERVICES = {
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
     "sportarr", "threadfin", "tracearr", "crowdsec",
+    "kavita",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1118,6 +1181,11 @@ ZERO_CAP_SERVICES = {
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
+    # deluan/navidrome:latest - a single static Go binary, no s6-overlay/
+    # root->PUID drop step, nothing to chown (runs as root against its
+    # own bind mounts). Verified live: full library scan with zero
+    # added capabilities under cap_drop: ALL.
+    "navidrome",
 }
 
 # Special-cased services whose real, single-purpose cap_add already existed
@@ -1212,7 +1280,7 @@ def test_special_cap_services_drop_all_and_keep_their_own_verified_set():
 
 def test_every_service_has_cap_drop_all():
     """
-    Regression lock, all 36 services: this pass covers every service known
+    Regression lock, all 38 services: this pass covers every service known
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """

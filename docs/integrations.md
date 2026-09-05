@@ -114,6 +114,14 @@ Live CPU/RAM/disk/network/temperature and per-container awareness, matched to it
 
 A single small container (`nicolargo/glances`, port 61208) exposing a REST API. Unlike Netdata it has a normal Docker-network identity, so it routes through Traefik/Authelia like any other service. Its real value is powering Homepage's per-metric `glances` widgets (CPU, RAM, disk I/O, top processes, temperature) — see the [Dashboard Widgets Guide](guides/homepage-widgets.md) for exact widget configs and what does/doesn't work in the default routed setup.
 
+## Music streaming (Navidrome)
+
+A lightweight, Subsonic-API-compatible music server (`deluan/navidrome`, port 4533) pointed read-only at `stack/media/music`. Any Subsonic-compatible client works against it unmodified (DSub, Substreamer, play:Sub, and others). Deliberately not routed through Authelia even if enabled, same reason as Jellyfin: every Subsonic client authenticates directly against `/rest/*` with its own query-string token, not a browser login, and Navidrome's own docs call out excluding that path from forward-auth for exactly this reason — its own login (created on first visit) is the real protection layer here instead. `crowdsec@docker` still applies since IP-reputation blocking isn't an auth challenge.
+
+## Manga/comics/ebook reader (Kavita)
+
+A self-hosted reader server (`lscr.io/linuxserver/kavita`, port 5000) pointed read-only at `stack/media/books`. Unlike Navidrome/Jellyfin it has no separate native-app API protocol to worry about, so it routes through Traefik/Authelia/CrowdSec like any other service.
+
 ## Web file manager (FileBrowser)
 
 Browser-based file manager for the media library, mounted at `/srv`. When Homepage is also enabled, `stack/config/homepage/` is additionally mounted read-write at `homepage-config/` — the easiest way to edit Homepage's YAML (tiles, widgets, layout) without SSH. Never mounts the rest of `stack/config/` (Authelia secrets, VPN keys live there).

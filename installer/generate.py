@@ -101,7 +101,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
-    "adguardhome", "glances",
+    "adguardhome", "glances", "navidrome", "kavita",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -121,7 +121,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "seerr"],
+    "Media": ["jellyfin", "seerr", "navidrome", "kavita"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Live TV": ["threadfin"],
@@ -161,6 +161,8 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "flaresolverr": 8191,
     "netdata": 19999,
     "glances": 61208,
+    "navidrome": 4533,
+    "kavita": 5000,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -198,6 +200,8 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
+    "navidrome": "Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients",
+    "kavita": "Self-hosted manga, comics, and ebook reader server",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
@@ -1498,6 +1502,22 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             f"extension, mobile, desktop) log in directly and can't complete a browser SSO "
             f"redirect; its own master password (plus its own optional two-factor "
             f"authentication) is the real protection layer here."
+        )
+
+    if (
+        "navidrome" in enabled_service_keys(config)
+        and "authelia" in enabled_service_keys(config)
+        and "traefik" in enabled_service_keys(config)
+        and config.domain
+    ):
+
+        warnings.append(
+            "Like Jellyfin, Navidrome is deliberately not routed through Authelia - every "
+            "Subsonic-compatible mobile/desktop client (DSub, Substreamer, play:Sub, ...) "
+            "authenticates directly against /rest/* with its own query-string token, not a "
+            "browser login, and Navidrome's own docs call out excluding that path from "
+            "forward-auth for exactly this reason. Its own login (created on first visit) is "
+            "the real protection layer here instead."
         )
 
     if (

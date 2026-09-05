@@ -9,7 +9,7 @@ def test_all_known_services_have_a_resource_profile():
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
         "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec",
         "cloudflared", "filebrowser", "pihole", "sportarr", "tracearr", "threadfin",
-        "portainer", "adguardhome", "glances"
+        "portainer", "adguardhome", "glances", "navidrome", "kavita"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
@@ -48,6 +48,16 @@ def test_vaultwarden_has_light_profile():
 def test_glances_has_light_profile():
 
     assert RESOURCE_PROFILES["glances"] == "light"
+
+
+def test_navidrome_has_light_profile():
+
+    assert RESOURCE_PROFILES["navidrome"] == "light"
+
+
+def test_kavita_has_standard_profile():
+
+    assert RESOURCE_PROFILES["kavita"] == "standard"
 
 
 def test_dashy_has_light_profile():

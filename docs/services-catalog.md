@@ -4,13 +4,15 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-36 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+38 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
 | Service | Tier | Type | What it does |
 |---|---|---|---|
 | Jellyfin | Light | core | Streams your movie/TV/music library to any device. |
+| Navidrome | Light | optional | Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients. |
+| Kavita | Light | optional | Self-hosted manga/comics/ebook reader server. |
 | Seerr | Medium | core | Lets other household members request new movies/shows without touching the management apps directly. |
 
 ## Media Management
