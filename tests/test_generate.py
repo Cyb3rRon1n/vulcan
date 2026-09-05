@@ -22,7 +22,10 @@ from installer.generate import (
     render_decluttarr_config,
     render_env,
     render_dashy_config,
+    render_homepage_bookmarks,
+    render_homepage_guide,
     render_homepage_services,
+    render_homepage_settings,
     render_homepage_widgets,
     render_setup_order,
     render_stack_summary,
@@ -2461,6 +2464,70 @@ def test_render_homepage_widgets_glances_falls_back_to_container_name_without_ho
 
     glances = next(block["glances"] for block in data if "glances" in block)
     assert glances["url"] == "http://glances:61208"
+
+
+def test_render_homepage_settings_is_a_tabbed_dark_layout():
+    config = make_config("heavy", custom_services={"homepage", "glances", "jellyfin", "radarr"})
+    data = yaml.safe_load(render_homepage_settings(config, host_ip=None))
+
+    assert data["theme"] == "dark"
+    layout = data["layout"]
+    # populated groups land on their mapped tab
+    assert layout["Media"]["tab"] == "Media"
+    assert layout["Monitoring"]["tab"] == "System"
+    assert layout["Reference"]["tab"] == "Admin"
+    # the wide *arr row keeps its 4 columns
+    assert layout["Media Management"]["columns"] == 4
+    assert layout["Media"]["columns"] == 3
+
+
+def test_render_homepage_settings_omits_groups_with_no_enabled_services():
+    # a light base stack has no monitoring services -> no System tab / group
+    config = make_config("light", enabled_optional=set(), custom_services=set())
+    data = yaml.safe_load(render_homepage_settings(config, host_ip=None))
+
+    assert "Monitoring" not in data["layout"]
+    assert not any(g["tab"] == "System" for g in data["layout"].values())
+    # Guides + Reference are always present
+    assert "Guides" in data["layout"]
+    assert "Reference" in data["layout"]
+
+
+def test_render_homepage_bookmarks_has_reference_and_quick_links_with_icons():
+    data = yaml.safe_load(render_homepage_bookmarks())
+
+    groups = {name for entry in data for name in entry}
+    assert groups == {"Reference", "Quick Links"}
+
+    ref = next(entry["Reference"] for entry in data if "Reference" in entry)
+    trash = next(item["TRaSH Guides"][0] for item in ref if "TRaSH Guides" in item)
+    assert "icon" in trash and "href" in trash and "abbr" in trash
+
+
+def test_render_homepage_guide_is_markdown_naming_the_real_files():
+    text = render_homepage_guide()
+
+    assert text.startswith("# Homepage")
+    for f in ("services.yaml", "settings.yaml", "bookmarks.yaml", "widgets.yaml"):
+        assert f in text
+
+
+def test_write_stack_seeds_all_homepage_files(tmp_path):
+    config = GenerationConfig(
+        tier=TIERS["medium"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional=set(),
+        custom_services={"homepage", "jellyfin", "radarr"},
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    hp = tmp_path / "stack" / "config" / "homepage"
+    for name in ("services.yaml", "widgets.yaml", "settings.yaml", "bookmarks.yaml", "GUIDE.md"):
+        assert (hp / name).exists(), name
 
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):

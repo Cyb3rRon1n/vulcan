@@ -1,15 +1,19 @@
 # Homepage widgets & dashboard tuning
 
-Vulcan seeds two files in `stack/config/homepage/` on the first build and
-**never overwrites them** — they're yours to edit. Homepage hot-reloads
-on save; no restart needed.
+Vulcan seeds these files in `stack/config/homepage/` on the first build
+and **never overwrites them** — they're yours to edit. Homepage
+hot-reloads on save; no restart needed.
 
 | File | What it holds |
 |------|---------------|
 | `services.yaml` | the service tiles (name, icon, link) + optional per-service widgets |
-| `widgets.yaml` | the info row at the top (resources, network, search) |
-| `settings.yaml` | layout, columns, theme (create it yourself) |
-| `bookmarks.yaml` | link groups (create it yourself) |
+| `widgets.yaml` | the info row at the top (resources, host stats, search) |
+| `settings.yaml` | a tabbed dark layout — which group is on which tab, column counts, theme |
+| `bookmarks.yaml` | a Reference group + a Quick Links scaffold to add your own sites to |
+| `GUIDE.md` | a copy-paste editing cheat-sheet, sitting right next to the files above |
+
+Start with **`GUIDE.md`** — it has templates for every tile type
+(monitored app, weather, "recently added", calendar) and the gotchas.
 
 There is **no in-app editor** — Homepage is YAML only. Easiest options:
 
