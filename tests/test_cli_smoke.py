@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 
+from installer import __version__
 from installer.cli import app
 
 
@@ -11,4 +12,4 @@ def test_version():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "0.2.0" in result.output
+    assert __version__ in result.output
