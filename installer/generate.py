@@ -140,6 +140,26 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
 }
 
+# Which tab each Homepage group lands on in the generated settings.yaml
+# `layout:`. A tabbed dashboard beats one long scroll once a stack has
+# more than a handful of services. Only groups with at least one enabled
+# service get a layout entry (Homepage renders an empty header for a
+# group it can't find tiles for). Column counts: 3 everywhere except the
+# wide *arr row. All of this is a starting point - settings.yaml is
+# seeded once and never overwritten, same as services.yaml.
+_HOMEPAGE_TABS: dict[str, str] = {
+    "Media": "Media",
+    "Media Management": "Media",
+    "Downloads": "Media",
+    "Live TV": "Media",
+    "Monitoring": "System",
+    "Security": "Admin",
+    "Infrastructure": "Admin",
+    "Guides": "Admin",
+    "Reference": "Admin",
+}
+_HOMEPAGE_COLUMNS: dict[str, int] = {"Media Management": 4}
+
 _HOMEPAGE_PORTS: dict[str, int] = {
     "jellyfin": 8096,
     "radarr": 7878,
@@ -702,6 +722,251 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
     return yaml.safe_dump(groups, sort_keys=False)
 
 
+def _homepage_populated_groups(config: GenerationConfig, host_ip: str | None) -> list[str]:
+    """Group names that render_homepage_services() will actually put a
+    tile in, in order - plus 'Guides', which is always present."""
+
+    enabled = enabled_service_keys(config)
+
+    populated = [
+        group_name
+        for group_name, keys in _HOMEPAGE_GROUPS.items()
+        if any(key in enabled and _service_href(key, config, host_ip) for key in keys)
+    ]
+    populated.append("Guides")
+
+    return populated
+
+
+def render_homepage_settings(config: GenerationConfig, host_ip: str | None = None) -> str:
+    """
+    Seeded once into config/homepage/settings.yaml, never overwritten. A
+    tabbed dark dashboard rather than Homepage's default single
+    untabbed light page - which is a long scroll the moment a stack has
+    more than a handful of services.
+
+    `layout:` only lists groups that actually have tiles - Homepage
+    renders a bare header for a group it can't find any tile for. The
+    Reference group (bookmarks.yaml) is always listed since bookmarks
+    are always seeded.
+    """
+
+    layout: dict[str, dict] = {}
+
+    for group in [*_homepage_populated_groups(config, host_ip), "Reference"]:
+        entry: dict = {"tab": _HOMEPAGE_TABS.get(group, "Admin"), "style": "row"}
+        entry["columns"] = _HOMEPAGE_COLUMNS.get(group, 3)
+        layout[group] = entry
+
+    settings = {
+        "title": "Homepage",
+        "theme": "dark",
+        "color": "slate",
+        "headerStyle": "boxedWidgets",
+        "useEqualHeights": True,
+        "hideVersion": True,
+        "disableUpdateCheck": True,
+        "target": "_blank",
+        "layout": layout,
+    }
+
+    return yaml.safe_dump(settings, sort_keys=False)
+
+
+def render_homepage_bookmarks() -> str:
+    """
+    Seeded once into config/homepage/bookmarks.yaml, never overwritten.
+    A Reference group (docs the operator will actually open) plus an
+    empty-ish Quick Links group as a scaffold to add frequently-visited
+    sites to. `icon:` accepts a dashboard-icons name (`github.png`),
+    `mdi-<name>`, `si-<name>`, or a URL.
+    """
+
+    data = [
+        {"Reference": [
+            {"TRaSH Guides": [
+                {"abbr": "TR", "icon": "mdi-tune-variant", "href": "https://trash-guides.info/"}]},
+            {"Servarr Wiki": [
+                {"abbr": "SW", "icon": "servarr.png", "href": "https://wiki.servarr.com/"}]},
+            {"Vulcan": [
+                {"abbr": "VU", "icon": "github.png",
+                 "href": "https://github.com/Cyb3rRon1n/vulcan"}]},
+        ]},
+        {"Quick Links": [
+            {"Example": [
+                {"abbr": "EX", "icon": "mdi-bookmark-outline", "href": "https://example.com/"}]},
+        ]},
+    ]
+
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+_HOMEPAGE_GUIDE = """\
+# Homepage - Editing Guide
+
+Edit these files through **FileBrowser** (`filebrowser.<your-domain>` ->
+`homepage-config/`, or over SSH). Click a file, edit, **Save**. Homepage
+reloads in ~2s - no restart. If the dashboard goes blank or a tile shows
+an error after an edit, you almost certainly broke YAML **indentation**
+(2 spaces per level, **never tabs**). Undo, re-save. Vulcan seeds every
+file below once and then never touches it again.
+
+## The files (most-edited first)
+
+| File | What it controls |
+|---|---|
+| `services.yaml` | Every **tile** - apps, widgets, calendars |
+| `settings.yaml` | **Tabs**, which group is on which tab, **column count**, order, title, theme, background |
+| `bookmarks.yaml` | **Link tiles** (Quick Links, Reference) |
+| `widgets.yaml` | The **top info row** (Array disk, Host stats, search) |
+| `custom.css` / `custom.js` | Inject your own styling / scripts (both empty) |
+| `docker.yaml`, `proxmox.yaml` | Auto-discovery credentials - leave alone |
+| `logs/` | Runtime logs - ignore |
+
+## services.yaml - the tiles
+
+A list of **groups**, each a list of **tiles**. **Order in the file =
+order on screen.** To move a tile, cut-and-paste its block.
+
+### Plain link tile
+
+```yaml
+- Media:
+    - Plex:
+        href: https://plex.example.com
+        icon: plex.png
+        description: Streaming
+```
+
+### Tile with a live widget (the *arr pattern)
+
+```yaml
+    - Radarr:
+        href: https://radarr.<your-domain>       # where clicking goes (browser-reachable)
+        icon: radarr.png
+        widget:
+          type: radarr
+          url: http://radarr:7878                 # internal address for data (container name)
+          key: PUT_API_KEY_HERE                    # Radarr > Settings > General
+```
+
+**`href` = external HTTPS** (what your browser opens).
+**`widget.url` = internal** `http://<container>:<port>` (Homepage fetches
+data server-side, skipping the login).
+
+### Icons
+
+- `radarr.png` etc -> auto-pulled from dashboard-icons (just the app name)
+- `mdi-calendar-month` -> Material Design Icons (pictogrammers.com/library/mdi)
+- `si-spotify` -> Simple Icons (brand logos)
+- a full `https://...` URL also works
+
+### Weather tile (customapi + Open-Meteo, no API key)
+
+```yaml
+    - Weather:
+        icon: mdi-weather-partly-cloudy
+        widget:
+          type: customapi
+          url: https://api.open-meteo.com/v1/forecast?latitude=27.95&longitude=-82.46&current=temperature_2m,apparent_temperature&temperature_unit=fahrenheit
+          refreshInterval: 600000
+          mappings:
+            - field: current.temperature_2m
+              label: Temp
+              format: number
+              suffix: "F"
+            - field: current.apparent_temperature
+              label: Feels like
+              format: number
+              suffix: "F"
+```
+
+Set your own `latitude=` / `longitude=` in the URL. For two locations,
+pass comma-separated pairs and prefix the fields with the index:
+`latitude=27.95,36.74` then `field: "0.current.temperature_2m"` /
+`field: "1.current.temperature_2m"`. **The default tile view shows only
+the first 4 mappings.**
+
+### "Recently Added" list (customapi dynamic-list, needs Jellyfin)
+
+```yaml
+    - Recently Added:
+        icon: mdi-new-box
+        widget:
+          type: customapi
+          url: http://jellyfin:8096/Users/PUT_JELLYFIN_USER_ID/Items/Latest?Limit=8&IncludeItemTypes=Movie,Series,Episode&api_key=PUT_KEY
+          display: dynamic-list
+          refreshInterval: 300000
+          mappings:            # an object here, not a list
+            name: Name
+            label: Type
+            limit: 8
+            target: https://jellyfin.<your-domain>/web/#/details?id={Id}
+```
+
+Get the user id from `http://jellyfin:8096/Users?api_key=KEY`.
+
+### Release calendar tile
+
+```yaml
+    - Release Calendar:
+        icon: mdi-calendar-month
+        widget:
+          type: calendar
+          view: monthly           # or: agenda
+          integrations:
+            - type: radarr
+              service_group: Media Management   # must exactly match the group +
+              service_name: Radarr              # tile name of a working Radarr tile
+            - type: sonarr
+              service_group: Media Management
+              service_name: Sonarr
+```
+
+## settings.yaml - tabs & layout
+
+`layout:` decides which **tab** each group is on and how many
+**columns** it uses. A group here **must exist** in `services.yaml` or
+`bookmarks.yaml` with the **exact same name**.
+
+```yaml
+layout:
+  Media:
+    tab: Media            # omit `tab:` = shows on every tab
+    style: row
+    columns: 3            # tiles per row
+```
+
+- **Move a group to another tab**: change its `tab:`.
+- **New tab**: just use a new `tab:` name - the tab appears automatically.
+- **Reorder groups on a tab**: reorder them in this block.
+- **Background image / page title / theme**: top of this file.
+
+## widgets.yaml - the top info row
+
+Order in the file = left-to-right. Add a timezone clock by copying a
+`- datetime:` block and changing `timeZone:`. **Gotchas**: the
+`datetime` widget has **no `label` field**, and you **cannot** combine
+`timeStyle` with `timeZoneName` - use `hour: numeric` +
+`minute: "2-digit"`. The Host (Glances) widget's `url` is both the data
+source **and** the click target, so it must be a browser-reachable
+address (host LAN IP + `:61208`), not `http://glances:61208`.
+
+## Recovery
+
+Homepage broke after an edit? It's almost always YAML indentation. Undo
+the change, re-save. Docs: gethomepage.dev/configs and
+gethomepage.dev/widgets.
+"""
+
+
+def render_homepage_guide() -> str:
+    """The GUIDE.md dropped into config/homepage/ so the operator can
+    self-serve the files above without re-reading upstream docs."""
+
+    return _HOMEPAGE_GUIDE
+
+
 def render_dashy_config(config: GenerationConfig, host_ip: str | None) -> str:
     """
     Dashy's second-dashboard-alongside-Homepage counterpart to
@@ -1171,11 +1436,13 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             services_yaml_path.write_text(render_homepage_services(config, host_ip))
 
             warnings.append(
-                "Homepage was pre-seeded with tiles for your enabled services at "
-                "stack/config/homepage/services.yaml - edit it directly to customize "
-                "further; Vulcan won't overwrite it on a later regenerate. Add "
-                "per-service widgets (qBittorrent speeds, *arr queues) and API keys "
-                "there; see docs/guides/homepage-widgets.md."
+                "Homepage was pre-seeded at stack/config/homepage/ - tiles "
+                "(services.yaml), a tabbed dark layout (settings.yaml), a top "
+                "info row (widgets.yaml), a bookmarks scaffold (bookmarks.yaml), "
+                "and an editing guide (GUIDE.md). Edit them directly to customize; "
+                "Vulcan won't overwrite them on a later regenerate. Add per-service "
+                "widgets and API keys in services.yaml - GUIDE.md and "
+                "docs/guides/homepage-widgets.md walk through it."
             )
 
         # A minimal top-of-page widget set: real host resources (disk
@@ -1185,6 +1452,23 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
         if not widgets_yaml_path.exists():
             widgets_yaml_path.write_text(render_homepage_widgets(config, host_ip))
+
+        # Tabbed dark layout + a bookmarks scaffold + an editing guide.
+        # All seeded once, never overwritten.
+        settings_yaml_path = output_dir / "config" / "homepage" / "settings.yaml"
+
+        if not settings_yaml_path.exists():
+            settings_yaml_path.write_text(render_homepage_settings(config, host_ip))
+
+        bookmarks_yaml_path = output_dir / "config" / "homepage" / "bookmarks.yaml"
+
+        if not bookmarks_yaml_path.exists():
+            bookmarks_yaml_path.write_text(render_homepage_bookmarks())
+
+        guide_path = output_dir / "config" / "homepage" / "GUIDE.md"
+
+        if not guide_path.exists():
+            guide_path.write_text(render_homepage_guide())
 
     if "dashy" in enabled_service_keys(config):
 
