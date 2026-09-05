@@ -244,7 +244,28 @@ If you enabled it: connect it to Jellyfin (for your library) and to
 Radarr/Sonarr (so requests actually get fulfilled) through its own setup
 wizard.
 
-## 10. Recyclarr / Decluttarr / Maintainerr
+## 10. Threadfin
+
+If you enabled it: Threadfin's web UI lives at `/web/` (its container
+listens at the domain root for HDHomeRun tuner-discovery XML instead - if
+clicking its tile lands you on an XML page rather than the UI, that's why).
+
+1. **Playlist tab** - add your M3U source (a paid IPTV subscription's M3U
+   URL, or an HDHomeRun/ATSC tuner you own). Don't use pirated/free IPTV
+   list sites - those are unauthorized redistributions of paid channels.
+2. **XMLTV tab** - add the matching EPG/guide-data URL from the same
+   source.
+3. **Mapping tab** - pair each M3U channel to its XMLTV guide entry, assign
+   channel numbers, toggle on the ones you want active, then Save - this is
+   what turns "Active streams: 0" in its logs into a real count.
+4. **Settings** - set compatibility mode to **Emby/Jellyfin** (this stack's
+   client).
+5. In **Jellyfin**: Dashboard > Live TV > Tuner Devices > add an
+   **HDHomeRun** tuner at `http://threadfin:34400`, then Live TV > TV Guide
+   Data Providers > add an **XMLTV** source at
+   `http://threadfin:34400/xmltv/x.xml`.
+
+## 11. Recyclarr / Decluttarr / Maintainerr
 
 Configure these last, once Radarr/Sonarr are already connected to Prowlarr
 and downloading successfully - all three sit on top of a working *arr
@@ -260,7 +281,7 @@ setup rather than replacing any part of it:
   Plex/Emby) and Radarr/Sonarr through its own setup wizard, then create
   your library-cleanup rules there.
 
-## 11. MeTube / Downtify
+## 12. MeTube / Downtify
 
 If you enabled either: paste a URL to start a download, then add a
 Jellyfin library pointed at their output folder so the result shows up
@@ -270,7 +291,7 @@ there automatically:
 - Downtify: `stack/media/music/downtify` on the host (inside your existing
   Music library path, so no new Jellyfin library is needed for this one)
 
-## 12. Homepage / Dashy / Uptime Kuma / Netdata / Traefik dashboard
+## 13. Homepage / Dashy / Uptime Kuma / Netdata / Traefik dashboard
 
 Check these last - they only have something to show once the services
 above are actually running.
