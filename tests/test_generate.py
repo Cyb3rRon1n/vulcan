@@ -2440,15 +2440,27 @@ def test_render_homepage_widgets_without_glances_is_a_plain_resources_row():
 
 
 def test_render_homepage_widgets_uses_the_glances_info_widget_when_glances_enabled():
-    text = render_homepage_widgets(make_config("light", custom_services={"homepage", "glances"}))
+    config = make_config("light", custom_services={"homepage", "glances"})
+    text = render_homepage_widgets(config, host_ip="192.168.1.50")
     data = yaml.safe_load(text)
 
     glances = next(block["glances"] for block in data if "glances" in block)
-    assert glances["url"] == "http://glances:61208"
+    # dual-purpose url (data fetch + the widget's click-through link) must
+    # be browser-reachable - detected host IP + published port
+    assert glances["url"] == "http://192.168.1.50:61208"
     assert glances["version"] == 4
     assert glances["cputemp"] is True
     # the info widget has no metric: - that's the service widget only
     assert "metric" not in glances
+
+
+def test_render_homepage_widgets_glances_falls_back_to_container_name_without_host_ip():
+    config = make_config("light", custom_services={"homepage", "glances"})
+    text = render_homepage_widgets(config, host_ip=None)
+    data = yaml.safe_load(text)
+
+    glances = next(block["glances"] for block in data if "glances" in block)
+    assert glances["url"] == "http://glances:61208"
 
 
 def test_write_stack_no_homepage_services_yaml_when_disabled(tmp_path):

@@ -52,7 +52,7 @@ Only **info widgets** go here. Vulcan seeds:
     memory: false
 - glances:                # the INFO widget - fixed CPU/RAM/temp view, NO metric:
     label: Host
-    url: http://glances:61208
+    url: http://192.168.1.50:61208   # your host's LAN IP, NOT http://glances:61208
     version: 4
     cpu: true
     mem: true
@@ -66,6 +66,14 @@ Only **info widgets** go here. Vulcan seeds:
 
 `disk:` is a path **inside the homepage container**. `/media` is your
 `MEDIA_PATH`, mounted `:ro`. Add more disks by repeating the block.
+
+The glances info-widget's `url` does double duty: Homepage fetches data
+through it *and* makes the whole widget a link to it (info-widgets have
+no separate `href`). So it has to be reachable from your **browser**, not
+just from inside the homepage container - use the host's LAN IP and the
+published `:61208` port. Vulcan seeds this with the IP it detected; if
+detection failed it falls back to `http://glances:61208` (the readout
+still works, but clicking the widget goes nowhere - just fix the IP).
 
 > **`calendar` and the metric-based `glances` widget are _service_
 > widgets** (`services.yaml`), not info widgets — putting `type: calendar`

@@ -45,7 +45,7 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
-def render_homepage_widgets(config: "GenerationConfig") -> str:
+def render_homepage_widgets(config: "GenerationConfig", host_ip: str | None = None) -> str:
     """
     Seeded once into config/homepage/widgets.yaml (Homepage's top info
     row), never overwritten. These are Homepage "info widgets" only:
@@ -59,15 +59,25 @@ def render_homepage_widgets(config: "GenerationConfig") -> str:
       per-metric. Likewise `calendar` is a service widget, not an info
       widget - putting either here just renders a "Missing ..." error.
 
+    The glances info-widget's `url` is dual-purpose: Homepage fetches
+    data through it server-side AND makes the whole widget a link to it
+    (info-widgets have no separate `href`). So it must be reachable from
+    a real browser, not just from inside the homepage container - hence
+    the detected host IP + published port, not `http://glances:61208`.
+    Glances publishes :61208 on the host for exactly this. Falls back to
+    the container name only when host-IP detection failed (data still
+    works; the click-through link is the casualty).
+
     Adding per-service widgets and the release calendar is a
     fill-in-your-API-keys step the operator does by hand - see
     docs/guides/homepage-widgets.md (easiest via FileBrowser).
     """
 
     if "glances" in enabled_service_keys(config):
+        glances_url = f"http://{host_ip}:61208" if host_ip else "http://glances:61208"
         blocks = [
             "- resources:\n    label: Array\n    disk: /media\n    cpu: false\n    memory: false\n",
-            "- glances:\n    label: Host\n    url: http://glances:61208\n    version: 4\n"
+            f"- glances:\n    label: Host\n    url: {glances_url}\n    version: 4\n"
             "    cpu: true\n    mem: true\n    cputemp: true\n    uptime: true\n    expanded: true\n",
         ]
     else:
@@ -1174,7 +1184,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         widgets_yaml_path = output_dir / "config" / "homepage" / "widgets.yaml"
 
         if not widgets_yaml_path.exists():
-            widgets_yaml_path.write_text(render_homepage_widgets(config))
+            widgets_yaml_path.write_text(render_homepage_widgets(config, host_ip))
 
     if "dashy" in enabled_service_keys(config):
 
