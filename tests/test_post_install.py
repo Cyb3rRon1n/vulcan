@@ -382,6 +382,34 @@ def test_backup_stack_creates_real_archive_with_expected_contents(tmp_path):
         assert env_member.read().decode() == "PUID=1000\n"
 
 
+def test_backup_stack_skips_regeneratable_runtime_caches(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    backup_dir = tmp_path / "backups"
+
+    (stack_dir / "config" / "jellyfin").mkdir(parents=True)
+    (stack_dir / "config" / "jellyfin" / "settings.xml").write_text("<config/>")
+    (stack_dir / "config" / "jellyfin" / "metadata" / "library").mkdir(parents=True)
+    (stack_dir / "config" / "jellyfin" / "metadata" / "library" / "art.jpg").write_bytes(b"x" * 100)
+    (stack_dir / "config" / "netdata" / "dbengine").mkdir(parents=True)
+    (stack_dir / "config" / "netdata" / "dbengine" / "metrics.db").write_bytes(b"y" * 100)
+    (stack_dir / "config" / "netdata" / "netdata.conf").write_text("[global]\n")
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+
+    result = backup_stack(stack_dir=stack_dir, backup_dir=backup_dir)
+
+    with tarfile.open(result["backup_path"], "r:gz") as tar:
+        names = set(tar.getnames())
+
+    # settings kept, caches dropped
+    assert "config/jellyfin/settings.xml" in names
+    assert "config/netdata/netdata.conf" in names
+    assert not any("jellyfin/metadata" in n for n in names)
+    assert not any("netdata/dbengine" in n for n in names)
+    assert any("runtime caches" in w for w in result["warnings"])
+
+
 def test_backup_stack_snapshots_live_sqlite_database_safely(tmp_path):
 
     stack_dir = tmp_path / "stack"
