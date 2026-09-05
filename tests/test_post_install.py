@@ -391,8 +391,13 @@ def test_backup_stack_skips_regeneratable_runtime_caches(tmp_path):
     (stack_dir / "config" / "jellyfin" / "settings.xml").write_text("<config/>")
     (stack_dir / "config" / "jellyfin" / "metadata" / "library").mkdir(parents=True)
     (stack_dir / "config" / "jellyfin" / "metadata" / "library" / "art.jpg").write_bytes(b"x" * 100)
-    (stack_dir / "config" / "netdata" / "dbengine").mkdir(parents=True)
-    (stack_dir / "config" / "netdata" / "dbengine" / "metrics.db").write_bytes(b"y" * 100)
+    (stack_dir / "config" / "netdata" / "cache").mkdir(parents=True)
+    # a real SQLite file in an excluded dir - must be skipped by the
+    # snapshot pass too, not just copytree
+    _c = sqlite3.connect(stack_dir / "config" / "netdata" / "cache" / "netdata-meta.db")
+    _c.execute("CREATE TABLE t (x)")
+    _c.commit()
+    _c.close()
     (stack_dir / "config" / "netdata" / "netdata.conf").write_text("[global]\n")
     (stack_dir / "docker-compose.yml").write_text("services: {}\n")
     (stack_dir / ".env").write_text("PUID=1000\n")
@@ -406,7 +411,7 @@ def test_backup_stack_skips_regeneratable_runtime_caches(tmp_path):
     assert "config/jellyfin/settings.xml" in names
     assert "config/netdata/netdata.conf" in names
     assert not any("jellyfin/metadata" in n for n in names)
-    assert not any("netdata/dbengine" in n for n in names)
+    assert not any("netdata/cache" in n for n in names)
     assert any("runtime caches" in w for w in result["warnings"])
 
 

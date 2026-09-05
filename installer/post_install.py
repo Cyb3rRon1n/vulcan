@@ -357,6 +357,10 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
             if not live_path.is_file() or not _is_sqlite_file(live_path):
                 continue
 
+            rel = live_path.relative_to(config_dir).as_posix()
+            if any(rel == p or rel.startswith(p + "/") for p in _BACKUP_EXCLUDE_PREFIXES):
+                continue
+
             staged_path = staged_config / live_path.relative_to(config_dir)
 
             if not _snapshot_sqlite_database(live_path, staged_path):
