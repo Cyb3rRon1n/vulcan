@@ -223,6 +223,25 @@ def _is_sqlite_file(path: Path) -> bool:
         return False
 
 
+# Runtime caches that live inside otherwise-worth-keeping config dirs.
+# Restoring a week-old metrics ring buffer or a re-fetchable artwork
+# cache is pointless, and they bloat the archive several times over -
+# netdata's dbengine alone runs to hundreds of MB. Matched as path
+# prefixes relative to stack/config/.
+_BACKUP_EXCLUDE_PREFIXES = (
+    "netdata/dbengine",
+    "netdata/lib",
+    "netdata/cache",
+    "netdata/var",
+    "jellyfin/metadata",
+    "jellyfin/transcodes",
+    "jellyfin/cache",
+    "jellyfin/log",
+    "jellyfin/data/subtitles",
+    "jellyfin/data/keyframes",
+)
+
+
 def _snapshot_sqlite_database(live_path: Path, staged_path: Path) -> bool:
     """
     Writes a consistent point-in-time copy of a live SQLite database
@@ -286,11 +305,21 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
         # anything slipped through - downgrade that to a warning, a
         # partial config backup beats no backup.
         skipped_junk: list[str] = []
+        skipped_caches: list[str] = []
 
         def _ignore(directory: str, names: list[str]) -> set[str]:
             drop = set()
+            try:
+                here = Path(directory).relative_to(config_dir)
+            except ValueError:
+                here = Path()
             for name in names:
                 path = Path(directory) / name
+                rel = (here / name).as_posix()
+                if any(rel == p or rel.startswith(p + "/") for p in _BACKUP_EXCLUDE_PREFIXES):
+                    drop.add(name)
+                    skipped_caches.append(rel)
+                    continue
                 try:
                     st = path.lstat()
                 except OSError:
@@ -360,6 +389,15 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
             "Skipped unreadable or non-regular files (runtime state, not "
             f"config - safe to omit): {', '.join(shown[:8])}"
             + (f" and {len(shown) - 8} more" if len(shown) > 8 else "")
+        )
+
+    if skipped_caches:
+
+        roots = sorted({rel.split("/")[0] for rel in skipped_caches})
+        warnings.append(
+            "Skipped re-generatable runtime caches to keep the archive small "
+            f"({', '.join(roots)}) - metrics history and artwork caches, not "
+            "settings. The apps rebuild them."
         )
 
     return {
