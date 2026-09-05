@@ -36,8 +36,14 @@ session:
       # subdomain, which wouldn't resolve to anything.
       authelia_url: 'https://{{ cookie_domain }}:9091'
 {% endif %}
-      expiration: '1 hour'
-      inactivity: '5 minutes'
+      # A homelab dashboard you keep open all day shouldn't punt you to
+      # a login screen every few minutes. expiration caps the session;
+      # inactivity logs you out after an idle stretch; remember_me is the
+      # duration the login form's "Remember me" checkbox buys you. Set
+      # remember_me to '-1' to hide that checkbox entirely.
+      expiration: '12 hours'
+      inactivity: '2 hours'
+      remember_me: '1 month'
 {% if homepage_enabled and domain %}
       default_redirection_url: 'https://homepage.{{ domain }}'
 {% endif %}
