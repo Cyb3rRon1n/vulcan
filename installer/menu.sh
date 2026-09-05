@@ -1506,6 +1506,8 @@ _guided_setup_customize_services() {
     # Format: key:display_name:category
     local -a SERVICE_LIST=(
         "jellyfin:Jellyfin (media server):Media Server"
+        "navidrome:Navidrome (music streaming):Media Server"
+        "kavita:Kavita (manga/comics/ebook reader):Media Server"
         "seerr:Seerr (media requests):Media Server"
         "radarr:Radarr (movies):Media Management"
         "sonarr:Sonarr (TV):Media Management"

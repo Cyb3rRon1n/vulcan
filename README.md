@@ -77,7 +77,7 @@ All tiers share the same directory layout and volume naming, so re-running later
 
 ### Custom mode
 
-Pick exactly which of the 36 known services to include, regardless of tier, pre-checked based on your hardware — service keys come from the [Services Catalog](docs/services-catalog.md):
+Pick exactly which of the 38 known services to include, regardless of tier, pre-checked based on your hardware — service keys come from the [Services Catalog](docs/services-catalog.md):
 
 ```bash
 sudo ./install --plain --tier medium --services <comma-separated-service-keys> --non-interactive --yes --media-path /mnt/media

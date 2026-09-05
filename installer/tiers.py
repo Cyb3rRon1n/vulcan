@@ -32,6 +32,8 @@ class TierDefinition:
 
 _LIGHT_SERVICES = [
     ServiceDefinition("jellyfin", "Jellyfin", category="Media Server"),
+    ServiceDefinition("navidrome", "Navidrome (music streaming)", optional=True, category="Media Server"),
+    ServiceDefinition("kavita", "Kavita (manga/comics/ebook reader)", optional=True, category="Media Server"),
     ServiceDefinition("radarr", "Radarr", category="Media Management"),
     ServiceDefinition("sonarr", "Sonarr", category="Media Management"),
     ServiceDefinition("prowlarr", "Prowlarr", category="Media Management"),

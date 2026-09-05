@@ -932,6 +932,110 @@ services:
           memory: "{{ limits.readarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'navidrome' in enabled %}
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    environment:
+      - ND_MUSICFOLDER=/music
+      - ND_DATAFOLDER=/data
+      - TZ=${TZ}
+    volumes:
+      - ./config/navidrome:/data
+      - ${MEDIA_PATH}/media/music:/music:ro
+    ports:
+      - "{{ ports['navidrome'] }}:4533"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.navidrome.rule=Host(`navidrome.{{ domain }}`)"
+      - "traefik.http.routers.navidrome.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.navidrome.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.navidrome.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
+{# Deliberately never gets the authelia@docker middleware, same reason as
+   Jellyfin (jellyfin/jellyfin#16956): every Subsonic-compatible mobile/
+   desktop client (DSub, Substreamer, play:Sub, ...) authenticates
+   directly against /rest/* with its own query-string token, not a
+   browser login - Navidrome's own docs (extauth-quickstart) call out
+   excluding /rest/* from forward-auth protection for exactly this
+   reason, and this template has no per-path middleware split to do
+   that selectively. crowdsec@docker is unaffected (IP-reputation
+   blocking, not an auth challenge) so it still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.navidrome.middlewares=crowdsec@docker"
+{% endif %}
+{% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # deluan/navidrome:latest image): a single static Go binary with no
+    # s6-overlay/root->PUID drop step and nothing to chown (runs as
+    # root against its own bind mounts, no ownership fixup needed) - it
+    # starts clean and completes a full library scan with zero added
+    # capabilities.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.navidrome.cpus }}"
+          memory: "{{ limits.navidrome.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'kavita' in enabled %}
+  kavita:
+    image: lscr.io/linuxserver/kavita:latest
+    container_name: kavita
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/kavita:/config
+      - ${MEDIA_PATH}/media/books:/books:ro
+    ports:
+      - "{{ ports['kavita'] }}:5000"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kavita.rule=Host(`kavita.{{ domain }}`)"
+      - "traefik.http.routers.kavita.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.kavita.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.kavita.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.kavita.loadbalancer.server.port=5000"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.kavita.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image, then iterated caps back in) - same 5 capabilities as every
+    # other linuxserver.io s6-overlay image in this stack:
+    # CHOWN/DAC_OVERRIDE/FOWNER for the ownership fixup on /config et
+    # al., SETGID/SETUID for the root -> PUID/PGID drop. Without these
+    # five, s6-overlay fails loudly (s6-applyuidgid: fatal: unable to
+    # set supplementary group list) rather than silently degrading.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.kavita.cpus }}"
+          memory: "{{ limits.kavita.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'traefik' in enabled %}
   traefik:
     image: traefik:latest
