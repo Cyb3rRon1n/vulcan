@@ -239,15 +239,65 @@ print(' '.join(s.key for s in ALL_SERVICES))
     done
 }
 
-@test "customize-services builds --services from the core seed and skips domain flags without traefik" {
+@test "customize-services shows a single checklist with every service labeled by category and pre-checked from the seed" {
 
-    # The category picker seeds the core services pre-checked; hitting
-    # "done" straight away keeps exactly those. --services list order is
-    # not deterministic (SELECTED_MAP is an associative array), so assert
-    # membership, not a fixed order.
+    # Single-screen picker (replaces the old pick-a-category-first flow):
+    # one whiptail --checklist call, every item's tag prefixed with its
+    # tiers.py category, pre-checked from the core seed on a fresh run.
+    export capture="$BATS_TEST_TMPDIR/checklist_args"
     whiptail() {
         case "$*" in
-            *"Select Category"*) echo -n "done" >&3; return 0 ;;
+            *"Customize Services"*)
+                printf '%s\n' "$@" > "$capture"
+                echo -n '"jellyfin" "radarr" "sonarr" "prowlarr" "qbittorrent"' >&3
+                return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_TIER=''
+        PREVIOUS_ENABLED_OPTIONAL=''
+        PREVIOUS_DOMAIN=''
+        PREVIOUS_CLOUDFLARE_EMAIL=''
+        SERVICES_FLAG=()
+        DOMAIN_FLAGS=()
+        _guided_setup_customize_services
+        echo \"SERVICES:\${SERVICES_FLAG[*]}\"
+        echo \"DOMAIN:\${DOMAIN_FLAGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SERVICES:--services "* ]]
+    for svc in jellyfin radarr sonarr prowlarr qbittorrent; do
+        [[ "$output" == *"$svc"* ]]
+    done
+    [[ "$output" == *"DOMAIN:"* ]]
+    [[ "$output" != *"--domain"* ]]
+
+    # Exactly one checklist screen was shown (no category submenu), every
+    # service is tagged with its category, and the core seed is the only
+    # thing pre-checked ON. whiptail's argv is captured one word per
+    # line (printf '%s\n' "$@") - join with "|" so each item's
+    # tag/label/status triple can be matched as one substring.
+    [ -f "$capture" ]
+    joined=$(tr '\n' '|' < "$capture")
+    [[ "$joined" == *'jellyfin|[Media Server] Jellyfin (media server)|ON|'* ]]
+    [[ "$joined" == *'radarr|[Media Management] Radarr (movies)|ON|'* ]]
+    [[ "$joined" == *'navidrome|[Media Server] Navidrome (music streaming)|OFF|'* ]]
+    [[ "$joined" == *'seerr|[Media Server] Seerr (media requests)|OFF|'* ]]
+    [[ "$joined" == *'traefik|[Infrastructure] Traefik (reverse proxy)|OFF|'* ]]
+}
+
+@test "customize-services builds --services from whatever the single checklist returns" {
+
+    # --services list order is not deterministic (SELECTED_MAP is an
+    # associative array), so assert membership, not a fixed order.
+    whiptail() {
+        case "$*" in
+            *"Customize Services"*) echo -n '"jellyfin" "radarr" "sonarr" "prowlarr" "qbittorrent"' >&3; return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -275,20 +325,37 @@ print(' '.join(s.key for s in ALL_SERVICES))
     [[ "$output" != *"--domain"* ]]
 }
 
-@test "customize-services asks for a domain and Cloudflare/Authelia details when traefik+authelia are chosen" {
+@test "customize-services cancelling the checklist aborts without building a services list" {
 
-    # Navigate: Infrastructure category -> check traefik; Security
-    # category -> check authelia; then done. Then the domain / Cloudflare
-    # / Authelia follow-up prompts fire because traefik+authelia are in
-    # the final list.
     whiptail() {
         case "$*" in
-            *"Select Category"*)
-                if [ ! -f "$FLAG.infra" ]; then touch "$FLAG.infra"; echo -n "Infrastructure" >&3; return 0; fi
-                if [ ! -f "$FLAG.sec" ]; then touch "$FLAG.sec"; echo -n "Security" >&3; return 0; fi
-                echo -n "done" >&3; return 0 ;;
-            *"Customize: Infrastructure"*) echo -n '"traefik"' >&3; return 0 ;;
-            *"Customize: Security"*)       echo -n '"authelia"' >&3; return 0 ;;
+            *"Customize Services"*) return 1 ;;   # Cancel/ESC
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_TIER=''
+        PREVIOUS_ENABLED_OPTIONAL=''
+        SERVICES_FLAG=()
+        DOMAIN_FLAGS=()
+        _guided_setup_customize_services
+        echo \"STATUS:\$?\"
+    "
+
+    [[ "$output" == *"STATUS:1"* ]]
+}
+
+@test "customize-services asks for a domain and Cloudflare/Authelia details when traefik+authelia are chosen" {
+
+    # One checklist call returns both traefik and authelia checked; the
+    # domain / Cloudflare-DNS / Authelia follow-up prompts fire because
+    # both are in the final list.
+    whiptail() {
+        case "$*" in
+            *"Customize Services"*) echo -n '"traefik" "authelia"' >&3; return 0 ;;
             *"Base domain"*)      echo -n "media.example.com" >&3; return 0 ;;
             *"Contact email"*)    echo -n "me@example.com" >&3; return 0 ;;
             *"Cloudflare DNS"*)   return 0 ;;   # yesno: yes
@@ -298,7 +365,6 @@ print(' '.join(s.key for s in ALL_SERVICES))
         esac
     }
     export -f whiptail
-    export FLAG="$BATS_TEST_TMPDIR/nav"
 
     run bash -c "
         source '$MENU_SH'

@@ -1545,114 +1545,34 @@ _guided_setup_customize_services() {
         "threadfin:Threadfin (IPTV proxy):Live TV"
     )
 
-    # Build category -> services map
-    declare -A CATEGORY_SERVICES
-    local -a CATEGORIES=()
-    local entry key category
+    # Single checklist covering every known service at once - each
+    # item's label prefixed with its category tag (e.g. "[Media Server]
+    # Jellyfin") so the grouping stays visible without a separate
+    # pick-a-category screen first. Pre-checked exactly as the old
+    # per-category flow was (previous install's selection, or the core
+    # tier seed on a fresh run).
+    local -a checklist=()
+    local entry key display category
     for entry in "${SERVICE_LIST[@]}"; do
-        IFS=':' read -r key _ category <<< "$entry"
-        if [[ -z "${CATEGORY_SERVICES[$category]:-}" ]]; then
-            CATEGORIES+=("$category")
-        fi
-        CATEGORY_SERVICES["$category"]+="${CATEGORY_SERVICES[$category]:+,}$entry"
+        IFS=':' read -r key display category <<< "$entry"
+        checklist+=("$key" "[$category] $display" "$(_svc_on "$key")")
     done
 
-    # Selected services accumulator
+    local chosen
+    chosen=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services" \
+        --checklist "Select every service to include (space to toggle, ${#SERVICE_LIST[@]} available):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+        "${checklist[@]}" \
+        3>&1 1>&2 2>&3) || return 1
+
+    # whiptail's --checklist output is already properly double-quoted
+    # space-separated tags, so eval is the standard idiom for splitting
+    # it (same as storage_setup_flow's own checklist).
+    local -a chosen_keys=()
+    eval "chosen_keys=($chosen)"
+
     declare -A SELECTED_MAP
-    local joined="${PREVIOUS_ENABLED_OPTIONAL:-}"
-
-    # Seed from previous or core
-    if [ -n "$PREVIOUS_TIER" ]; then
-        IFS=',' read -ra prev <<< "$PREVIOUS_ENABLED_OPTIONAL"
-        for svc in "${prev[@]}"; do
-            SELECTED_MAP["$svc"]=1
-        done
-    else
-        IFS=',' read -ra core_svcs <<< "jellyfin,radarr,sonarr,prowlarr,qbittorrent"
-        for svc in "${core_svcs[@]}"; do
-            SELECTED_MAP["$svc"]=1
-        done
-    fi
-
-    # Category selection loop - one screen per category
-    while true; do
-        # Count total selected across all categories
-        local selected_total=0
-        for svc in "${!SELECTED_MAP[@]}"; do
-            ((selected_total++))
-        done
-
-        local -a cat_menu=()
-        for cat in "${CATEGORIES[@]}"; do
-            # Count selected in this category
-            local selected_count=0
-            IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat]}"
-            for svc_entry in "${cat_svcs[@]}"; do
-                IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
-                [[ -n "${SELECTED_MAP[$svc_key]:-}" ]] && ((selected_count++))
-            done
-            local total_count=${#cat_svcs[@]}
-            cat_menu+=("$cat" "$cat ($selected_count/$total_count selected)")
-        done
-        cat_menu+=("done" "Done - Continue to next step")
-
-        local cat_choice
-        cat_choice=$(whiptail --backtitle "$BACKTITLE" --title "Customize Services - Select Category" \
-            --menu "Choose a category to configure services. $selected_total of ${#SERVICE_LIST[@]} services selected.\n\n(Blank = not selected, ✓ = selected)" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "${cat_menu[@]}" \
-            3>&1 1>&2 2>&3) || return 1
-
-        [ "$cat_choice" = "done" ] && break
-
-        # Show checklist for this category
-        local -a cat_checklist=()
-        local -a cat_keys=()
-        IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
-        for svc_entry in "${cat_svcs[@]}"; do
-            IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
-            cat_checklist+=("$svc_key" "$svc_display" "$(_svc_on "$svc_key")")
-            cat_keys+=("$svc_key")
-        done
-
-        # Add "Select All" / "Deselect All" pseudo-items at top
-        cat_checklist=("__select_all__" "✓ Select ALL in this category" "OFF" "__deselect_all__" "✗ Deselect ALL in this category" "OFF" "${cat_checklist[@]}")
-
-        local cat_chosen
-        cat_chosen=$(whiptail --backtitle "$BACKTITLE" --title "Customize: $cat_choice" \
-            --checklist "Select services in this category (use Select All / Deselect All):" "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
-            "${cat_checklist[@]}" \
-            3>&1 1>&2 2>&3) || cat_chosen=""
-
-        # Update selection map for this category
-        # First clear all in this category
-        IFS=',' read -ra cat_svcs <<< "${CATEGORY_SERVICES[$cat_choice]}"
-        for svc_entry in "${cat_svcs[@]}"; do
-            IFS=':' read -r svc_key svc_display _ <<< "$svc_entry"
-            unset "SELECTED_MAP[$svc_key]"
-        done
-        # Then set chosen ones (filter out pseudo-items). whiptail's
-        # --checklist output is already properly double-quoted
-        # space-separated tags, so eval is the standard idiom for
-        # splitting it (same as storage_setup_flow's own checklist).
-        local -a cat_selected=()
-        eval "cat_selected=($cat_chosen)"
-        for svc in "${cat_selected[@]}"; do
-            if [[ "$svc" != "__select_all__" && "$svc" != "__deselect_all__" ]]; then
-                SELECTED_MAP["$svc"]=1
-            fi
-        done
-        # Handle Select All / Deselect All
-        for svc in "${cat_selected[@]}"; do
-            if [[ "$svc" == "__select_all__" ]]; then
-                for key in "${cat_keys[@]}"; do
-                    SELECTED_MAP["$key"]=1
-                done
-            elif [[ "$svc" == "__deselect_all__" ]]; then
-                for key in "${cat_keys[@]}"; do
-                    unset "SELECTED_MAP[$key]"
-                done
-            fi
-        done
+    for svc in "${chosen_keys[@]}"; do
+        SELECTED_MAP["$svc"]=1
     done
 
     # Build final joined list
