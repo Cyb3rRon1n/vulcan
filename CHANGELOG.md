@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
+### Added
+- `CHOWN` to gluetun's `cap_add` — required for VPN port forwarding (gluetun
+  fatally aborts the port-forward service if it can't chown its port file);
+  harmless with port forwarding off
+- Commented-out `PORT_FORWARD_ONLY` / `VPN_PORT_FORWARDING` block in the
+  gluetun service, plus a "Port forwarding" section in the walkthrough —
+  without it qBittorrent seeds almost nothing, and a ProtonVPN reconnect
+  can strand every torrent at "downloading metadata" on a non-P2P server
 
 ## v0.2.0 - 2026-08-18
 ### Added

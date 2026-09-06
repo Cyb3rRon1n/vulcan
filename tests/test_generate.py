@@ -1196,7 +1196,12 @@ ZERO_CAP_SERVICES = {
 # monitoring) - each verified under cap_drop: ALL with that existing set,
 # not researched from a blank slate.
 SPECIAL_CAP_SERVICES = {
-    "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE"],
+    # CHOWN added alongside the original three: gluetun chowns
+    # /tmp/gluetun/forwarded_port to its non-root user, and unlike the
+    # IP-cache file that failure is fatal - the port-forwarding service
+    # aborts and never hands the port to qBittorrent. Harmless with port
+    # forwarding off. Surfaced by a real connected run with PF enabled.
+    "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE", "CHOWN"],
     # tailscaled runs as root; under cap_drop: ALL it needs DAC_OVERRIDE
     # to write its state store into the bind-mounted /var/lib/tailscale
     # ("state store is unhealthy", crash-loop) - alongside NET_ADMIN/

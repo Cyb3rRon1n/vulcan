@@ -794,20 +794,40 @@ services:
     # add NET_RAW" and falls back to slower DNS-over-UDP checks).
     # DAC_OVERRIDE: gluetun runs as root but cap_drop: ALL removes it,
     # so it can't write /tmp/gluetun/ip to cache its public IP
-    # ("persisting public ip address: ... permission denied"). Both
-    # were surfaced by a real connected run's logs, not guessed.
+    # ("persisting public ip address: ... permission denied").
+    # CHOWN: gluetun chowns /tmp/gluetun/forwarded_port to its non-root
+    # user; unlike the IP-cache file (logs the error, continues) this one
+    # is fatal - the port-forwarding service aborts and never hands the
+    # port to qBittorrent. Harmless with port forwarding off, and it
+    # silences one ERROR line either way. All surfaced by real connected
+    # run logs, not guessed.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
       - DAC_OVERRIDE
+      - CHOWN
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
       - TZ=${TZ}
+      # Port forwarding - OFF by default. Without it qBittorrent takes no
+      # incoming peers (slow, near-zero seeding), and on ProtonVPN a
+      # healthcheck-triggered reconnect can land on a non-P2P server that
+      # silently drops BitTorrent traffic - torrents then hang forever at
+      # "downloading metadata" while still showing seeder counts.
+      # Uncomment for ProtonVPN or PIA (a paid plan with port forwarding);
+      # not supported for Mullvad (removed it) or NordVPN via gluetun.
+      # Then set qBittorrent > Options > WebUI > "Bypass authentication
+      # for clients on localhost" so the up-command below can set the
+      # port. See docs/walkthrough.md section 6.
+      # - PORT_FORWARD_ONLY=on
+      # - VPN_PORT_FORWARDING=on
+      # - VPN_PORT_FORWARDING_PROVIDER=${VPN_SERVICE_PROVIDER}
+      # - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -qO- --post-data "json={\"listen_port\":{{ '{{PORTS}}' }},\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences'
     volumes:
       - ./config/gluetun:/gluetun
     ports:

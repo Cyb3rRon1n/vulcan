@@ -220,6 +220,38 @@ usually means check this first.
   <img src="images/screenshots/gluetun-log.svg" alt="Gluetun connection log example" style="max-width: 100%; width: 820px;">
 </p>
 
+### Port forwarding (recommended for ProtonVPN and PIA)
+
+Vulcan ships Gluetun with port forwarding **off**. Left that way:
+
+- qBittorrent accepts no incoming peer connections, so downloads are slower
+  and seeding/ratio stays near zero.
+- Worse, on ProtonVPN a healthcheck-triggered reconnect can move you onto a
+  **non-P2P server**, which silently drops BitTorrent traffic while letting
+  HTTPS and tracker announces through. The visible symptom: torrents stuck
+  forever at *"downloading metadata"* even though they show plenty of
+  seeders. Nothing in the Gluetun log looks wrong.
+
+If your plan supports it (ProtonVPN paid, or Private Internet Access - **not**
+Mullvad, which removed port forwarding, and **not** NordVPN, which Gluetun
+can't port-forward):
+
+1. Turn on port forwarding in your provider's dashboard (ProtonVPN: enable
+   NAT-PMP / port forwarding on the account; the same WireGuard key still
+   works).
+2. In `stack/docker-compose.yml`, under the `gluetun` service, uncomment the
+   `PORT_FORWARD_ONLY` / `VPN_PORT_FORWARDING` block. `PORT_FORWARD_ONLY=on`
+   is the important line - it pins Gluetun to port-forward-capable servers,
+   which are all P2P, so reconnects can't strand you on a bad one again.
+3. In qBittorrent, **Options > WebUI**, tick *"Bypass authentication for
+   clients on localhost"* - this lets Gluetun push the forwarded port into
+   qBittorrent automatically on every (re)connect.
+4. `docker compose -f stack/docker-compose.yml up -d --force-recreate gluetun qbittorrent`
+
+Verify: `docker compose -f stack/docker-compose.yml logs gluetun | grep -i forward`
+should show `port forwarded is NNNNN`, and qBittorrent's **Options >
+Connection > Port** will match it within a minute.
+
 ## 7. Bazarr
 
 If you enabled it: connect it to Radarr and/or Sonarr (Settings >
