@@ -919,16 +919,106 @@ def test_render_compose_kavita_standard_linuxserver_caps_and_readonly_books_moun
     ]
 
 
-def test_render_compose_kavita_routes_through_traefik_with_full_middleware():
+def test_render_compose_kavita_never_gets_authelia_middleware():
+    """
+    Like Komga, Kavita has its own mandatory multi-user auth plus an OPDS
+    feed the mobile readers (Paperback, Panels, ...) authenticate against
+    directly - a browser forward-auth redirect breaks both, so it's kept
+    out of authelia@docker. crowdsec@docker (IP reputation) still applies.
+    """
+
     output = render_compose(
         make_config(
-            "heavy", enabled_optional={"kavita", "traefik", "authelia"},
+            "heavy", enabled_optional={"kavita", "komga", "traefik", "crowdsec", "authelia"},
             domain="media.example.com",
         )
     )
 
-    assert "traefik.http.routers.kavita.rule=Host(`kavita.media.example.com`)" in output
-    assert "traefik.http.routers.kavita.middlewares=authelia@docker" in output
+    block = _service_block(output, "kavita", "komga")
+
+    assert "traefik.http.routers.kavita.rule=Host(`kavita.media.example.com`)" in block
+    assert "traefik.http.routers.kavita.middlewares=crowdsec@docker" in block
+    assert "authelia@docker" not in block
+
+
+def test_render_compose_suwayomi_keeps_authelia_middleware():
+    """
+    Unlike Komga and Kavita, Suwayomi's own login is optional and off by
+    default, so it stays behind authelia@docker. It also gets FLARESOLVERR_URL
+    wired automatically when FlareSolverr is in the stack.
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy",
+            custom_services={"suwayomi", "flaresolverr", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    assert "traefik.http.routers.suwayomi.middlewares=crowdsec@docker,authelia@docker" in output
+    assert "FLARESOLVERR_URL=http://flaresolverr:8191" in output
+
+    data = yaml.safe_load(output)
+    assert data["services"]["suwayomi"]["user"] == "${PUID}:${PGID}"
+    assert data["services"]["suwayomi"]["cap_drop"] == ["ALL"]
+    assert "cap_add" not in data["services"]["suwayomi"]
+
+
+def test_render_compose_suwayomi_omits_flaresolverr_env_when_not_enabled():
+
+    output = render_compose(make_config("heavy", custom_services={"suwayomi"}))
+
+    assert "FLARESOLVERR_URL" not in output
+
+
+def test_render_compose_slskd_is_admin_gated_and_zero_cap():
+
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"slskd", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    data = yaml.safe_load(output)
+    slskd = data["services"]["slskd"]
+
+    assert "authelia@docker" in output.split("routers.slskd.middlewares=")[1].splitlines()[0]
+    assert slskd["user"] == "${PUID}:${PGID}"
+    assert slskd["cap_drop"] == ["ALL"]
+    assert "cap_add" not in slskd
+    assert "./config/slskd:/app" in slskd["volumes"]
+
+
+def test_write_stack_seeds_slskd_and_mylar_configs_and_books_subdirs(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"slskd", "mylar3", "komga"},
+    )
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    slskd_yml = tmp_path / "stack" / "config" / "slskd" / "slskd.yml"
+    mylar_ini = tmp_path / "stack" / "config" / "mylar3" / "mylar" / "config.ini"
+
+    assert slskd_yml.is_file()
+    assert "username: CHANGEME" in slskd_yml.read_text()
+    assert "password: admin" not in slskd_yml.read_text()  # web password is generated, not literal
+    assert "http_host = 0.0.0.0" in mylar_ini.read_text()
+
+    books = tmp_path / "media-root" / "media" / "books"
+    assert (books / "comics").is_dir()
+    assert (books / "manga").is_dir()
+    assert (books / "ebooks").is_dir()
+
+    assert any("soulseek.username" in w for w in result["warnings"])
+    assert any("Mylar3 was pre-seeded" in w for w in result["warnings"])
 
 
 def test_render_compose_homepage_private_omits_traefik_labels():
@@ -1173,7 +1263,7 @@ FIVE_CAP_SERVICES = {
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
     "sportarr", "threadfin", "tracearr", "crowdsec",
-    "kavita",
+    "kavita", "mylar3", "lazylibrarian",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1184,6 +1274,21 @@ ZERO_CAP_SERVICES = {
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
+    # gotson/komga:latest - Java app run as `user: PUID:PGID`, so no
+    # s6-overlay root->PUID drop and no ownership fixup. Verified live
+    # (cyberpac) under cap_drop: ALL, zero cap_add: starts, migrates its
+    # DB, serves, completes a library scan.
+    "komga",
+    # ghcr.io/suwayomi/suwayomi-server:stable - non-root JVM run as
+    # `user: PUID:PGID`, same shape as Komga. Verified live (cyberpac)
+    # under cap_drop: ALL, zero cap_add: starts, installs 200+ source
+    # extensions, serves the web reader, downloads chapters.
+    "suwayomi",
+    # slskd/slskd:latest - .NET app run as `user: PUID:PGID` against its
+    # bind mounts, no s6-overlay drop / ownership fixup. Verified live
+    # (cyberpac) under cap_drop: ALL, zero cap_add: connects to the
+    # Soulseek network, scans + serves shares, completes transfers.
+    "slskd",
     # deluan/navidrome:latest - a single static Go binary, no s6-overlay/
     # root->PUID drop step, nothing to chown (runs as root against its
     # own bind mounts). Verified live: full library scan with zero
