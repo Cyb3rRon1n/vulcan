@@ -129,7 +129,9 @@ Prowlarr won't use it until you tell it to. Settings > Indexers > add an
 Request Timeout `60`, and give it a **tag** (e.g. `flaresolverr`). Then
 open each indexer that sits behind Cloudflare's challenge page and add
 that same tag - only tagged indexers route through FlareSolverr. Prowlarr
-flags most of the ones that need it.
+flags most of the ones that need it. If FlareSolverr can't get past a
+particular indexer's challenge, `docs/integrations.md` covers swapping in
+Byparr (drop-in, same API) via a compose override.
 
 ## 4. Radarr / Sonarr / Lidarr / Readarr
 

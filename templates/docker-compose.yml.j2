@@ -1014,8 +1014,12 @@ services:
       - "traefik.http.routers.kavita.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.kavita.loadbalancer.server.port=5000"
-{% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.kavita.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{# No authelia@docker, same reason as Komga: Kavita has its own mandatory
+   multi-user auth plus an OPDS feed the mobile readers authenticate
+   against directly, and a browser forward-auth redirect breaks both.
+   crowdsec@docker (IP reputation, not an auth challenge) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.kavita.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
@@ -1180,6 +1184,108 @@ services:
         limits:
           cpus: "{{ limits.lazylibrarian.cpus }}"
           memory: "{{ limits.lazylibrarian.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'suwayomi' in enabled %}
+  suwayomi:
+    # Self-hosted Tachiyomi/Mihon server: browse online manga sources,
+    # read in the browser, favourite, download chapters to disk as CBZ.
+    # A reader, not a PVR - downloads land in the shared books/manga
+    # folder so Komga serves the "kept" library too.
+    image: ghcr.io/suwayomi/suwayomi-server:stable
+    container_name: suwayomi
+    # Non-root JVM, run as PUID:PGID directly - no s6-overlay root->PUID
+    # drop, nothing to chown. Verified live (cyberpac) under cap_drop:
+    # ALL with zero cap_add: starts, installs extensions, serves, scans.
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - DOWNLOAD_AS_CBZ=true
+      - AUTO_DOWNLOAD_NEW_CHAPTERS=false
+{% if 'flaresolverr' in enabled %}
+      - FLARESOLVERR_ENABLED=true
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+{% endif %}
+    volumes:
+      - ./config/suwayomi:/home/suwayomi/.local/share/Tachidesk
+      - ${MEDIA_PATH}/media/books/manga:/home/suwayomi/.local/share/Tachidesk/downloads
+    ports:
+      - "{{ ports['suwayomi'] }}:4567"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.suwayomi.rule=Host(`suwayomi.{{ domain }}`)"
+      - "traefik.http.routers.suwayomi.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.suwayomi.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.suwayomi.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.suwayomi.loadbalancer.server.port=4567"
+{# Suwayomi's own login is optional and OFF by default, so - unlike Komga
+   and Kavita, which force auth - it keeps authelia@docker in front. To
+   run it as a public reader instead: seed config/suwayomi/server.conf
+   with `server.authMode = "UI_LOGIN"` + a password, then drop
+   authelia@docker via a compose override. See docs/integrations.md. #}
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.suwayomi.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.suwayomi.cpus }}"
+          memory: "{{ limits.suwayomi.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'slskd' in enabled %}
+  slskd:
+    # Soulseek client for music. Lidarr searches and grabs through it via
+    # the Lidarr.Plugin.Slskd plugin (Lidarr must be on the `nightly`
+    # tag / plugins branch for that - see docs/integrations.md); it also
+    # works standalone as a browse-and-download web UI. An admin download
+    # tool with its own login, same shape as the *arrs -> behind authelia.
+    image: slskd/slskd:latest
+    container_name: slskd
+    # .NET app run as PUID:PGID directly against its bind mounts - no
+    # s6-overlay drop, nothing to chown. Verified live (cyberpac) under
+    # cap_drop: ALL with zero cap_add: connects, shares, transfers.
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - SLSKD_REMOTE_CONFIGURATION=false
+    volumes:
+      - ./config/slskd:/app
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['slskd'] }}:5030"
+      - "50300:50300"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.slskd.rule=Host(`slskd.{{ domain }}`)"
+      - "traefik.http.routers.slskd.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.slskd.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.slskd.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.slskd.loadbalancer.server.port=5030"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.slskd.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.slskd.cpus }}"
+          memory: "{{ limits.slskd.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'traefik' in enabled %}
