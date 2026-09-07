@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-40 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+41 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -21,6 +21,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Komga | Light | optional | Comic/manga/ebook library server — polished web reader, OPDS for mobile apps (Mihon, Paperback, Panels). Comic/manga-first. |
 | Kavita | Light | optional | Manga/comics/ebook reader server — broader format support and a native ebook reader with reading progress. Pick this or Komga (or both). |
 | Mylar3 | Light | optional | Comic/manga PVR — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr + your torrent client. |
+| LazyLibrarian | Light | optional | Ebook/audiobook PVR — tracks authors and series, auto-downloads through Prowlarr + your download client. The maintained Readarr alternative. |
 
 ## Media Management
 

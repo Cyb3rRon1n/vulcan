@@ -128,6 +128,8 @@ Three services under the **Reading** category, all optional, all sharing the med
 
 **Mylar3** (`lscr.io/linuxserver/mylar3`, port 8090) with a read-write mount of the whole media path — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr and your torrent client, writing ComicInfo.xml into each `.cbz`. It's a management tool (admin-only under Authelia RBAC), not a reader. Wire it up: Prowlarr → Settings → Apps → Mylar; then Mylar → Configuration → Download Settings → point at qBittorrent/SABnzbd. Same 5-cap linuxserver.io pattern as the *arr apps.
 
+**LazyLibrarian** (`lscr.io/linuxserver/lazylibrarian`, port 5299, read-write media mount) — ebook/audiobook/magazine PVR, the maintained stand-in for Readarr (which is abandoned upstream and breaks against qBittorrent 5.x). Tracks authors and series, pulls metadata from GoodReads/OpenLibrary/Google Books, and auto-downloads through Prowlarr + your download client. Admin-only under Authelia RBAC, same 5-cap linuxserver.io pattern. Wire it up: enable its API (Config → Interface), add it in Prowlarr (Settings → Apps → LazyLibrarian), and set the download client under Config → Downloaders. Optional linuxserver `DOCKER_MODS` add Calibre for format conversion.
+
 ## Web file manager (FileBrowser)
 
 Browser-based file manager for the media library, mounted at `/srv`. When Homepage is also enabled, `stack/config/homepage/` is additionally mounted read-write at `homepage-config/` — the easiest way to edit Homepage's YAML (tiles, widgets, layout) without SSH. Never mounts the rest of `stack/config/` (Authelia secrets, VPN keys live there).
