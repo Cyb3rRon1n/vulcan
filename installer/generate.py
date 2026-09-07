@@ -112,6 +112,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "mylar3",
+    "lazylibrarian",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -125,9 +126,9 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
     "homepage", "dashy", "metube", "downtify", "uptime-kuma",
     "netdata", "vaultwarden", "decluttarr", "recyclarr", "filebrowser",
-    # mylar3 is a management/PVR tool, not a reader - Komga and Kavita
-    # (the reader UIs users actually browse) are deliberately not here.
-    "mylar3",
+    # mylar3 and lazylibrarian are management/PVR tools, not readers -
+    # Komga and Kavita (the reader UIs users actually browse) are not here.
+    "mylar3", "lazylibrarian",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -135,7 +136,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "seerr", "navidrome"],
-    "Reading": ["komga", "kavita", "mylar3"],
+    "Reading": ["komga", "kavita", "mylar3", "lazylibrarian"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Live TV": ["threadfin"],
@@ -200,6 +201,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "komga": 25600,
     "kavita": 5000,
     "mylar3": 8090,
+    "lazylibrarian": 5299,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -241,6 +243,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "komga": "Comic, manga, and ebook library server with a polished web reader and OPDS for mobile apps",
     "kavita": "Self-hosted manga, comics, and ebook reader server",
     "mylar3": "Comic/manga PVR - tracks series and auto-downloads new issues through Prowlarr and your torrent client",
+    "lazylibrarian": "Ebook and audiobook PVR - tracks authors/series and auto-downloads through Prowlarr; the maintained Readarr alternative",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",

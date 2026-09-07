@@ -1173,7 +1173,7 @@ FIVE_CAP_SERVICES = {
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
     "sportarr", "threadfin", "tracearr", "crowdsec",
-    "kavita", "mylar3",
+    "kavita", "mylar3", "lazylibrarian",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 

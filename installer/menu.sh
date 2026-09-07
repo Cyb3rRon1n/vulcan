@@ -1511,6 +1511,7 @@ _guided_setup_customize_services() {
         "komga:Komga (comic/manga reader + OPDS):Reading"
         "kavita:Kavita (manga/comics/ebook reader):Reading"
         "mylar3:Mylar3 (comic/manga PVR):Reading"
+        "lazylibrarian:LazyLibrarian (ebook/audiobook PVR):Reading"
         "radarr:Radarr (movies):Media Management"
         "sonarr:Sonarr (TV):Media Management"
         "lidarr:Lidarr (music):Media Management"

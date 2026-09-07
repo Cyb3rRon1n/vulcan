@@ -1135,6 +1135,53 @@ services:
           memory: "{{ limits.mylar3.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'lazylibrarian' in enabled %}
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/lazylibrarian:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['lazylibrarian'] }}:5299"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lazylibrarian.rule=Host(`lazylibrarian.{{ domain }}`)"
+      - "traefik.http.routers.lazylibrarian.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.lazylibrarian.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.lazylibrarian.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.lazylibrarian.loadbalancer.server.port=5299"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.lazylibrarian.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # linuxserver.io s6-overlay image - same 5 capabilities as every
+    # other one in this stack (CHOWN/DAC_OVERRIDE/FOWNER ownership fixup,
+    # SETGID/SETUID root->PUID drop).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.lazylibrarian.cpus }}"
+          memory: "{{ limits.lazylibrarian.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'traefik' in enabled %}
   traefik:
     image: traefik:latest

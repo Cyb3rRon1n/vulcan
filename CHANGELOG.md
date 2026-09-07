@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
-- **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS) and **Mylar3** (comic/manga PVR). Kavita moved into it. 40 known services.
+- **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS), **Mylar3** (comic/manga PVR), and **LazyLibrarian** (ebook/audiobook PVR, the maintained Readarr alternative). Kavita moved into it. 41 known services.
 
 ## v0.2.0 - 2026-08-18
 ### Added

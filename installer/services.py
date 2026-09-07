@@ -39,6 +39,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "komga": "standard",
     "kavita": "standard",
     "mylar3": "light",
+    "lazylibrarian": "light",
     "vaultwarden": "light",
     # Confirmed live: ~47MB idle via `docker stats` against a real
     # started container - genuinely light, same bucket as Homepage.

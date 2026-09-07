@@ -36,6 +36,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("komga", "Komga (comic/manga reader + OPDS)", optional=True, category="Reading"),
     ServiceDefinition("kavita", "Kavita (manga/comics/ebook reader)", optional=True, category="Reading"),
     ServiceDefinition("mylar3", "Mylar3 (comic/manga PVR)", optional=True, category="Reading"),
+    ServiceDefinition("lazylibrarian", "LazyLibrarian (ebook/audiobook PVR)", optional=True, category="Reading"),
     ServiceDefinition("radarr", "Radarr", category="Media Management"),
     ServiceDefinition("sonarr", "Sonarr", category="Media Management"),
     ServiceDefinition("prowlarr", "Prowlarr", category="Media Management"),
