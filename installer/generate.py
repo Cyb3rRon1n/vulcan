@@ -111,7 +111,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
-    "adguardhome", "glances", "navidrome", "kavita",
+    "adguardhome", "glances", "navidrome", "komga", "kavita", "mylar3",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -125,13 +125,17 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
     "homepage", "dashy", "metube", "downtify", "uptime-kuma",
     "netdata", "vaultwarden", "decluttarr", "recyclarr", "filebrowser",
+    # mylar3 is a management/PVR tool, not a reader - Komga and Kavita
+    # (the reader UIs users actually browse) are deliberately not here.
+    "mylar3",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "seerr", "navidrome", "kavita"],
+    "Media": ["jellyfin", "seerr", "navidrome"],
+    "Reading": ["komga", "kavita", "mylar3"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
     "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
     "Live TV": ["threadfin"],
@@ -149,6 +153,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
 # seeded once and never overwritten, same as services.yaml.
 _HOMEPAGE_TABS: dict[str, str] = {
     "Media": "Media",
+    "Reading": "Media",
     "Media Management": "Media",
     "Downloads": "Media",
     "Live TV": "Media",
@@ -192,7 +197,9 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "netdata": 19999,
     "glances": 61208,
     "navidrome": 4533,
+    "komga": 25600,
     "kavita": 5000,
+    "mylar3": 8090,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -231,7 +238,9 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
     "navidrome": "Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients",
+    "komga": "Comic, manga, and ebook library server with a polished web reader and OPDS for mobile apps",
     "kavita": "Self-hosted manga, comics, and ebook reader server",
+    "mylar3": "Comic/manga PVR - tracks series and auto-downloads new issues through Prowlarr and your torrent client",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
