@@ -645,8 +645,14 @@ services:
       - "traefik.http.routers.seerr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.seerr.loadbalancer.server.port=5055"
-{% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.seerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{# Deliberately never gets authelia@docker, same reasoning as Jellyfin:
+   Seerr is the media-request UI non-admin household members need to
+   reach, and it has its own "Sign in with Jellyfin/Plex" auth - an
+   Authelia wall in front just locks out every Jellyfin user who has no
+   Authelia account, which is the whole point of Seerr. crowdsec@docker
+   (edge IP/behavior blocking, not an auth challenge) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.seerr.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
