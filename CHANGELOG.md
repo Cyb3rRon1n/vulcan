@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
-- **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS), **Mylar3** (comic/manga PVR), and **LazyLibrarian** (ebook/audiobook PVR, the maintained Readarr alternative). Kavita moved into it. 41 known services.
+- **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS), **Suwayomi** (self-hosted Tachiyomi/Mihon — browse + download manga), **Mylar3** (comic/manga PVR), and **LazyLibrarian** (ebook/audiobook PVR, the maintained Readarr alternative). Kavita moved into it.
+- **slskd** (Soulseek music client) — searchable from Lidarr via the `Lidarr.Plugin.Slskd` plugin (needs Lidarr on the `nightly` tag), or standalone. Pre-seeded `slskd.yml` with a generated web password + Lidarr-plugin API key.
+- 43 known services.
+
+### Changed
+- Mylar3 is pre-seeded so it listens on all interfaces (LSIO default binds loopback only, making the published port unreachable).
+- Kavita drops `authelia@docker` (crowdsec only), same as Komga — its own multi-user auth + OPDS feed break a browser forward-auth redirect.
+- FlareSolverr setup note points at Byparr as a drop-in swap for indexers it can't solve (see `docs/integrations.md`).
 
 ## v0.2.0 - 2026-08-18
 ### Added
