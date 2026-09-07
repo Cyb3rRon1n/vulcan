@@ -232,7 +232,7 @@ export -f _detect
 from installer.tiers import ALL_SERVICES
 print(' '.join(s.key for s in ALL_SERVICES))
 ")
-    list=$(sed -n 's/^ *"\([a-z-]*\):.*/\1/p' "$MENU_SH" | tr '\n' ' ')
+    list=$(sed -n 's/^ *"\([a-z0-9-]*\):.*/\1/p' "$MENU_SH" | tr '\n' ' ')
 
     for k in $keys; do
         [[ " $list " == *" $k "* ]] || { echo "missing from menu.sh SERVICE_LIST: $k"; false; }

@@ -118,9 +118,15 @@ A single small container (`nicolargo/glances`, port 61208) exposing a REST API. 
 
 A lightweight, Subsonic-API-compatible music server (`deluan/navidrome`, port 4533) pointed read-only at `stack/media/music`. Any Subsonic-compatible client works against it unmodified (DSub, Substreamer, play:Sub, and others). Deliberately not routed through Authelia even if enabled, same reason as Jellyfin: every Subsonic client authenticates directly against `/rest/*` with its own query-string token, not a browser login, and Navidrome's own docs call out excluding that path from forward-auth for exactly this reason — its own login (created on first visit) is the real protection layer here instead. `crowdsec@docker` still applies since IP-reputation blocking isn't an auth challenge.
 
-## Manga/comics/ebook reader (Kavita)
+## Reading — comics, manga, ebooks (Komga, Kavita, Mylar3)
 
-A self-hosted reader server (`lscr.io/linuxserver/kavita`, port 5000) pointed read-only at `stack/media/books`. Unlike Navidrome/Jellyfin it has no separate native-app API protocol to worry about, so it routes through Traefik/Authelia/CrowdSec like any other service.
+Three services under the **Reading** category, all optional, all sharing the media library:
+
+**Komga** (`gotson/komga`, port 25600) pointed read-only at `stack/media` — a comic/manga/ebook library server with a strong web reader and an OPDS feed for mobile apps (Mihon/Tachiyomi, Paperback, Panels). It runs as `PUID:PGID` directly (no s6-overlay) so it needs **zero** added capabilities under `cap_drop: ALL`. Deliberately **not** routed through Authelia, same reasoning as Navidrome: the OPDS clients authenticate directly against Komga with their own credentials, not a browser forward-auth redirect, and Komga has real multi-user auth of its own. `crowdsec@docker` still applies.
+
+**Kavita** (`lscr.io/linuxserver/kavita`, port 5000) pointed read-only at `stack/media/books` — a reader server with broader format support and a native ebook reader with reading progress. No separate native-app API protocol, so it routes through Traefik/Authelia/CrowdSec like any other service. Komga vs Kavita is a preference call — both can run at once.
+
+**Mylar3** (`lscr.io/linuxserver/mylar3`, port 8090) with a read-write mount of the whole media path — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr and your torrent client, writing ComicInfo.xml into each `.cbz`. It's a management tool (admin-only under Authelia RBAC), not a reader. Wire it up: Prowlarr → Settings → Apps → Mylar; then Mylar → Configuration → Download Settings → point at qBittorrent/SABnzbd. Same 5-cap linuxserver.io pattern as the *arr apps.
 
 ## Web file manager (FileBrowser)
 

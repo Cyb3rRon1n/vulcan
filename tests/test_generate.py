@@ -1173,7 +1173,7 @@ FIVE_CAP_SERVICES = {
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
     "sportarr", "threadfin", "tracearr", "crowdsec",
-    "kavita",
+    "kavita", "mylar3",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
@@ -1184,6 +1184,11 @@ ZERO_CAP_SERVICES = {
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
+    # gotson/komga:latest - Java app run as `user: PUID:PGID`, so no
+    # s6-overlay root->PUID drop and no ownership fixup. Verified live
+    # (cyberpac) under cap_drop: ALL, zero cap_add: starts, migrates its
+    # DB, serves, completes a library scan.
+    "komga",
     # deluan/navidrome:latest - a single static Go binary, no s6-overlay/
     # root->PUID drop step, nothing to chown (runs as root against its
     # own bind mounts). Verified live: full library scan with zero
