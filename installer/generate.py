@@ -111,7 +111,8 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
-    "adguardhome", "glances", "navidrome", "kavita",
+    "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
+    "mylar3", "lazylibrarian", "slskd",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -125,15 +126,21 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
     "homepage", "dashy", "metube", "downtify", "uptime-kuma",
     "netdata", "vaultwarden", "decluttarr", "recyclarr", "filebrowser",
+    # mylar3 and lazylibrarian are management/PVR tools, not readers -
+    # Komga, Kavita and Suwayomi (the reader UIs users actually browse,
+    # each with its own login) are not here. slskd is an admin download
+    # tool with its own auth, same shape as the *arrs.
+    "mylar3", "lazylibrarian", "slskd",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
 # stays hand-written, but its flattened membership is cross-checked
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
-    "Media": ["jellyfin", "seerr", "navidrome", "kavita"],
+    "Media": ["jellyfin", "seerr", "navidrome"],
+    "Reading": ["komga", "kavita", "suwayomi", "mylar3", "lazylibrarian"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
-    "Downloads": ["qbittorrent", "sabnzbd", "metube", "downtify"],
+    "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
     "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances"],
     "Security": ["authelia", "vaultwarden"],
@@ -149,6 +156,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
 # seeded once and never overwritten, same as services.yaml.
 _HOMEPAGE_TABS: dict[str, str] = {
     "Media": "Media",
+    "Reading": "Media",
     "Media Management": "Media",
     "Downloads": "Media",
     "Live TV": "Media",
@@ -192,7 +200,12 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "netdata": 19999,
     "glances": 61208,
     "navidrome": 4533,
+    "komga": 25600,
     "kavita": 5000,
+    "suwayomi": 4567,
+    "mylar3": 8090,
+    "lazylibrarian": 5299,
+    "slskd": 5030,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -231,7 +244,12 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
     "navidrome": "Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients",
+    "komga": "Comic, manga, and ebook library server with a polished web reader and OPDS for mobile apps",
     "kavita": "Self-hosted manga, comics, and ebook reader server",
+    "suwayomi": "Self-hosted Tachiyomi/Mihon - browse online manga sources, read in the browser, download chapters to disk as CBZ",
+    "mylar3": "Comic/manga PVR - tracks series and auto-downloads new issues through Prowlarr and your torrent client",
+    "lazylibrarian": "Ebook and audiobook PVR - tracks authors/series and auto-downloads through Prowlarr; the maintained Readarr alternative",
+    "slskd": "Soulseek client for music - searchable from Lidarr via the slskd plugin, or browse and download by hand",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
@@ -1425,6 +1443,18 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "youtube").mkdir(parents=True, exist_ok=True)
     (media_path / "media" / "music" / "downtify").mkdir(parents=True, exist_ok=True)
 
+    # The reading stack keeps one tree under media/books: comics/ (Mylar3),
+    # manga/ (Suwayomi + hand-added), ebooks/ (LazyLibrarian). Komga reads
+    # all three, Jellyfin's book library sees the lot.
+    if any(k in enabled_service_keys(config) for k in ("komga", "mylar3", "suwayomi", "lazylibrarian")):
+        (media_path / "media" / "books" / "comics").mkdir(parents=True, exist_ok=True)
+        (media_path / "media" / "books" / "manga").mkdir(parents=True, exist_ok=True)
+        (media_path / "media" / "books" / "ebooks").mkdir(parents=True, exist_ok=True)
+
+    if "slskd" in enabled_service_keys(config):
+        (media_path / "downloads" / "slskd" / "complete").mkdir(parents=True, exist_ok=True)
+        (media_path / "downloads" / "slskd" / "incomplete").mkdir(parents=True, exist_ok=True)
+
     warnings = []
 
     if "homepage" in enabled_service_keys(config):
@@ -1688,7 +1718,102 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "FlareSolverr needs no setup of its own, but nothing uses it until you "
             "wire it into Prowlarr: Settings > Indexers > add an Indexer Proxy > "
             "FlareSolverr, Host http://flaresolverr:8191/, give it a tag, then add "
-            "that tag to each indexer that sits behind a Cloudflare challenge."
+            "that tag to each indexer that sits behind a Cloudflare challenge. "
+            "FlareSolverr is only lightly maintained now - if it can't solve a "
+            "given indexer, docs/integrations.md shows how to swap in Byparr "
+            "(a drop-in replacement with the same API, added via a compose override)."
+        )
+
+    if "mylar3" in enabled_service_keys(config):
+
+        mylar_config = output_dir / "config" / "mylar3" / "mylar" / "config.ini"
+
+        if not mylar_config.exists():
+
+            # LSIO mylar3 writes `http_host = localhost` on first run, so
+            # CherryPy binds 127.0.0.1 only and the published port / a
+            # Homepage tile / Prowlarr can't reach it. Seed just that one
+            # key before first start; mylar fills in every other default
+            # itself and never touches this file again once it owns it.
+            mylar_config.parent.mkdir(parents=True, exist_ok=True)
+            mylar_config.write_text("[Interface]\nhttp_host = 0.0.0.0\n")
+
+        warnings.append(
+            "Mylar3 was pre-seeded so it listens on all interfaces. Wire it up: "
+            "Prowlarr > Settings > Apps > add Mylar (Prowlarr http://prowlarr:9696, "
+            "Mylar http://mylar3:8090, API key from Mylar > Configuration), and set "
+            "Mylar's download client + Comic Location (/data/media/books/comics) in "
+            "its own Configuration. GetComics DDL (Configuration > Download Settings) "
+            "is Mylar's best free source and needs no indexer."
+        )
+
+    if "suwayomi" in enabled_service_keys(config):
+
+        warnings.append(
+            "Suwayomi has no sources until you add an extension repo: Settings > "
+            "Browse > Extension Repos > add "
+            "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json "
+            "then install sources under Browse > Extensions. Downloaded chapters land "
+            "in media/books/manga (Komga serves them too). It keeps Authelia in front "
+            "by default - to run it as a public reader, set "
+            "server.authMode = \"UI_LOGIN\" in stack/config/suwayomi/server.conf and "
+            "drop authelia@docker via an override (see docs/integrations.md)."
+        )
+
+    if "slskd" in enabled_service_keys(config):
+
+        slskd_config = output_dir / "config" / "slskd" / "slskd.yml"
+
+        if not slskd_config.exists():
+
+            slskd_config.parent.mkdir(parents=True, exist_ok=True)
+            slskd_web_password = secrets.token_urlsafe(16)
+            slskd_api_key = secrets.token_hex(24)
+            slskd_config.write_text(
+                "# slskd - fill in soulseek.username / soulseek.password with a\n"
+                "# Soulseek account (any unused username auto-registers on first\n"
+                "# connect). The web UI login and the Lidarr-plugin API key below\n"
+                "# are pre-generated - keep them or change them.\n"
+                "remote_configuration: false\n"
+                "remote_file_management: true\n"
+                "directories:\n"
+                "  downloads: /data/downloads/slskd/complete\n"
+                "  incomplete: /data/downloads/slskd/incomplete\n"
+                "shares:\n"
+                "  directories:\n"
+                "    - /data/media/music\n"
+                "soulseek:\n"
+                "  username: CHANGEME\n"
+                "  password: CHANGEME\n"
+                "  listen_port: 50300\n"
+                "transfers:\n"
+                "  download:\n"
+                "    destination:\n"
+                "      permissions:\n"
+                '        mode: "777"\n'
+                "web:\n"
+                "  authentication:\n"
+                "    username: admin\n"
+                f"    password: {slskd_web_password}\n"
+                "    api_keys:\n"
+                "      lidarr_plugin:\n"
+                f"        key: {slskd_api_key}\n"
+                "        cidr: 0.0.0.0/0,::/0\n"
+                "        role: readwrite\n"
+                "feature:\n"
+                "  swagger: false\n"
+            )
+
+        warnings.append(
+            "slskd was pre-seeded at stack/config/slskd/slskd.yml - open it and set "
+            "soulseek.username / soulseek.password to a Soulseek account (any unused "
+            "username registers itself on first connect). The web login is admin + the "
+            "password in that file. To let Lidarr search Soulseek: pin Lidarr to the "
+            "'nightly' image tag (plugins branch - one-way DB migration, back up "
+            "stack/config/lidarr first), install "
+            "https://github.com/allquiet-hub/Lidarr.Plugin.Slskd from System > Plugins, "
+            "then add slskd as both a download client and an indexer (host slskd, port "
+            "5030, the api_keys key from slskd.yml). See docs/integrations.md."
         )
 
     if "recyclarr" in enabled_service_keys(config):

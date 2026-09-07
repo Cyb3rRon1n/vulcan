@@ -36,7 +36,12 @@ RESOURCE_PROFILES: dict[str, str] = {
     "netdata": "light",
     "glances": "light",
     "navidrome": "light",
+    "komga": "standard",
     "kavita": "standard",
+    "suwayomi": "standard",
+    "mylar3": "light",
+    "lazylibrarian": "light",
+    "slskd": "light",
     "vaultwarden": "light",
     # Confirmed live: ~47MB idle via `docker stats` against a real
     # started container - genuinely light, same bucket as Homepage.

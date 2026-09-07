@@ -9,7 +9,8 @@ def test_all_known_services_have_a_resource_profile():
         "lidarr", "readarr", "traefik", "authelia", "tailscale", "homepage", "uptime-kuma",
         "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec",
         "cloudflared", "filebrowser", "pihole", "sportarr", "tracearr", "threadfin",
-        "portainer", "adguardhome", "glances", "navidrome", "kavita"
+        "portainer", "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
+        "mylar3", "lazylibrarian", "slskd"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected

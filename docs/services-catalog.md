@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-38 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+43 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -12,8 +12,17 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 |---|---|---|---|
 | Jellyfin | Light | core | Streams your movie/TV/music library to any device. |
 | Navidrome | Light | optional | Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients. |
-| Kavita | Light | optional | Self-hosted manga/comics/ebook reader server. |
 | Seerr | Medium | core | Lets other household members request new movies/shows without touching the management apps directly. |
+
+## Reading
+
+| Service | Tier | Type | What it does |
+|---|---|---|---|
+| Komga | Light | optional | Comic/manga/ebook library server — polished web reader, OPDS for mobile apps (Mihon, Paperback, Panels). Comic/manga-first. |
+| Kavita | Light | optional | Manga/comics/ebook reader server — broader format support and a native ebook reader with reading progress. Pick this or Komga (or both). |
+| Suwayomi | Light | optional | Self-hosted Tachiyomi/Mihon — browse online manga sources, read in the browser, download chapters to disk as CBZ (Komga then serves the kept library). |
+| Mylar3 | Light | optional | Comic/manga PVR — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr + your torrent client. |
+| LazyLibrarian | Light | optional | Ebook/audiobook PVR — tracks authors and series, auto-downloads through Prowlarr + your download client. The maintained Readarr alternative. |
 
 ## Media Management
 
@@ -37,6 +46,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 |---|---|---|---|
 | qBittorrent | Light | core | Torrent client. |
 | SABnzbd | Light | optional | Usenet client. |
+| slskd | Light | optional | Soulseek client for music — Lidarr searches/grabs through it via the `Lidarr.Plugin.Slskd` plugin (Lidarr on the `nightly` tag), or use it standalone. |
 | MeTube | Light | optional | On-demand downloader for YouTube and hundreds of other sites. |
 | Downtify | Light | optional | On-demand Spotify track/playlist downloader (no Premium needed). |
 

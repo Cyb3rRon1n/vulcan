@@ -645,8 +645,14 @@ services:
       - "traefik.http.routers.seerr.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.seerr.loadbalancer.server.port=5055"
-{% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.seerr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{# Deliberately never gets authelia@docker, same reasoning as Jellyfin:
+   Seerr is the media-request UI non-admin household members need to
+   reach, and it has its own "Sign in with Jellyfin/Plex" auth - an
+   Authelia wall in front just locks out every Jellyfin user who has no
+   Authelia account, which is the whole point of Seerr. crowdsec@docker
+   (edge IP/behavior blocking, not an auth challenge) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.seerr.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
@@ -1008,8 +1014,12 @@ services:
       - "traefik.http.routers.kavita.tls.certresolver=cloudflare"
 {% endif %}
       - "traefik.http.services.kavita.loadbalancer.server.port=5000"
-{% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.kavita.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{# No authelia@docker, same reason as Komga: Kavita has its own mandatory
+   multi-user auth plus an OPDS feed the mobile readers authenticate
+   against directly, and a browser forward-auth redirect breaks both.
+   crowdsec@docker (IP reputation, not an auth challenge) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.kavita.middlewares=crowdsec@docker"
 {% endif %}
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
@@ -1034,6 +1044,248 @@ services:
         limits:
           cpus: "{{ limits.kavita.cpus }}"
           memory: "{{ limits.kavita.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'komga' in enabled %}
+  komga:
+    image: gotson/komga:latest
+    container_name: komga
+    # Runs as the target uid/gid directly, so there's no s6-overlay
+    # root->PUID drop and nothing to chown - verified live under
+    # cap_drop: ALL with zero added capabilities (full library scan OK).
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/komga:/config
+      - ${MEDIA_PATH}/media:/data:ro
+    ports:
+      - "{{ ports['komga'] }}:25600"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.komga.rule=Host(`komga.{{ domain }}`)"
+      - "traefik.http.routers.komga.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.komga.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.komga.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.komga.loadbalancer.server.port=25600"
+{# No authelia@docker, same reason as Navidrome: Komga's OPDS feed and
+   the mobile readers that consume it (Mihon/Tachiyomi, Paperback,
+   Panels, ...) authenticate directly against Komga with their own
+   credentials, not a browser forward-auth redirect. Komga has real
+   multi-user auth of its own. crowdsec@docker (IP reputation, not an
+   auth challenge) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.komga.middlewares=crowdsec@docker"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.komga.cpus }}"
+          memory: "{{ limits.komga.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'mylar3' in enabled %}
+  mylar3:
+    image: lscr.io/linuxserver/mylar3:latest
+    container_name: mylar3
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/mylar3:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['mylar3'] }}:8090"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mylar3.rule=Host(`mylar3.{{ domain }}`)"
+      - "traefik.http.routers.mylar3.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.mylar3.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.mylar3.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.mylar3.loadbalancer.server.port=8090"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.mylar3.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # linuxserver.io s6-overlay image - same 5 capabilities as every
+    # other one in this stack (CHOWN/DAC_OVERRIDE/FOWNER ownership fixup,
+    # SETGID/SETUID root->PUID drop).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.mylar3.cpus }}"
+          memory: "{{ limits.mylar3.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'lazylibrarian' in enabled %}
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/lazylibrarian:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['lazylibrarian'] }}:5299"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lazylibrarian.rule=Host(`lazylibrarian.{{ domain }}`)"
+      - "traefik.http.routers.lazylibrarian.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.lazylibrarian.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.lazylibrarian.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.lazylibrarian.loadbalancer.server.port=5299"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.lazylibrarian.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # linuxserver.io s6-overlay image - same 5 capabilities as every
+    # other one in this stack (CHOWN/DAC_OVERRIDE/FOWNER ownership fixup,
+    # SETGID/SETUID root->PUID drop).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.lazylibrarian.cpus }}"
+          memory: "{{ limits.lazylibrarian.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'suwayomi' in enabled %}
+  suwayomi:
+    # Self-hosted Tachiyomi/Mihon server: browse online manga sources,
+    # read in the browser, favourite, download chapters to disk as CBZ.
+    # A reader, not a PVR - downloads land in the shared books/manga
+    # folder so Komga serves the "kept" library too.
+    image: ghcr.io/suwayomi/suwayomi-server:stable
+    container_name: suwayomi
+    # Non-root JVM, run as PUID:PGID directly - no s6-overlay root->PUID
+    # drop, nothing to chown. Verified live (cyberpac) under cap_drop:
+    # ALL with zero cap_add: starts, installs extensions, serves, scans.
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - DOWNLOAD_AS_CBZ=true
+      - AUTO_DOWNLOAD_NEW_CHAPTERS=false
+{% if 'flaresolverr' in enabled %}
+      - FLARESOLVERR_ENABLED=true
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+{% endif %}
+    volumes:
+      - ./config/suwayomi:/home/suwayomi/.local/share/Tachidesk
+      - ${MEDIA_PATH}/media/books/manga:/home/suwayomi/.local/share/Tachidesk/downloads
+    ports:
+      - "{{ ports['suwayomi'] }}:4567"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.suwayomi.rule=Host(`suwayomi.{{ domain }}`)"
+      - "traefik.http.routers.suwayomi.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.suwayomi.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.suwayomi.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.suwayomi.loadbalancer.server.port=4567"
+{# Suwayomi's own login is optional and OFF by default, so - unlike Komga
+   and Kavita, which force auth - it keeps authelia@docker in front. To
+   run it as a public reader instead: seed config/suwayomi/server.conf
+   with `server.authMode = "UI_LOGIN"` + a password, then drop
+   authelia@docker via a compose override. See docs/integrations.md. #}
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.suwayomi.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.suwayomi.cpus }}"
+          memory: "{{ limits.suwayomi.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'slskd' in enabled %}
+  slskd:
+    # Soulseek client for music. Lidarr searches and grabs through it via
+    # the Lidarr.Plugin.Slskd plugin (Lidarr must be on the `nightly`
+    # tag / plugins branch for that - see docs/integrations.md); it also
+    # works standalone as a browse-and-download web UI. An admin download
+    # tool with its own login, same shape as the *arrs -> behind authelia.
+    image: slskd/slskd:latest
+    container_name: slskd
+    # .NET app run as PUID:PGID directly against its bind mounts - no
+    # s6-overlay drop, nothing to chown. Verified live (cyberpac) under
+    # cap_drop: ALL with zero cap_add: connects, shares, transfers.
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - SLSKD_REMOTE_CONFIGURATION=false
+    volumes:
+      - ./config/slskd:/app
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['slskd'] }}:5030"
+      - "50300:50300"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.slskd.rule=Host(`slskd.{{ domain }}`)"
+      - "traefik.http.routers.slskd.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.slskd.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.slskd.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.slskd.loadbalancer.server.port=5030"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.slskd.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.slskd.cpus }}"
+          memory: "{{ limits.slskd.memory }}"
     restart: unless-stopped
 {% endif %}
 {% if 'traefik' in enabled %}
