@@ -162,6 +162,15 @@ folder to `/data/downloads` under Config > Folders.
 Then connect each *arr app above to the client:
 Settings > Download Clients > Add.
 
+**A note on the LAN auth-bypass.** qBittorrent's image ships with
+"Bypass authentication for clients on localhost/whitelisted subnets"
+covering the Docker network, so the *arr apps reach it without the
+password. Radarr/Sonarr/Lidarr handle that fine. The now-abandoned
+Readarr does not (it hard-requires the pre-5.x login response and errors
+with "Authentication failure" even when the password is right) - if you
+need Readarr specifically, turn that bypass off in Options > WebUI and
+give Readarr the real password. Everything else works either way.
+
 If Gluetun is enabled, qBittorrent shares its network namespace - the
 connection settings work the same either way, just confirm step 6 below is
 actually connected first.
