@@ -218,6 +218,20 @@ qBittorrent has no network access at all if Gluetun can't connect (that's
 the point - it fails closed, not open), so a stalled download queue here
 usually means check this first.
 
+**Port forwarding (ProtonVPN / PIA).** If the tunnel is clearly connected
+but every torrent hangs at "downloading metadata" with 0 progress -
+healthy peer counts, no data - Gluetun landed on a non-P2P server, which
+silently drops BitTorrent traffic. Fix: uncomment the port-forwarding
+block in the `gluetun:` service in `stack/docker-compose.yml` (set
+`VPN_PORT_FORWARDING_PROVIDER` to match your provider), turn on
+qBittorrent > Options > WebUI > "Bypass authentication for clients on
+localhost", and `docker compose -f stack/docker-compose.yml up -d
+--force-recreate gluetun`. `PORT_FORWARD_ONLY=on` then keeps Gluetun on
+P2P-capable servers across every reconnect and the forwarded port
+re-syncs into qBittorrent automatically. Mullvad has dropped port
+forwarding; NordVPN and Surfshark have no Gluetun support for it - on
+those, pick a provider with PF or accept slower/incoming-limited peering.
+
 <p align="center">
   <img src="images/screenshots/gluetun-log.svg" alt="Gluetun connection log example" style="max-width: 100%; width: 820px;">
 </p>
