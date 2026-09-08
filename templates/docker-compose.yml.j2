@@ -800,20 +800,39 @@ services:
     # add NET_RAW" and falls back to slower DNS-over-UDP checks).
     # DAC_OVERRIDE: gluetun runs as root but cap_drop: ALL removes it,
     # so it can't write /tmp/gluetun/ip to cache its public IP
-    # ("persisting public ip address: ... permission denied"). Both
-    # were surfaced by a real connected run's logs, not guessed.
+    # ("persisting public ip address: ... permission denied"). CHOWN:
+    # gluetun chowns /tmp/gluetun/forwarded_port - harmless with port
+    # forwarding off (just silences one ERROR log line), fatal for the
+    # PF service when it's on. All surfaced by a real connected run's
+    # logs, not guessed.
     cap_drop:
       - ALL
     cap_add:
       - NET_ADMIN
       - NET_RAW
       - DAC_OVERRIDE
+      - CHOWN
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
       - TZ=${TZ}
+      # --- Port forwarding (ProtonVPN / PIA only) -------------------------
+      # Without this, gluetun connects to a random server on every
+      # (re)connect; on ProtonVPN a non-P2P server silently drops
+      # BitTorrent traffic, so qBittorrent shows healthy peer counts but
+      # every torrent hangs at "downloading metadata" with 0 progress.
+      # Uncomment for ProtonVPN or PIA (set the provider to match your
+      # VPN_SERVICE_PROVIDER). Mullvad dropped PF; NordVPN/Surfshark have
+      # no gluetun PF support - leave this commented for those.
+      # - PORT_FORWARD_ONLY=on
+      # - VPN_PORT_FORWARDING=on
+      # - VPN_PORT_FORWARDING_PROVIDER=protonvpn
+      # - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -qO- --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+      # Also enable qBittorrent > Options > WebUI > "Bypass authentication
+      # for clients on localhost" so the up-command can set the port.
+      # ------------------------------------------------------------------
     volumes:
       - ./config/gluetun:/gluetun
     ports:
