@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 43 known services.
 
 ### Changed
+- Gluetun gains a `CHOWN` capability (silences a `/tmp/gluetun/forwarded_port` chown error; required by the port-forwarding service) and a commented-out ProtonVPN/PIA port-forwarding block in the template — uncomment it if torrents stall at "downloading metadata" on a connected tunnel. Walkthrough documents the fix.
 - Mylar3 is pre-seeded so it listens on all interfaces (LSIO default binds loopback only, making the published port unreachable).
 - Kavita drops `authelia@docker` (crowdsec only), same as Komga — its own multi-user auth + OPDS feed break a browser forward-auth redirect.
 - FlareSolverr setup note points at Byparr as a drop-in swap for indexers it can't solve (see `docs/integrations.md`).
