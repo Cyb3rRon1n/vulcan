@@ -3446,6 +3446,18 @@ def test_render_decluttarr_config_defaults_to_dry_run():
     assert parsed["general"]["test_run"] is True
 
 
+def test_render_decluttarr_config_removes_done_seeding():
+
+    # Without this job, decluttarr cleans up bad/failed/stalled downloads
+    # but a normal successful download just sits in the client forever -
+    # found live on a real install (see the template's own comment).
+    output = render_decluttarr_config(make_config("light", {"decluttarr"}))
+    parsed = yaml.safe_load(output)
+
+    assert "remove_done_seeding" in parsed["jobs"]
+    assert parsed["jobs"]["remove_done_seeding"] is True
+
+
 def test_render_decluttarr_config_qbittorrent_uses_gluetun_hostname_when_active():
 
     output = render_decluttarr_config(
