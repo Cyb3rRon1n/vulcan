@@ -12,6 +12,16 @@ jobs:
   remove_bad_files:
   remove_failed_downloads:
   remove_stalled:
+  # Removes torrents/nzbs that finished downloading AND finished seeding
+  # (hit qBittorrent's ratio/time limit) - without this job, decluttarr
+  # cleans up bad/failed/stalled downloads but a normal successful
+  # download just sits in the client forever. Needs a real seeding limit
+  # configured in qBittorrent (Options > BitTorrent > Seeding Limits) -
+  # with no limit set, nothing ever counts as "done seeding" and this
+  # job silently never fires. Found live: a real install had this exact
+  # gap (job missing + no seeding limit + CHANGEME api_keys, three
+  # separate reasons cleanup looked broken).
+  remove_done_seeding: true
 
 instances:
 {% if 'radarr' in enabled %}
@@ -41,9 +51,15 @@ download_clients:
   qbittorrent:
     - base_url: "{{ qbittorrent_base_url }}"
       name: "qBittorrent"
-      # If your qBittorrent WebUI has auth configured, add either:
-      #   api_key: "..."          (qBittorrent 5.2.0+, generate under WebUI settings)
-      #   username / password     (older qBittorrent)
+      # decluttarr needs to log into qBittorrent's WebUI. Two options:
+      #   1) No credentials at all - qBittorrent ships its own
+      #      WebUI\AuthSubnetWhitelist (Options > WebUI > "Bypass
+      #      authentication for clients in whitelisted IP subnets"),
+      #      pre-filled with the private-network ranges but OFF by
+      #      default. Turning it on covers the docker network decluttarr
+      #      connects from with no secret needed at all.
+      #   2) api_key: "..."          (qBittorrent 5.2.0+, generate under WebUI settings)
+      #      username / password     (older qBittorrent)
 {% endif %}
 {% if 'sabnzbd' in enabled %}
   sabnzbd:
