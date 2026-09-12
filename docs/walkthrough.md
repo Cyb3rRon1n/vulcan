@@ -302,6 +302,16 @@ setup rather than replacing any part of it:
   still a placeholder - edit `stack/config/decluttarr/config.yaml`
   directly. It starts in `test_run: true` (a dry run) - flip that once
   you've confirmed the config is right.
+  - For qBittorrent specifically, you don't need an api_key at all -
+    qBittorrent's own WebUI > Options > "Bypass authentication for
+    clients in whitelisted IP subnets" already covers the docker
+    network by default, just switch it on.
+  - Its `remove_done_seeding` job needs a real seeding limit configured
+    in qBittorrent (Options > BitTorrent > Seeding Limits - a ratio, a
+    time limit, or both). With no limit set, nothing ever counts as
+    "done seeding" and completed downloads sit in the client forever
+    even with decluttarr running - the job silently never fires,
+    found live on a real install.
 - **Maintainerr** has no pre-seeded config - connect it to Jellyfin (or
   Plex/Emby) and Radarr/Sonarr through its own setup wizard, then create
   your library-cleanup rules there.
