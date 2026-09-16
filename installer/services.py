@@ -49,7 +49,6 @@ RESOURCE_PROFILES: dict[str, str] = {
     "cloudflared": "light",
     "filebrowser": "light",
     "pihole": "light",
-    "sportarr": "standard",
     "tracearr": "standard",
     "threadfin": "light",
     "portainer": "light",

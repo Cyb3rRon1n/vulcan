@@ -79,7 +79,6 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("crowdsec", "Intrusion protection (CrowdSec)", optional=True, category="Security"),
     ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True, category="Infrastructure"),
     ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True, category="Infrastructure"),
-    ServiceDefinition("sportarr", "Sportarr (sports PVR)", optional=True, category="Media Management"),
 ]
 
 TIERS: dict[str, TierDefinition] = {

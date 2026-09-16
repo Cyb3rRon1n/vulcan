@@ -670,48 +670,6 @@ services:
           memory: "{{ limits.seerr.memory }}"
     restart: unless-stopped
 {% endif %}
-{% if 'sportarr' in enabled %}
-  sportarr:
-    image: sportarr/sportarr:latest
-    container_name: sportarr
-    environment:
-      - TZ=${TZ}
-    volumes:
-      - ./config/sportarr:/config
-      - ${MEDIA_PATH}/media:/data/media
-    ports:
-      - "{{ ports['sportarr'] }}:1867"
-{% if 'traefik' in enabled and domain %}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.sportarr.rule=Host(`sportarr.{{ domain }}`)"
-      - "traefik.http.routers.sportarr.entrypoints=websecure{{ tunnel_entrypoints }}"
-      - "traefik.http.routers.sportarr.tls=true"
-{% if cloudflare_dns %}
-      - "traefik.http.routers.sportarr.tls.certresolver=cloudflare"
-{% endif %}
-      - "traefik.http.services.sportarr.loadbalancer.server.port=1867"
-{% if 'crowdsec' in enabled or 'authelia' in enabled %}
-      - "traefik.http.routers.sportarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
-{% endif %}
-{% endif %}
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
-      - SETGID
-      - SETUID
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          cpus: "{{ limits.sportarr.cpus }}"
-          memory: "{{ limits.sportarr.memory }}"
-    restart: unless-stopped
-{% endif %}
 {% if 'bazarr' in enabled %}
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest

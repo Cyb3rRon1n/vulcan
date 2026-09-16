@@ -202,10 +202,6 @@ When Traefik is also enabled with a domain, Pi-hole is routed at `pihole.<domain
 
 A DNS-level ad blocker like Pi-hole, with a different UI and built-in per-client stats — pick one or the other, not both (they'd fight over port 53). Also binds `:53` directly (no separate resolver container the way Pi-hole+Unbound does).
 
-## Sports automation (Sportarr)
-
-A PVR for sports — monitors leagues and events, automatically downloads match replays and highlights via your existing download clients (qBittorrent/SABnzbd + Prowlarr). Exposed on port 1867.
-
 ## IPTV live TV (Threadfin)
 
 An M3U/IPTV proxy that emulates an HDHomeRun tuner, giving Jellyfin/Plex/Emby live TV support without physical tuner hardware. Point it at your M3U playlist URL and it handles buffering, channel mapping, and EPG integration. Exposed on port 34400.
