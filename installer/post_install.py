@@ -247,7 +247,7 @@ _BACKUP_EXCLUDE_PREFIXES = (
     # Downloaded model weights - re-downloadable, not config.
     # Downloaded model weights - re-downloadable, not config. HF cache
     # dirs are whisper/models--org--name, not whisper/models/.
-    "whisper/models--",
+    "whisper",
     # Suwayomi's embedded Chromium (KCEF) browser cache - runtime junk,
     # and its live SQLite DBs can wedge the snapshot step.
     "suwayomi/cache",
