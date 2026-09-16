@@ -38,6 +38,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("suwayomi", "Suwayomi (self-hosted Tachiyomi/Mihon - browse + download manga)", optional=True, category="Reading"),
     ServiceDefinition("mylar3", "Mylar3 (comic/manga PVR)", optional=True, category="Reading"),
     ServiceDefinition("lazylibrarian", "LazyLibrarian (ebook/audiobook PVR)", optional=True, category="Reading"),
+    ServiceDefinition("calibre-web-automated", "Calibre-Web-Automated (ebook library + web reader + auto-ingest)", optional=True, category="Reading"),
     ServiceDefinition("slskd", "slskd (Soulseek client - music, feeds Lidarr)", optional=True, category="Downloaders"),
     ServiceDefinition("radarr", "Radarr", category="Media Management"),
     ServiceDefinition("sonarr", "Sonarr", category="Media Management"),

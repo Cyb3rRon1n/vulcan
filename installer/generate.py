@@ -112,7 +112,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
-    "mylar3", "lazylibrarian", "slskd",
+    "mylar3", "lazylibrarian", "slskd", "calibre-web-automated",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -138,7 +138,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "seerr", "navidrome"],
-    "Reading": ["komga", "kavita", "suwayomi", "mylar3", "lazylibrarian"],
+    "Reading": ["komga", "kavita", "suwayomi", "mylar3", "lazylibrarian", "calibre-web-automated"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
@@ -205,6 +205,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "mylar3": 8090,
     "lazylibrarian": 5299,
     "slskd": 5030,
+    "calibre-web-automated": 8084,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -248,6 +249,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "suwayomi": "Self-hosted Tachiyomi/Mihon - browse online manga sources, read in the browser, download chapters to disk as CBZ",
     "mylar3": "Comic/manga PVR - tracks series and auto-downloads new issues through Prowlarr and your torrent client",
     "lazylibrarian": "Ebook and audiobook PVR - tracks authors/series and auto-downloads through Prowlarr; the maintained Readarr alternative",
+    "calibre-web-automated": "Calibre ebook library with auto-ingest, format conversion, and a web reader (often pairs with LazyLibrarian)",
     "slskd": "Soulseek client for music - searchable from Lidarr via the slskd plugin, or browse and download by hand",
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
@@ -1444,7 +1446,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     # The reading stack keeps one tree under media/books: comics/ (Mylar3),
     # manga/ (Suwayomi + hand-added), ebooks/ (LazyLibrarian). Komga reads
     # all three, Jellyfin's book library sees the lot.
-    if any(k in enabled_service_keys(config) for k in ("komga", "mylar3", "suwayomi", "lazylibrarian")):
+    if any(k in enabled_service_keys(config) for k in ("komga", "mylar3", "suwayomi", "lazylibrarian", "calibre-web-automated")):
         (media_path / "media" / "books" / "comics").mkdir(parents=True, exist_ok=True)
         (media_path / "media" / "books" / "manga").mkdir(parents=True, exist_ok=True)
         (media_path / "media" / "books" / "ebooks").mkdir(parents=True, exist_ok=True)
@@ -1452,6 +1454,9 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     if "slskd" in enabled_service_keys(config):
         (media_path / "downloads" / "slskd" / "complete").mkdir(parents=True, exist_ok=True)
         (media_path / "downloads" / "slskd" / "incomplete").mkdir(parents=True, exist_ok=True)
+
+    if "calibre-web-automated" in enabled_service_keys(config):
+        (media_path / "downloads" / "ebooks").mkdir(parents=True, exist_ok=True)
 
     warnings = []
 

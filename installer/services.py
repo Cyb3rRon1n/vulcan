@@ -42,6 +42,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "mylar3": "light",
     "lazylibrarian": "light",
     "slskd": "light",
+    "calibre-web-automated": "standard",
     "vaultwarden": "light",
     # Confirmed live: ~47MB idle via `docker stats` against a real
     # started container - genuinely light, same bucket as Homepage.

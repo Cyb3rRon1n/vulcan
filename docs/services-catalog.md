@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-43 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+44 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -23,6 +23,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Suwayomi | Light | optional | Self-hosted Tachiyomi/Mihon — browse online manga sources, read in the browser, download chapters to disk as CBZ (Komga then serves the kept library). |
 | Mylar3 | Light | optional | Comic/manga PVR — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr + your torrent client. |
 | LazyLibrarian | Light | optional | Ebook/audiobook PVR — tracks authors and series, auto-downloads through Prowlarr + your download client. The maintained Readarr alternative. |
+| Calibre-Web-Automated | Light | optional | Calibre ebook library with auto-ingest and a web reader — drop books in the ingest folder, CWA converts/stores them in the library. Ebook-first, pairs naturally with LazyLibrarian; self-contained Calibre-Web front end. |
 
 ## Media Management
 

@@ -941,6 +941,46 @@ def test_render_compose_kavita_never_gets_authelia_middleware():
     assert "authelia@docker" not in block
 
 
+def test_render_compose_calibre_web_automated_caps_mounts_and_port():
+    output = render_compose(make_config("light", enabled_optional={"calibre-web-automated"}))
+    block = _service_block(output, "calibre-web-automated", "traefik")
+
+    assert "crocodilestick/calibre-web-automated" in block
+    assert "${MEDIA_PATH}/media/books/ebooks:/calibre-library" in block
+    assert "${MEDIA_PATH}/downloads/ebooks:/cwa-book-ingest" in block
+    assert "8083" in block
+    data = yaml.safe_load(output)
+    svc = data["services"]["calibre-web-automated"]
+    assert svc["cap_drop"] == ["ALL"]
+    assert svc["cap_add"] == [
+        "CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"
+    ]
+    assert svc["ports"] == ["8084:8083"]
+
+
+def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
+    """
+    Like Komga and Kavita, CWA has its own multi-user auth (Calibre-Web +
+    OAuth option), plus an OPDS feed the mobile readers authenticate against
+    directly - a browser forward-auth redirect breaks both, so it's kept
+    out of authelia@docker. crowdsec@docker (IP reputation) still applies.
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy",
+            enabled_optional={"calibre-web-automated", "komga", "kavita", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    block = _service_block(output, "calibre-web-automated", "slskd")
+
+    assert "traefik.http.routers.calibre-web-automated.rule=Host(`calibre-web-automated.media.example.com`)" in block
+    assert "traefik.http.routers.calibre-web-automated.middlewares=crowdsec@docker" in block
+    assert "authelia@docker" not in block
+
+
 def test_render_compose_suwayomi_keeps_authelia_middleware():
     """
     Unlike Komga and Kavita, Suwayomi's own login is optional and off by
@@ -1263,7 +1303,7 @@ FIVE_CAP_SERVICES = {
     "sabnzbd", "bazarr", "lidarr", "readarr",
     "metube", "authelia", "homepage", "uptime-kuma", "filebrowser",
     "threadfin", "tracearr", "crowdsec",
-    "kavita", "mylar3", "lazylibrarian",
+    "kavita", "mylar3", "lazylibrarian", "calibre-web-automated",
 }
 FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
