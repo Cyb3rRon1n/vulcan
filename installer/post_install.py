@@ -233,12 +233,24 @@ _BACKUP_EXCLUDE_PREFIXES = (
     "netdata/lib",
     "netdata/cache",
     "netdata/var",
+    # Official jellyfin image layout: runtime lives under config/data/,
+    # so "jellyfin/metadata" alone never matched it (found live: 40G+
+    # slipped into every backup attempt).
     "jellyfin/metadata",
     "jellyfin/transcodes",
     "jellyfin/cache",
     "jellyfin/log",
+    "jellyfin/data/metadata",
+    "jellyfin/data/data",
     "jellyfin/data/subtitles",
     "jellyfin/data/keyframes",
+    # Downloaded model weights - re-downloadable, not config.
+    # Downloaded model weights - re-downloadable, not config. HF cache
+    # dirs are whisper/models--org--name, not whisper/models/.
+    "whisper/models--",
+    # Suwayomi's embedded Chromium (KCEF) browser cache - runtime junk,
+    # and its live SQLite DBs can wedge the snapshot step.
+    "suwayomi/cache",
 )
 
 
@@ -257,6 +269,10 @@ def _snapshot_sqlite_database(live_path: Path, staged_path: Path) -> bool:
     try:
 
         src = sqlite3.connect(f"file:{live_path}?mode=ro", uri=True)
+        # A live app can hold its DB exclusively (found live: Suwayomi's
+        # embedded Chromium holds first_party_sets.db) and wedge the backup
+        # forever. Fail fast instead - caller falls back to a plain copy.
+        src.execute("PRAGMA busy_timeout = 2000")
         dst = sqlite3.connect(staged_path)
 
         try:
