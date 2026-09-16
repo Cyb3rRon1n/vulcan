@@ -143,6 +143,26 @@ If Suwayomi is in the stack alongside FlareSolverr, the generator wires `FLARESO
 
 **Calibre-Web-Automated** (`crocodilestick/calibre-web-automated`, port 8083) — a real Calibre library (metadata.db + the whole Calibre data model) served through a Calibre-Web front end with an auto-ingest pipeline: anything dropped into the ingest folder (`stack/downloads/ebooks`, mounted at `/cwa-book-ingest` in the container — a drop zone, the book is added to the library and **removed from it after processing**) is converted to the configured format (default EPUB? choose in Settings → Conversion) and moved into the library (`stack/media/books/ebooks`). Library UI, reading, metadata, and per-user accounts all come from Calibre-Web itself, plus an OPDS feed. Ebook-first — pairs naturally with LazyLibrarian (PVR grabs books → drop into downloads/ebooks → CWA files them). Pairs fine with Komga/Kavita too, which read the same `ebooks/` tree read-only. Like Komga and Kavita it has its own multi-user auth and an OPDS feed, so it's deliberately kept out of `authelia@docker` — `crowdsec@docker` only. Debian+s6 image → the standard 5-cap set (`CHOWN`/`DAC_OVERRIDE`/`FOWNER`/`SETGID`/`SETUID`), verified live. Default login is Calibre-Web's `admin` / `admin123` — change it on first visit. To route new books through LazyLibrarian, set CWA's ingest folder as LazyLibrarian's post-processing destination rather than scanning a Calibre library directly (CWA manages the library itself, so don't point LazyLibrarian's Calibre-library mode at it).
 
+#### Reading on mobile (OPDS)
+
+The browser UI is responsive and works as-is on a phone — but for a native reading experience with offline downloads, any OPDS-capable reader app works. Point it at the OPDS feed and log in with the same per-user Calibre-Web account:
+
+```
+https://<your-domain>/opds
+```
+
+Right at the top of the feed, Calibre-Web offers a selection of known-reading-device configurations; a generic reader just wants the base OPDS URL. Recommended apps:
+
+| Platform | App | Store |
+|---|---|---|
+| Android | Moon+ Reader | [Google Play](https://play.google.com/store/apps/details?id=com.flyersoft.moonreaderp) |
+| Android | Librera | [Google Play](https://play.google.com/store/apps/details?id=com.foobnix.pro.reader) |
+| Android | ReadEra | [Google Play](https://play.google.com/store/apps/details?id=org.readera) |
+| iOS | KyBook 3 | [App Store](https://apps.apple.com/app/kybook-3/id1367797500) |
+| iOS | MapleRead/Twin | [App Store](https://apps.apple.com/app/mapleread-twin/id1378542380) |
+
+Most of these apps remember the library as a "catalog" once added, so after the one-time setup you browse/search/download straight from the app. Reading position and library are server-side per user, so progress syncs across devices.
+
 ## Music via Soulseek (slskd + Lidarr plugin)
 
 Public music torrents are effectively dead, so **slskd** (`slskd/slskd`, port 5030) brings in Soulseek. It runs standalone as a browse-and-download web UI, and Lidarr can search/grab through it via a plugin. Admin download tool → behind Authelia, same as the *arrs. Runs as `PUID:PGID`, **zero** caps under `cap_drop: ALL`.
