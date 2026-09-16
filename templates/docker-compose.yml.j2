@@ -1218,6 +1218,59 @@ services:
           memory: "{{ limits.suwayomi.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'calibre-web-automated' in enabled %}
+  calibre-web-automated:
+    # Calibre-Web-Automated: ebook library with auto-ingest, format
+    # conversion, and a web reader. Debian+s6-overlay base → needs the
+    # 5-cap set for the root→PUID drop - verified live (cyberpac) under
+    # cap_drop: ALL with CHOWN/DAC_OVERRIDE/FOWNER/SETGID/SETUID.
+    image: crocodilestick/calibre-web-automated:latest
+    container_name: calibre-web-automated
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./config/calibre-web-automated:/config
+      - ${MEDIA_PATH}/media/books/ebooks:/calibre-library
+      - ${MEDIA_PATH}/downloads/ebooks:/cwa-book-ingest
+    ports:
+      - "{{ ports['calibre-web-automated'] }}:8083"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calibre-web-automated.rule=Host(`calibre-web-automated.{{ domain }}`)"
+      - "traefik.http.routers.calibre-web-automated.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.calibre-web-automated.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.calibre-web-automated.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.calibre-web-automated.loadbalancer.server.port=8083"
+{# CWA has its own multi-user auth (Calibre-Web + OAuth option), same
+   reasoning as Komga/Navidrome: readers with real auth of their own
+   don't need the authelia forward-auth redirect. crowdsec@docker
+   (IP reputation) still applies. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.calibre-web-automated.middlewares=crowdsec@docker"
+{% endif %}
+{% endif %}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits['calibre-web-automated'].cpus }}"
+          memory: "{{ limits['calibre-web-automated'].memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'slskd' in enabled %}
   slskd:
     # Soulseek client for music. Lidarr searches and grabs through it via

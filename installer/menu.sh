@@ -1511,6 +1511,7 @@ _guided_setup_customize_services() {
         "suwayomi:Suwayomi (browse + download manga):Reading"
         "mylar3:Mylar3 (comic/manga PVR):Reading"
         "lazylibrarian:LazyLibrarian (ebook/audiobook PVR):Reading"
+        "calibre-web-automated:Calibre-Web-Automated (ebook library + web reader + auto-ingest):Reading"
         "radarr:Radarr (movies):Media Management"
         "sonarr:Sonarr (TV):Media Management"
         "lidarr:Lidarr (music):Media Management"

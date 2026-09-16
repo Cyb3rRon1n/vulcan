@@ -10,7 +10,7 @@ def test_all_known_services_have_a_resource_profile():
         "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec",
         "cloudflared", "filebrowser", "pihole", "tracearr", "threadfin",
         "portainer", "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
-        "mylar3", "lazylibrarian", "slskd"
+        "mylar3", "lazylibrarian", "slskd", "calibre-web-automated"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected
@@ -59,6 +59,11 @@ def test_navidrome_has_light_profile():
 def test_kavita_has_standard_profile():
 
     assert RESOURCE_PROFILES["kavita"] == "standard"
+
+
+def test_calibre_web_automated_has_standard_profile():
+
+    assert RESOURCE_PROFILES["calibre-web-automated"] == "standard"
 
 
 def test_dashy_has_light_profile():
