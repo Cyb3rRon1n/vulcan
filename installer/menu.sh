@@ -1402,10 +1402,10 @@ _guided_setup_quick_toggles() {
         fi
     }
 
-    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole sportarr tracearr threadfin cloudflared)
+    local -a all_optional_keys=(gluetun sabnzbd recyclarr homepage metube downtify netdata vaultwarden dashy pihole tracearr threadfin cloudflared)
 
     if whiptail --backtitle "$BACKTITLE" --title "Optional Services - Select All?" \
-        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole, Sportarr, Tracearr, Threadfin)\n\nChoose No to pick individually instead." \
+        --yesno "Enable ALL optional services? (Gluetun, SABnzbd, Recyclarr, Homepage, MeTube, Downtify, Netdata, Vaultwarden, Dashy, Pi-hole, Tracearr, Threadfin)\n\nChoose No to pick individually instead." \
         "$DLG_ROWS" "$DLG_COLS" --defaultno; then
 
         SELECTED=("${all_optional_keys[@]}")
@@ -1423,7 +1423,6 @@ _guided_setup_quick_toggles() {
             "vaultwarden" "Vaultwarden - password manager"          "$(_default_on vaultwarden off)" \
             "dashy"       "Dashy - second dashboard"                "$(_default_on dashy off)" \
             "pihole"      "Pi-hole + Unbound (DNS ad-blocker)"      "$(_default_on pihole off)" \
-            "sportarr"    "Sportarr - sports PVR"                   "$(_default_on sportarr off)" \
             "tracearr"    "Tracearr - stream analytics"             "$(_default_on tracearr off)" \
             "threadfin"   "Threadfin - IPTV proxy for live TV"     "$(_default_on threadfin off)" \
             "cloudflared" "Cloudflare Tunnel (needs tunnel token)" "$(_default_on cloudflared off)" \
@@ -1456,7 +1455,6 @@ _guided_setup_quick_toggles() {
     _has vaultwarden && TOGGLE_FLAGS+=(--vaultwarden) || TOGGLE_FLAGS+=(--no-vaultwarden)
     _has dashy       && TOGGLE_FLAGS+=(--dashy)      || TOGGLE_FLAGS+=(--no-dashy)
     _has pihole      && TOGGLE_FLAGS+=(--pihole)     || TOGGLE_FLAGS+=(--no-pihole)
-    _has sportarr    && TOGGLE_FLAGS+=(--sportarr)   || TOGGLE_FLAGS+=(--no-sportarr)
     _has tracearr    && TOGGLE_FLAGS+=(--tracearr)   || TOGGLE_FLAGS+=(--no-tracearr)
     _has threadfin   && TOGGLE_FLAGS+=(--threadfin)  || TOGGLE_FLAGS+=(--no-threadfin)
     _has cloudflared && TOGGLE_FLAGS+=(--cloudflared) || TOGGLE_FLAGS+=(--no-cloudflared)
@@ -1523,7 +1521,6 @@ _guided_setup_customize_services() {
         "recyclarr:Recyclarr (TRaSH sync):Media Management"
         "decluttarr:Decluttarr (download queue cleanup):Media Management"
         "maintainerr:Maintainerr (library cleanup):Media Management"
-        "sportarr:Sportarr (sports PVR):Media Management"
         "qbittorrent:qBittorrent:Downloaders"
         "sabnzbd:SABnzbd (Usenet):Downloaders"
         "slskd:slskd (Soulseek music client):Downloaders"

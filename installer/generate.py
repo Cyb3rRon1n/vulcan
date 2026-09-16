@@ -110,7 +110,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "jellyfin", "radarr", "sonarr", "prowlarr", "qbittorrent", "sabnzbd",
     "seerr", "bazarr", "lidarr", "readarr", "maintainerr", "authelia",
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
-    "dashy", "filebrowser", "sportarr", "tracearr", "threadfin", "portainer",
+    "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
     "mylar3", "lazylibrarian", "slskd",
 })
@@ -139,7 +139,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "seerr", "navidrome"],
     "Reading": ["komga", "kavita", "suwayomi", "mylar3", "lazylibrarian"],
-    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr", "sportarr"],
+    "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
     "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances"],
@@ -189,7 +189,6 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "dashy": 4000,
     "filebrowser": 8082,
     "pihole": 8053,
-    "sportarr": 1867,
     "tracearr": 3002,
     "threadfin": 34400,
     "portainer": 9000,
@@ -253,7 +252,6 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "vaultwarden": "Password manager for every service login this stack creates",
     "filebrowser": "Web-based file manager for browsing and managing your media folders",
     "pihole": "DNS-level ad blocker with recursive DNS resolver (Unbound)",
-    "sportarr": "Sports PVR - monitors leagues, downloads events, organizes into your media library",
     "tracearr": "Real-time stream analytics for Jellyfin/Plex/Emby (Tautulli/Jellystat replacement)",
     "threadfin": "M3U/IPTV proxy - emulates HDHomeRun tuner for Jellyfin/Plex/Emby live TV",
     "portainer": "Container management UI - deploy, monitor, and manage Docker containers",

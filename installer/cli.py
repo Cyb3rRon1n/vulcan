@@ -921,7 +921,6 @@ def start():
         dashy=None,
         dashy_private=None,
         pihole=None,
-        sportarr=None,
         tracearr=None,
         threadfin=None,
         gpu=None,
@@ -1006,7 +1005,6 @@ def build(
     dashy: bool | None = typer.Option(None, "--dashy/--no-dashy"),
     dashy_private: bool | None = typer.Option(None, "--dashy-private/--dashy-public"),
     pihole: bool | None = typer.Option(None, "--pihole/--no-pihole"),
-    sportarr: bool | None = typer.Option(None, "--sportarr/--no-sportarr"),
     tracearr: bool | None = typer.Option(None, "--tracearr/--no-tracearr"),
     threadfin: bool | None = typer.Option(None, "--threadfin/--no-threadfin"),
     gpu: bool | None = typer.Option(None, "--gpu/--no-gpu"),
@@ -1052,7 +1050,6 @@ def build(
         dashy=dashy,
         dashy_private=dashy_private,
         pihole=pihole,
-        sportarr=sportarr,
         tracearr=tracearr,
         threadfin=threadfin,
         start=False,
@@ -1456,10 +1453,6 @@ def main(
         None, "--pihole/--no-pihole",
         help="DNS-level ad blocker with recursive DNS resolver (Unbound)"
     ),
-    sportarr: bool | None = typer.Option(
-        None, "--sportarr/--no-sportarr",
-        help="Sports PVR - monitors leagues, downloads events"
-    ),
     tracearr: bool | None = typer.Option(
         None, "--tracearr/--no-tracearr",
         help="Real-time stream analytics (Tautulli/Jellystat replacement)"
@@ -1549,7 +1542,6 @@ def main(
         dashy=dashy,
         dashy_private=dashy_private,
         pihole=pihole,
-        sportarr=sportarr,
         tracearr=tracearr,
         threadfin=threadfin,
         start=start,
@@ -1587,7 +1579,6 @@ def run_install(
     dashy: bool | None,
     dashy_private: bool | None,
     pihole: bool | None,
-    sportarr: bool | None,
     tracearr: bool | None,
     threadfin: bool | None,
     start: bool | None,
@@ -1727,7 +1718,7 @@ def run_install(
         config = _gather_generation_config(
             info, tier, media_path, vpn, cloudflared, sabnzbd, recyclarr, homepage,
             homepage_private, metube, downtify, netdata, vaultwarden, dashy,
-            dashy_private, pihole, sportarr, tracearr, threadfin, gpu,
+            dashy_private, pihole, tracearr, threadfin, gpu,
             puid, pgid, timezone, non_interactive, previous,
             custom_services_from_flag, domain, cloudflare_dns,
             cloudflare_email, auth_username, auth_password, auth_users_raw, panel
@@ -2004,7 +1995,6 @@ def _gather_generation_config(
     dashy: bool | None,
     dashy_private: bool | None,
     pihole: bool | None,
-    sportarr: bool | None,
     tracearr: bool | None,
     threadfin: bool | None,
     gpu: bool | None,
@@ -2633,18 +2623,6 @@ def _gather_generation_config(
     if enable_pihole:
         enabled_optional.add("pihole")
 
-    sportarr_default = "sportarr" in previous["enabled_optional"] if previous else False
-
-    if sportarr is not None:
-        enable_sportarr = sportarr
-    elif non_interactive:
-        enable_sportarr = sportarr_default
-    else:
-        enable_sportarr = False
-
-    if enable_sportarr:
-        enabled_optional.add("sportarr")
-
     tracearr_default = "tracearr" in previous["enabled_optional"] if previous else False
 
     if tracearr is not None:
@@ -2933,7 +2911,6 @@ def _build(
         panel.note("  Dashy: private (not publicly routed)")
     panel.note(f"  Dashy: {'enabled' if 'dashy' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Pi-hole: {'enabled' if 'pihole' in config.enabled_optional else 'disabled'}")
-    panel.note(f"  Sportarr: {'enabled' if 'sportarr' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Tracearr: {'enabled' if 'tracearr' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Threadfin: {'enabled' if 'threadfin' in config.enabled_optional else 'disabled'}")
     panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")

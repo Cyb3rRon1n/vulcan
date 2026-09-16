@@ -38,7 +38,6 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | FlareSolverr | Medium | core | Solves CAPTCHA/anti-bot challenges some indexers put up. |
 | Lidarr | Heavy | optional | Finds and organizes music. |
 | Readarr | Heavy | optional | Finds and organizes books/ebooks. |
-| Sportarr | Heavy | optional | Sports PVR — monitors leagues, downloads events/highlights. |
 
 ## Downloaders
 
