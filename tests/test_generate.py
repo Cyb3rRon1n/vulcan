@@ -969,7 +969,7 @@ def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
     output = render_compose(
         make_config(
             "heavy",
-            enabled_optional={"calibre-web-automated", "komga", "kavita", "traefik", "crowdsec", "authelia"},
+            enabled_optional={"calibre-web-automated", "komga", "kavita", "slskd", "traefik", "crowdsec", "authelia"},
             domain="media.example.com",
         )
     )
