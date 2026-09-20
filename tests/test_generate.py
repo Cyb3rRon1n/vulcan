@@ -406,8 +406,24 @@ def _jellyfin_block(output: str) -> str:
 
 
 def _service_block(output: str, name: str, next_name: str) -> str:
+    """
+    Slices out one service's YAML block, from its own key up to the next
+    service key. `next_name` must be an *enabled* service that actually
+    renders after `name` in this specific output - if it isn't (e.g. left
+    out of the test's enabled_optional set), split() finds no match and
+    silently returns everything through EOF instead of just this block,
+    so assertions end up checking unrelated services and can pass or fail
+    for the wrong reason. Fail loudly instead.
+    """
 
-    return output.split(f"{name}:", 1)[1].split(f"{next_name}:", 1)[0]
+    remainder = output.split(f"{name}:", 1)
+    assert len(remainder) == 2, f"{name!r} not found in rendered output"
+    parts = remainder[1].split(f"{next_name}:", 1)
+    assert len(parts) == 2, (
+        f"end marker {next_name!r} not found after {name!r} - is it in "
+        f"this test's enabled_optional/enabled_service_keys set?"
+    )
+    return parts[0]
 
 
 def test_render_compose_no_domain_omits_traefik_labels_even_when_enabled():
@@ -560,7 +576,7 @@ def test_render_compose_traefik_api_flags_always_present_regardless_of_domain():
 def test_render_compose_traefik_dashboard_routed_with_domain():
 
     output = render_compose(
-        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com")
+        make_config("heavy", enabled_optional={"traefik", "authelia"}, domain="media.example.com")
     )
 
     traefik_block = _service_block(output, "traefik", "authelia")
@@ -606,7 +622,7 @@ def test_render_compose_traefik_dashboard_unprotected_without_authelia():
 def test_render_compose_crowdsec_creates_service_with_bouncer_middleware():
 
     output = render_compose(
-        make_config("heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")
+        make_config("heavy", enabled_optional={"traefik", "crowdsec", "watchtower"}, domain="media.example.com")
     )
 
     crowdsec_block = _service_block(output, "crowdsec", "watchtower")
@@ -631,7 +647,7 @@ def test_vaultwarden_router_names_its_service_explicitly():
     # two services on one container (main + -ws) -> the main router
     # can't auto-link and the route is silently dropped without this.
     output = render_compose(make_config(
-        "heavy", custom_services={"vaultwarden", "traefik"}, domain="media.example.com"
+        "heavy", custom_services={"vaultwarden", "traefik", "recyclarr"}, domain="media.example.com"
     ))
     block = _service_block(output, "vaultwarden", "recyclarr")
     assert "traefik.http.routers.vaultwarden.service=vaultwarden" in block
@@ -648,7 +664,7 @@ def test_render_compose_omits_crowdsec_when_disabled():
 
 def test_render_compose_crowdsec_without_traefik_omits_bouncer_wiring():
 
-    output = render_compose(make_config("heavy", enabled_optional={"crowdsec"}))
+    output = render_compose(make_config("heavy", enabled_optional={"crowdsec", "watchtower"}))
 
     # "watchtower" (not "authelia") as the end boundary - authelia isn't
     # enabled in this test, so it wouldn't appear in output at all and
@@ -716,7 +732,7 @@ def test_render_compose_tracearr_binds_data_not_app_data():
 
 def test_render_compose_tailscale_uses_host_networking():
 
-    output = render_compose(make_config("heavy", enabled_optional={"tailscale"}))
+    output = render_compose(make_config("heavy", enabled_optional={"tailscale", "homepage"}))
 
     tailscale_block = _service_block(output, "tailscale", "homepage")
 
@@ -730,11 +746,11 @@ def test_render_compose_tailscale_uses_host_networking():
 def test_tailscale_accept_dns_off_when_a_local_dns_server_is_in_the_stack():
     # network_mode: host - TS_ACCEPT_DNS=true would rewrite the host
     # resolver, taking it away from pihole/adguardhome.
-    with_pihole = render_compose(make_config("heavy", custom_services={"tailscale", "pihole"}))
+    with_pihole = render_compose(make_config("heavy", custom_services={"tailscale", "pihole", "homepage"}))
     assert "TS_ACCEPT_DNS=false" in _service_block(with_pihole, "tailscale", "homepage")
 
-    solo = render_compose(make_config("heavy", custom_services={"tailscale", "jellyfin"}))
-    assert "TS_ACCEPT_DNS=true" in _service_block(solo, "tailscale", "jellyfin")
+    solo = render_compose(make_config("heavy", custom_services={"tailscale", "netdata"}))
+    assert "TS_ACCEPT_DNS=true" in _service_block(solo, "tailscale", "netdata")
 
 
 def test_gluetun_and_tailscale_coexist():
@@ -784,7 +800,7 @@ def test_render_compose_omits_tunnel_entrypoint_when_cloudflared_disabled():
 
 def test_render_compose_metube_and_downtify_mount_into_media_library():
 
-    output = render_compose(make_config("light", enabled_optional={"metube", "downtify"}))
+    output = render_compose(make_config("light", enabled_optional={"metube", "downtify", "recyclarr"}))
 
     metube_block = _service_block(output, "metube", "downtify")
     downtify_block = _service_block(output, "downtify", "recyclarr")
@@ -806,7 +822,7 @@ def test_render_compose_omits_metube_and_downtify_when_disabled():
 
 def test_render_compose_netdata_uses_host_networking_and_deep_host_access():
 
-    output = render_compose(make_config("light", enabled_optional={"netdata"}))
+    output = render_compose(make_config("light", enabled_optional={"netdata", "homepage"}))
 
     netdata_block = _service_block(output, "netdata", "homepage")
 
@@ -838,7 +854,7 @@ def test_render_compose_netdata_never_gets_traefik_labels():
 
 
 def test_render_compose_glances_web_mode_minimal_caps_and_docker_socket():
-    output = render_compose(make_config("light", enabled_optional={"glances"}))
+    output = render_compose(make_config("light", enabled_optional={"glances", "homepage"}))
     block = _service_block(output, "glances", "homepage")
 
     assert "nicolargo/glances" in block
@@ -870,7 +886,7 @@ def test_render_compose_glances_routes_through_traefik_when_domain_set():
 
 
 def test_render_compose_navidrome_zero_caps_and_readonly_music_mount():
-    output = render_compose(make_config("light", enabled_optional={"navidrome"}))
+    output = render_compose(make_config("light", enabled_optional={"navidrome", "kavita"}))
     block = _service_block(output, "navidrome", "kavita")
 
     assert "deluan/navidrome" in block
@@ -906,7 +922,7 @@ def test_render_compose_navidrome_never_gets_authelia_middleware():
 
 
 def test_render_compose_kavita_standard_linuxserver_caps_and_readonly_books_mount():
-    output = render_compose(make_config("light", enabled_optional={"kavita"}))
+    output = render_compose(make_config("heavy", enabled_optional={"kavita", "traefik"}))
     block = _service_block(output, "kavita", "traefik")
 
     assert "lscr.io/linuxserver/kavita" in block
@@ -942,7 +958,7 @@ def test_render_compose_kavita_never_gets_authelia_middleware():
 
 
 def test_render_compose_calibre_web_automated_caps_mounts_and_port():
-    output = render_compose(make_config("light", enabled_optional={"calibre-web-automated"}))
+    output = render_compose(make_config("heavy", enabled_optional={"calibre-web-automated", "traefik"}))
     block = _service_block(output, "calibre-web-automated", "traefik")
 
     assert "crocodilestick/calibre-web-automated" in block
@@ -1137,7 +1153,7 @@ def test_render_compose_homepage_public_by_default_keeps_traefik_labels():
 
 def test_render_compose_dashy_creates_service_with_no_puid_pgid():
 
-    output = render_compose(make_config("heavy", enabled_optional={"dashy"}))
+    output = render_compose(make_config("heavy", enabled_optional={"dashy", "uptime-kuma"}))
     block = _service_block(output, "dashy", "uptime-kuma")
 
     assert "image: lissy93/dashy:latest" in block
@@ -1156,7 +1172,7 @@ def test_render_compose_dashy_gets_authelia_middleware_like_homepage():
 
     output = render_compose(
         make_config(
-            "heavy", enabled_optional={"dashy", "authelia", "traefik"},
+            "heavy", enabled_optional={"dashy", "authelia", "traefik", "uptime-kuma"},
             domain="media.example.com"
         )
     )
@@ -1192,7 +1208,7 @@ def test_render_compose_dashy_public_by_default_keeps_traefik_labels():
 def test_render_compose_cloudflare_dns_adds_certresolver_flags_and_token():
 
     output = render_compose(
-        make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com", cloudflare_dns=True)
+        make_config("heavy", enabled_optional={"traefik", "authelia"}, domain="media.example.com", cloudflare_dns=True)
     )
 
     traefik_block = _service_block(output, "traefik", "authelia")
