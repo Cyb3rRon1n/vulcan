@@ -208,6 +208,30 @@ A web UI for the containers themselves — start/stop/restart, read logs, exec i
 
 Real-time stream analytics for Jellyfin/Plex/Emby — a modern replacement for Tautulli and Jellystat. The `supervised` image bundles its own PostgreSQL and Redis, so no extra database containers are needed. Point it at your media server's URL on first access (`http://<host>:3000`) and it begins tracking views, sessions, and bandwidth immediately.
 
+## Push notifications (ntfy)
+
+A self-hosted push-notification broker (`binwiederhier/ntfy`) — anything in this stack (or outside it) that can send an HTTP POST can publish a notification to a topic, and any subscriber (the official ntfy mobile app, a browser tab, `curl`) watching that topic sees it appear instantly. No database, no accounts required by default, a single static Go binary.
+
+**Publishing from inside the stack** — from any other container, POST to `http://ntfy:80/<topic>` with the message as the body:
+
+```sh
+curl -H "Title: Backup finished" -d "Nightly backup completed with 0 errors" http://ntfy:80/backups
+```
+
+- **Watchtower**: set `WATCHTOWER_NOTIFICATION_URL=ntfy://ntfy/<topic>` (Watchtower's `shoutrrr` notification library speaks ntfy natively) to get a push every time it updates a container.
+- **Uptime Kuma**: Settings → Notifications → Add → ntfy, server URL `http://ntfy:80`, to route every monitor's up/down alerts through the same topic (or a separate one).
+- **decluttarr**, backup scripts, a ZFS `zed`/`smartd` hook, or anything else that can shell out to `curl` — same pattern, any topic name you choose.
+
+**Picking a topic name**: with no auth configured (the default), anyone who knows a topic name can publish to it or read it — there's no access list. Treat topic names like an unlisted URL: a long, random string (`openssl rand -hex 6`) rather than something guessable like `alerts`.
+
+**Subscribing**: install the official ntfy app (iOS/Android) and add your topic, pointed at this server's URL — `https://ntfy.<domain>` if Traefik+a domain are configured, otherwise `http://<host-ip>:8095` (the default host port — see `stack/docker-compose.yml` if you changed it). A browser at that same URL shows the topic's recent history too. Homepage has a native `ntfy` widget (`type: ntfy`, `url`, `topic`) that shows the latest message on a tile — not seeded automatically since it needs your topic name, but easy to add by hand to `services.yaml`.
+
+**Deliberately kept out of `authelia@docker`** even with Authelia enabled, unlike most other admin-tier services — Watchtower/Uptime Kuma/anything else publishing to it sends a plain unauthenticated POST, and Authelia's forward-auth would intercept that POST and redirect it to a login page the publisher can't complete, silently breaking every notification. `crowdsec@docker` (IP-reputation blocking, not an auth challenge) still applies.
+
+**If you want real access control** instead of relying on an unguessable topic name, ntfy has its own auth system: exec into the container and run `ntfy user add <username>`, then set `NTFY_AUTH_DEFAULT_ACCESS=deny-all` (in the container's environment) so only authenticated users can publish or subscribe. This is a manual step — the generator doesn't set it up for you, since it would also require your publishing containers (Watchtower, Uptime Kuma, etc.) to authenticate, which most of their notification integrations don't support out of the box.
+
+**iOS push note**: the officially hosted `ntfy.sh` has Apple's push credentials configured, so its app gets true background push. A self-hosted instance like this one doesn't have those credentials — iOS notifications only arrive while the app is open/polling in the foreground, not as a background push. Android (via UnifiedPush) doesn't have this limitation. This is a constraint of self-hosting ntfy generally, not something specific to this stack.
+
 ## DNS ad-blocker (Pi-hole + Unbound)
 
 Pi-hole (v6) provides DNS-level ad blocking across your entire network, with Unbound as a recursive resolver so you don't depend on any upstream DNS provider. Pi-hole's web UI is exposed on port 8053 (not 80, to avoid conflicting with Traefik if both are enabled); Pi-hole shares Unbound's container network namespace, so from inside the Docker network it's reachable at `http://unbound` (not `http://pihole`).

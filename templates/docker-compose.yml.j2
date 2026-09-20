@@ -1674,6 +1674,64 @@ services:
           memory: "{{ limits.glances.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'ntfy' in enabled %}
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    container_name: ntfy
+    command: serve
+    environment:
+      - TZ=${TZ}
+      - NTFY_CACHE_FILE=/var/cache/ntfy/cache.db
+      - NTFY_CACHE_DURATION=12h
+{% if domain %}
+      - NTFY_BASE_URL=https://ntfy.{{ domain }}
+{% endif %}
+    volumes:
+      - ./config/ntfy:/var/cache/ntfy
+    ports:
+      - "{{ ports['ntfy'] }}:80"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ntfy.rule=Host(`ntfy.{{ domain }}`)"
+      - "traefik.http.routers.ntfy.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.ntfy.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.ntfy.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.ntfy.loadbalancer.server.port=80"
+{# Deliberately never gets the authelia@docker middleware, even with
+   Authelia enabled - other containers in this stack (Watchtower,
+   Uptime Kuma, a smartd/zed hook, decluttarr, anything else you point
+   at it) publish to ntfy with a plain unauthenticated POST, the same
+   way they'd hit any webhook. Authelia's forward-auth would intercept
+   that POST and redirect it to a login page the publisher can't
+   complete, silently breaking every notification. crowdsec@docker
+   still applies - IP-reputation blocking at the edge isn't an auth
+   challenge, so it doesn't intercept the publish path. If you want the
+   *browsing* side (reading topics in ntfy's own web app) gated instead,
+   ntfy has its own optional auth (NTFY_AUTH_DEFAULT_ACCESS) for exactly
+   that, configured by hand - see docs/integrations.md. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.ntfy.middlewares=crowdsec@docker"
+{% endif %}
+{% endif %}
+    # Verified empirically (docker run --cap-drop=ALL against the real
+    # image) - a single static Go binary, starts and serves cleanly with
+    # zero added capabilities, no privilege-drop or ownership-fixup step
+    # to support (runs as root in-container, same shape as Watchtower/
+    # Traefik). See ROADMAP.md's cap_drop entry.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.ntfy.cpus }}"
+          memory: "{{ limits.ntfy.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'homepage' in enabled %}
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
