@@ -1531,6 +1531,7 @@ _guided_setup_customize_services() {
         "tracearr:Tracearr (stream analytics):Monitoring"
         "netdata:Netdata (system monitoring):Monitoring"
         "glances:Glances (system monitor + Homepage widgets):Monitoring"
+        "ntfy:ntfy (self-hosted push notifications):Monitoring"
         "gluetun:Gluetun (VPN):Infrastructure"
         "pihole:Pi-hole + Unbound (DNS ad-blocker):Infrastructure"
         "adguardhome:AdGuard Home (DNS ad-blocker):Infrastructure"

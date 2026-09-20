@@ -112,7 +112,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
-    "mylar3", "lazylibrarian", "slskd", "calibre-web-automated",
+    "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -142,7 +142,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
-    "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances"],
+    "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances", "ntfy"],
     "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
 }
@@ -206,6 +206,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "lazylibrarian": 5299,
     "slskd": 5030,
     "calibre-web-automated": 8084,
+    "ntfy": 8095,
     "watchtower": 8080,
     "gluetun": 8888,
     "tailscale": 41641,
@@ -243,6 +244,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
     "glances": "Lightweight system monitor - CPU, RAM, per-mount disk I/O, network, sensors, top processes (also powers Homepage's Glances widgets)",
+    "ntfy": "Self-hosted push notifications - a simple webhook target for Watchtower, Uptime Kuma, backup scripts, or anything else that can POST a message",
     "navidrome": "Self-hosted music streaming server, Subsonic-API compatible with most mobile/desktop clients",
     "komga": "Comic, manga, and ebook library server with a polished web reader and OPDS for mobile apps",
     "kavita": "Self-hosted manga, comics, and ebook reader server",

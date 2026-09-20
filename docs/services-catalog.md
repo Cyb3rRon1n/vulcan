@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-44 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+45 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -64,6 +64,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Glances | Light | optional | Lightweight system monitor; powers per-metric dashboard widgets (CPU/RAM/disk I/O/temp/processes). |
 | Tracearr | Medium | optional | Stream analytics for your media server — sessions, bandwidth, watch history. |
 | Uptime Kuma | Medium | optional | Uptime monitoring + status pages for every service in the stack. |
+| ntfy | Light | optional | Self-hosted push notifications — a simple webhook target for Watchtower, Uptime Kuma, backup scripts, or anything else that can POST a message. |
 
 ## Security
 
