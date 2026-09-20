@@ -969,7 +969,7 @@ def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
     output = render_compose(
         make_config(
             "heavy",
-            enabled_optional={"calibre-web-automated", "komga", "kavita", "traefik", "crowdsec", "authelia"},
+            enabled_optional={"calibre-web-automated", "komga", "kavita", "slskd", "traefik", "crowdsec", "authelia"},
             domain="media.example.com",
         )
     )
@@ -978,6 +978,56 @@ def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
 
     assert "traefik.http.routers.calibre-web-automated.rule=Host(`calibre-web-automated.media.example.com`)" in block
     assert "traefik.http.routers.calibre-web-automated.middlewares=crowdsec@docker" in block
+    assert "authelia@docker" not in block
+
+
+def test_render_compose_ntfy_caps_mounts_and_port():
+    output = render_compose(make_config("light", enabled_optional={"ntfy"}))
+    block = _service_block(output, "ntfy", "homepage")
+
+    assert "binwiederhier/ntfy" in block
+    assert "command: serve" in block
+    assert "./config/ntfy:/var/cache/ntfy" in block
+    assert "NTFY_CACHE_FILE=/var/cache/ntfy/cache.db" in block
+    assert "NTFY_BASE_URL" not in block
+    data = yaml.safe_load(output)
+    svc = data["services"]["ntfy"]
+    assert svc["cap_drop"] == ["ALL"]
+    assert "cap_add" not in svc
+    assert svc["ports"] == ["8095:80"]
+
+
+def test_render_compose_ntfy_sets_base_url_when_domain_configured():
+    output = render_compose(
+        make_config("heavy", enabled_optional={"ntfy", "traefik"}, domain="media.example.com")
+    )
+    block = _service_block(output, "ntfy", "homepage")
+
+    assert "NTFY_BASE_URL=https://ntfy.media.example.com" in block
+
+
+def test_render_compose_ntfy_never_gets_authelia_middleware():
+    """
+    Other containers in the stack (Watchtower, Uptime Kuma, decluttarr,
+    a smartd/zed hook) publish to ntfy with a plain unauthenticated POST,
+    the same way they'd hit any webhook - Authelia's forward-auth login
+    redirect can't be completed by a script, so ntfy is kept out of
+    authelia@docker the same way Jellyfin is for native apps.
+    crowdsec@docker (IP reputation) still applies.
+    """
+
+    output = render_compose(
+        make_config(
+            "heavy",
+            enabled_optional={"ntfy", "homepage", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+
+    block = _service_block(output, "ntfy", "homepage")
+
+    assert "traefik.http.routers.ntfy.rule=Host(`ntfy.media.example.com`)" in block
+    assert "traefik.http.routers.ntfy.middlewares=crowdsec@docker" in block
     assert "authelia@docker" not in block
 
 
@@ -1334,6 +1384,12 @@ ZERO_CAP_SERVICES = {
     # own bind mounts). Verified live: full library scan with zero
     # added capabilities under cap_drop: ALL.
     "navidrome",
+    # binwiederhier/ntfy:latest - a single static Go binary, runs as root
+    # in-container against its own bind-mounted cache dir, no s6-overlay/
+    # root->PUID drop step. Verified live (cyberpac) under cap_drop: ALL,
+    # zero cap_add: serves immediately, accepts and persists a published
+    # message to its cache file.
+    "ntfy",
 }
 
 # Special-cased services whose real, single-purpose cap_add already existed

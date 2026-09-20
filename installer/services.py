@@ -35,6 +35,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "downtify": "standard",
     "netdata": "light",
     "glances": "light",
+    "ntfy": "light",
     "navidrome": "light",
     "komga": "standard",
     "kavita": "standard",
