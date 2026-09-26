@@ -3872,6 +3872,44 @@ def test_write_stack_creates_crowdsec_acquis_file_on_first_generate(tmp_path):
     assert parsed["labels"]["type"] == "traefik"
 
 
+def test_write_stack_disables_netdata_docker_collector_on_first_generate(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"netdata"}
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    go_d_path = tmp_path / "stack" / "config" / "netdata" / "config" / "go.d.conf"
+    assert yaml.safe_load(go_d_path.read_text()) == {"modules": {"docker": False}}
+
+
+def test_write_stack_never_overwrites_existing_netdata_go_d(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"netdata"}
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    go_d_path = tmp_path / "stack" / "config" / "netdata" / "config" / "go.d.conf"
+    go_d_path.write_text("# hand-edited\n")
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert go_d_path.read_text() == "# hand-edited\n"
+
+
 def test_write_stack_never_overwrites_existing_crowdsec_acquis(tmp_path):
 
     config = GenerationConfig(
