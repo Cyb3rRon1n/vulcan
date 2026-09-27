@@ -459,6 +459,28 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
     }
 
 
+def push_offsite(target: str, sources: list[Path], ssh_key: str = "") -> dict:
+    """rsync each existing source (dir or file) to <target>/<its name> over SSH. The local backup
+    is never touched - a failed push is reported, not fatal."""
+
+    ssh = "ssh -o BatchMode=yes -o ConnectTimeout=20" + (f" -i {ssh_key}" if ssh_key else "")
+    pushed, errors = [], []
+
+    for src in sources:
+
+        if not src.exists():
+
+            continue
+
+        dest = f"{target.rstrip('/')}/{src.name}" + ("/" if src.is_dir() else "")
+        proc = subprocess.run(["rsync", "-a", "--delete", "-e", ssh,
+                               f"{src}/" if src.is_dir() else str(src), dest], capture_output=True, text=True)
+
+        (pushed if proc.returncode == 0 else errors).append(str(src))
+
+    return {"success": not errors, "pushed": pushed, "errors": errors}
+
+
 def latest_backup(backup_dir: Path = Path("backups")) -> Path | None:
 
     if not backup_dir.is_dir():

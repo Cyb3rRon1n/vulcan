@@ -4522,3 +4522,55 @@ def test_service_deps_still_enforced():
     # cloudflared/authelia/crowdsec still require traefik
     assert _check_service_conflicts({"cloudflared"}) is not None
     assert _check_service_conflicts({"cloudflared", "traefik"}) is None
+
+
+_OK_BACKUP = {"success": True, "error": None, "backup_path": "backups/vulcan-backup-x.tar.gz", "warnings": []}
+
+
+def test_backup_pushes_offsite_when_target_configured():
+
+    env = {"BACKUP_OFFSITE_TARGET": "backup@nas:/v", "BACKUP_OFFSITE_SSH_KEY": ""}
+
+    with patch("installer.cli.backup_stack", return_value=_OK_BACKUP), \
+         patch("installer.cli._preserved_vpn_value", side_effect=lambda d, k, default: env.get(k, default)), \
+         patch("installer.cli.push_offsite", return_value={"success": True, "pushed": ["backups"], "errors": []}) as push:
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 0, result.output
+    assert push.call_args[0][0] == "backup@nas:/v"
+    assert "Copied off-box to backup@nas:/v" in result.output
+
+
+def test_backup_offsite_failure_keeps_local_backup_but_exits_2():
+
+    with patch("installer.cli.backup_stack", return_value=_OK_BACKUP), \
+         patch("installer.cli._preserved_vpn_value", side_effect=lambda d, k, default: "nas:/v" if k == "BACKUP_OFFSITE_TARGET" else default), \
+         patch("installer.cli.push_offsite", return_value={"success": False, "pushed": [], "errors": ["backups"]}):
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 2
+    assert "Backup written to" in result.output and "FAILED" in result.output
+
+
+def test_backup_without_target_does_not_push():
+
+    with patch("installer.cli.backup_stack", return_value=_OK_BACKUP), \
+         patch("installer.cli._preserved_vpn_value", return_value=""), \
+         patch("installer.cli.push_offsite") as push:
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 0
+    push.assert_not_called()
+
+
+def test_userdata_export_explains_missing_api_key():
+
+    with patch("installer.cli._preserved_vpn_value", return_value=""):
+
+        result = runner.invoke(app, ["userdata", "export"])
+
+    assert result.exit_code == 1
+    assert "JELLYFIN_API_KEY" in result.output and "API Keys" in result.output

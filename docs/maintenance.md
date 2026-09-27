@@ -9,6 +9,8 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 | `vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (plus `docker-compose.override.yml` and `.vulcan-state.json` when present) to `backups/` |
 | `vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, `.env` and (if archived) the override + saved state from a backup archive |
 | `vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
+| `vulcan userdata export` | Snapshots Jellyfin users' favorites, 👍/👎, watched status and resume points to `exports/userdata/<date>/` |
+| `vulcan userdata restore <snapshot>` | Writes a snapshot back onto Jellyfin (dry run unless `--apply`) |
 
 `vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use).
 
@@ -21,6 +23,44 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 `vulcan restore` reverses a backup: it defaults to the most recent archive in `backups/` if you don't pass a specific file, stops the currently running stack first (if there is one) so extraction can't race with a container actively using its own config directory, then extracts over what's there now — genuinely destructive, so it confirms before touching anything, same as every other mutating command.
 
 `vulcan uninstall` is the reverse of a plain install: it stops the running stack and deletes `stack/` (containers, network, and all app config/data) so you can run `./install` again as if nothing was ever there — handy for testing, or for tearing a stack down for good. It never touches your media library, and leaves `backups/`/`exports/` alone unless you also pass `--purge-artifacts`. Pass `--prune-docker` to also run `docker system prune -a` afterward and reclaim disk space — this is opt-in and asked separately (its own confirmation, defaulting to No) because it affects the *whole* Docker host's stopped containers, unused networks, dangling images, and build cache, not just vulcan's own.
+
+## Jellyfin user data
+
+A config backup brings Jellyfin's *settings* back, but not reliably its users' **favorites, 👍/👎 ratings, watched status and resume points**: Jellyfin stores those against its own internal item ids, and a rebuilt or re-added library gets new ones. Recreating a library (even the same folder) silently loses them.
+
+`vulcan userdata export` saves them per user keyed by TMDb/TVDb/IMDb ids (episodes by the show's ids + season/episode), plus Seerr's request list and a list of the whole library, into `exports/userdata/<date>/` — keeping the newest 30.
+
+```bash
+vulcan userdata export                                   # needs JELLYFIN_API_KEY in stack/.env
+vulcan userdata restore exports/userdata/2026-09-27      # dry run: what would match
+vulcan userdata restore exports/userdata/2026-09-27 --apply [--user alice]
+```
+
+- **API key:** Jellyfin Dashboard > API Keys > + → paste after `JELLYFIN_API_KEY=` in `stack/.env` (kept across rebuilds).
+- **Restore** matches users by name, so recreate them first. Anything no longer in the library is listed, not an error.
+- `--jellyfin-url http://host:8096` restores onto a different server (e.g. a new machine) using the same key.
+
+## Off-box backups
+
+`backups/` and `exports/` live on the same machine — and usually the same disks — as the stack. A dead drive, controller or motherboard takes the backups with it. Set an rsync-over-SSH target in `stack/.env` and every `vulcan backup` also copies `backups/` (each archive already contains the override and saved state) and `exports/userdata/` there:
+
+```bash
+BACKUP_OFFSITE_TARGET=backup@nas.lan:/volume1/vulcan
+BACKUP_OFFSITE_SSH_KEY=/home/you/.ssh/vulcan_backup     # optional; default = your SSH config/agent
+```
+
+- The target needs SSH key login (no password prompt — backups run unattended) and `rsync` installed.
+- A failed copy never touches the local backup; `vulcan backup` exits with code 2 so cron/monitoring notices.
+- The copy mirrors local retention (`--delete`). For history the local side can't delete, snapshot the target (ZFS/Btrfs snapshots, or your NAS's snapshot schedule). Hardening: restrict the key on the target to rsync into one folder with `command="rrsync -wo /volume1/vulcan",restrict` in its `authorized_keys`.
+
+**Nightly, unattended** — add to the host's crontab (`crontab -e`, from the vulcan checkout):
+
+```cron
+0 4 * * *  cd /path/to/vulcan && .venv/bin/vulcan userdata export >> backups/userdata.log 2>&1
+30 4 * * * cd /path/to/vulcan && .venv/bin/vulcan backup >> backups/backup.log 2>&1
+```
+
+Run the export first so the off-box copy includes that night's snapshot.
 
 ## Sharing a stack's shape (plans)
 
