@@ -998,7 +998,7 @@ def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
 
 
 def test_render_compose_ntfy_caps_mounts_and_port():
-    output = render_compose(make_config("light", enabled_optional={"ntfy"}))
+    output = render_compose(make_config("light", enabled_optional={"ntfy", "homepage"}))
     block = _service_block(output, "ntfy", "homepage")
 
     assert "binwiederhier/ntfy" in block
@@ -1015,7 +1015,7 @@ def test_render_compose_ntfy_caps_mounts_and_port():
 
 def test_render_compose_ntfy_sets_base_url_when_domain_configured():
     output = render_compose(
-        make_config("heavy", enabled_optional={"ntfy", "traefik"}, domain="media.example.com")
+        make_config("heavy", enabled_optional={"ntfy", "traefik", "homepage"}, domain="media.example.com")
     )
     block = _service_block(output, "ntfy", "homepage")
 
