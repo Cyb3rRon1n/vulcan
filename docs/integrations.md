@@ -83,7 +83,7 @@ Format: `username:password:group` (comma-separated for multiple users). The `gro
 
 To add users after install, either re-run with `--auth-users` or edit `stack/config/authelia/users_database.yml` directly — both are identical YAML, and a re-run never overwrites the admin account.
 
-See also: [Cloudflare Access](#cloudflare-access-zero-trust-setup) for giving family members zero-trust remote access without VPN apps.
+See also: [Cloudflare Access](#cloudflare-access-zero-trust-setup-for-family) for giving family members zero-trust remote access without VPN apps.
 
 ## Intrusion protection (CrowdSec)
 
