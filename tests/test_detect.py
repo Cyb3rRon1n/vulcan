@@ -859,3 +859,33 @@ def test_detect_system_assembles_everything():
         os_pretty_name="Fedora Linux 44",
         os_is_atomic=False
     )
+
+
+def test_detect_gpu_ignores_intel_chipset_with_non_intel_vga():
+    # Real false positive (live Xeon server): Intel host bridge/CBDMA lines + ASPEED BMC video.
+    lspci = (
+        "00:00.0 Host bridge: Intel Corporation Sky Lake-E DMI3 Registers (rev 04)\n"
+        "00:04.0 System peripheral: Intel Corporation Sky Lake-E CBDMA Registers (rev 04)\n"
+        "03:00.0 VGA compatible controller: ASPEED Technology, Inc. ASPEED Graphics Family (rev 41)\n"
+    )
+
+    with patch(
+        "installer.detect.shutil.which",
+        side_effect=lambda name: "/usr/bin/lspci" if name == "lspci" else None
+    ), patch("installer.detect.subprocess.run", return_value=MagicMock(stdout=lspci)):
+
+        assert detect_gpu() is None
+
+
+def test_detect_gpu_intel_among_other_devices():
+    lspci = (
+        "00:00.0 Host bridge: Intel Corporation 8th Gen Core Processor Host Bridge\n"
+        "00:02.0 VGA compatible controller: Intel Corporation CoffeeLake-H GT2 [UHD Graphics 630]\n"
+    )
+
+    with patch(
+        "installer.detect.shutil.which",
+        side_effect=lambda name: "/usr/bin/lspci" if name == "lspci" else None
+    ), patch("installer.detect.subprocess.run", return_value=MagicMock(stdout=lspci)):
+
+        assert detect_gpu() == "intel"
