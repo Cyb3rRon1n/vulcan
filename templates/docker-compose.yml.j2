@@ -750,6 +750,51 @@ services:
           memory: "{{ limits.flaresolverr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'byparr' in enabled %}
+  byparr:
+    image: ghcr.io/thephaseless/byparr:latest
+    container_name: byparr
+    environment:
+      - TZ=${TZ}
+    # Headless Firefox needs a bigger /dev/shm than Docker's 64MB default.
+    shm_size: 2gb
+    # No published port - Prowlarr/Suwayomi reach it at http://byparr:8191 on the stack network.
+    # Verified: solves a Cloudflare challenge under cap_drop: ALL + no-new-privileges.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.byparr.cpus }}"
+          memory: "{{ limits.byparr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'whisper' in enabled %}
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: whisper
+    environment:
+      - ASR_ENGINE=faster_whisper
+      # "small" fits every tier's heavy limit; "medium" (~2.7GB RSS) is noticeably better on
+      # Heavy - override ASR_MODEL in docker-compose.override.yml if you have the RAM.
+      - ASR_MODEL=small
+      - ASR_MODEL_PATH=/data/whisper-models
+    volumes:
+      - ./config/whisper:/data/whisper-models
+    # Internal only: Bazarr calls http://whisper:9000.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.whisper.cpus }}"
+          memory: "{{ limits.whisper.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'gluetun' in enabled %}
   gluetun:
     image: qmcgaw/gluetun:latest
@@ -1206,7 +1251,10 @@ services:
       - TZ=${TZ}
       - DOWNLOAD_AS_CBZ=true
       - AUTO_DOWNLOAD_NEW_CHAPTERS=false
-{% if 'flaresolverr' in enabled %}
+{% if 'byparr' in enabled %}
+      - FLARESOLVERR_ENABLED=true
+      - FLARESOLVERR_URL=http://byparr:8191
+{% elif 'flaresolverr' in enabled %}
       - FLARESOLVERR_ENABLED=true
       - FLARESOLVERR_URL=http://flaresolverr:8191
 {% endif %}
