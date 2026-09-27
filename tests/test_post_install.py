@@ -382,6 +382,42 @@ def test_backup_stack_creates_real_archive_with_expected_contents(tmp_path):
         assert env_member.read().decode() == "PUID=1000\n"
 
 
+def test_backup_stack_includes_override_and_state_when_present(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    (stack_dir / "config").mkdir(parents=True)
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+    (stack_dir / "docker-compose.override.yml").write_text("services: {extra: {}}\n")
+    (stack_dir / ".vulcan-state.json").write_text('{"tier": "heavy"}')
+
+    result = backup_stack(stack_dir=stack_dir, backup_dir=tmp_path / "backups")
+
+    with tarfile.open(result["backup_path"], "r:gz") as tar:
+
+        assert tar.extractfile("docker-compose.override.yml").read() == b"services: {extra: {}}\n"
+        assert tar.extractfile(".vulcan-state.json").read() == b'{"tier": "heavy"}'
+
+
+def test_backup_stack_omits_override_and_state_when_absent(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    (stack_dir / "config").mkdir(parents=True)
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".env").write_text("PUID=1000\n")
+
+    result = backup_stack(stack_dir=stack_dir, backup_dir=tmp_path / "backups")
+
+    assert result["success"] is True
+
+    with tarfile.open(result["backup_path"], "r:gz") as tar:
+
+        names = set(tar.getnames())
+
+    assert "docker-compose.override.yml" not in names
+    assert ".vulcan-state.json" not in names
+
+
 def test_backup_stack_skips_regeneratable_runtime_caches(tmp_path):
 
     stack_dir = tmp_path / "stack"

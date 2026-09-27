@@ -120,7 +120,7 @@ Commands reachable from the Main Menu (not CLI-only):
 |---|---|
 | `sudo vulcan update` | Pulls latest images and recreates containers |
 | `sudo vulcan pull` | Pulls images without starting anything |
-| `sudo vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` to `backups/` |
+| `sudo vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (+ override and saved state when present) to `backups/` |
 | `sudo vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup |
 | `sudo vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |

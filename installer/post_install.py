@@ -390,6 +390,15 @@ def backup_stack(stack_dir: Path = STACK_DIR, backup_dir: Path = Path("backups")
             tar.add(compose_path, arcname="docker-compose.yml")
             tar.add(stack_dir / ".env", arcname=".env")
 
+            # Not generated, so a regen can't recreate them: the hand-maintained override
+            # (extra services, local tweaks) and the saved install choices. restore_stack
+            # extracts every member, so both come back with the rest.
+            for name in ("docker-compose.override.yml", ".vulcan-state.json"):
+
+                if (stack_dir / name).is_file():
+
+                    tar.add(stack_dir / name, arcname=name)
+
     warnings = [
         "This backup includes stack/.env, which may contain real credentials "
         "(e.g. Gluetun VPN keys) - store the archive securely."
