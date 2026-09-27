@@ -2851,6 +2851,7 @@ def _gather_generation_config(
         timezone=final_tz,
         enabled_optional=enabled_optional,
         gpu_vendor=gpu_vendor_to_use,
+        cpu_count=os.cpu_count(),
         custom_services=custom_services_selected,
         domain=domain_value,
         cloudflare_dns=cloudflare_dns_value,

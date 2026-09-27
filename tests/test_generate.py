@@ -1066,6 +1066,74 @@ def test_render_compose_tunnel_trust_only_with_cloudflared():
         "heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")))["services"]
 
     assert not any("forwardedHeaders" in c for c in services["traefik"]["command"])
+@pytest.mark.parametrize("cpus, gpu, expected", [
+    (88, None, "12.0"),      # quarter of 88 = 22, capped at 12
+    (32, None, "8.0"),       # quarter of 32
+    (8, None, "4.0"),        # quarter of 8 = 2 < Heavy's 4.0 - never below the tier value
+    (88, "intel", "4.0"),    # hardware transcoding: tier value as before
+    (None, None, "4.0"),     # unknown host: tier value as before
+])
+def test_render_compose_jellyfin_cpu_scales_for_software_transcoding(cpus, gpu, expected):
+    config = make_config("heavy", gpu_vendor=gpu)
+    config.cpu_count = cpus
+
+    services = yaml.safe_load(render_compose(config))["services"]
+
+    assert services["jellyfin"]["deploy"]["resources"]["limits"]["cpus"] == expected
+
+
+def test_watchtower_metrics_api_token_generated_and_preserved(tmp_path):
+    config = make_config("heavy", enabled_optional={"watchtower"})
+    config.media_path = str(tmp_path / "media-root")
+
+    services = yaml.safe_load(render_compose(config))["services"]
+    assert "WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_API_TOKEN}" in services["watchtower"]["environment"]
+    assert "WATCHTOWER_HTTP_API_METRICS=true" in services["watchtower"]["environment"]
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    env = (tmp_path / "stack" / ".env").read_text()
+    token = next(l.split("=", 1)[1] for l in env.splitlines() if l.startswith("WATCHTOWER_API_TOKEN="))
+    assert len(token) == 48
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    assert f"WATCHTOWER_API_TOKEN={token}" in (tmp_path / "stack" / ".env").read_text()
+
+
+def test_render_compose_lidarr_uses_nightly_only_with_slskd():
+    with_slskd = yaml.safe_load(render_compose(make_config("heavy", custom_services={"lidarr", "slskd"})))["services"]
+    without = yaml.safe_load(render_compose(make_config("heavy", custom_services={"lidarr"})))["services"]
+
+    assert with_slskd["lidarr"]["image"] == "lscr.io/linuxserver/lidarr:nightly"
+    assert without["lidarr"]["image"] == "lscr.io/linuxserver/lidarr:latest"
+
+
+def test_write_stack_routes_host_network_netdata_through_traefik_file_provider(tmp_path):
+    config = make_config("heavy", enabled_optional={"netdata", "traefik", "crowdsec", "authelia", "cloudflared"},
+                         domain="media.example.com")
+    config.media_path = str(tmp_path / "media-root")
+
+    services = yaml.safe_load(render_compose(config))["services"]
+    assert "--providers.file.directory=/etc/traefik/dynamic" in services["traefik"]["command"]
+    assert "host.docker.internal:host-gateway" in services["traefik"]["extra_hosts"]
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    route = yaml.safe_load((tmp_path / "stack" / "config" / "traefik" / "dynamic" / "netdata.yml").read_text())
+    router = route["http"]["routers"]["netdata"]
+    assert router["rule"] == "Host(`netdata.media.example.com`)"
+    assert router["entrypoints"] == ["websecure", "tunnel"]
+    assert router["middlewares"] == ["crowdsec@docker", "authelia@docker"]
+    assert route["http"]["services"]["netdata"]["loadBalancer"]["servers"] == [{"url": "http://host.docker.internal:19999"}]
+
+
+def test_netdata_route_absent_without_domain(tmp_path):
+    config = make_config("heavy", enabled_optional={"netdata", "traefik"})
+    config.media_path = str(tmp_path / "media-root")
+
+    services = yaml.safe_load(render_compose(config))["services"]
+    assert not any("providers.file" in c for c in services["traefik"]["command"])
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    assert not (tmp_path / "stack" / "config" / "traefik" / "dynamic" / "netdata.yml").exists()
 
 
 def test_render_compose_ntfy_caps_mounts_and_port():

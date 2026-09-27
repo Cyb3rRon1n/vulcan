@@ -20,6 +20,8 @@ Pick exactly which services to include, from all 43 known services regardless of
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media
 ```
 
+**Jellyfin on a host with no GPU** gets more CPU than its tier value, because software transcoding is CPU-bound: a quarter of the host's logical CPUs, never less than the tier value, capped at 12 (e.g. 32 threads → 8 CPUs, 88 threads → 12). On Heavy's flat 4 CPUs a 1080p HEVC→H.264 transcode ran at 0.82× realtime on a real 88-thread host (buffering); at 12 it ran at 2.03×. With a GPU, the tier value is kept - the GPU does the work.
+
 Resource limits still scale using whichever tier you choose (`--tier` here, or the detected recommendation if omitted) — picking Homepage or Watchtower alongside a Medium selection doesn't pull in Heavy-tier resource limits.
 
 - In the interactive `--plain` flow, answer "y" to "Customize which services are included?" after picking a tier.
