@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 43 known services.
 
 ### Changed
+- **Watchtower no longer auto-updates stateful/infra services** — Jellyfin, Vaultwarden, Authelia, Traefik, Cloudflared, CrowdSec, Gluetun, Unbound and Pi-hole carry `com.centurylinklabs.watchtower.enable=false`; update them with `vulcan update`.
+- **qBittorrent (behind Gluetun) and Pi-hole are routed through Traefik again** — their routers now live on `gluetun`/`unbound`, since Traefik skips containers that share another's network namespace. Pi-hole gets a Homepage tile (Infrastructure).
+- **`vulcan backup` includes `docker-compose.override.yml` and `.vulcan-state.json`** when present, so a restore brings back local changes and saved install choices.
+- **Netdata's Docker collector is disabled** via a seeded `config/netdata/config/go.d.conf` — it kept `dockerd`+`containerd` at ~6 cores on a 45-container host; per-container charts are unaffected.
+- Walkthrough: keeping local changes in `stack/docker-compose.override.yml` (and starting without `-f` so it loads), and checking what a rebuild changes before applying it.
 - Gluetun gains a `CHOWN` capability (silences a `/tmp/gluetun/forwarded_port` chown error; required by the port-forwarding service) and a commented-out ProtonVPN/PIA port-forwarding block in the template — uncomment it if torrents stall at "downloading metadata" on a connected tunnel. Walkthrough documents the fix.
 - Mylar3 is pre-seeded so it listens on all interfaces (LSIO default binds loopback only, making the published port unreachable).
 - Kavita drops `authelia@docker` (crowdsec only), same as Komga — its own multi-user auth + OPDS feed break a browser forward-auth redirect.
