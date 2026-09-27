@@ -4,6 +4,8 @@ import tarfile
 from unittest.mock import MagicMock, patch
 
 from installer.post_install import (
+    compose_file_args,
+    compose_up_command,
     backup_stack,
     export_images,
     import_images,
@@ -277,6 +279,52 @@ def test_import_images_success(tmp_path):
         result = import_images(str(tar_path))
 
     assert result == {"success": True, "error": None}
+
+
+def test_compose_file_args_without_override(tmp_path):
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+
+    assert compose_file_args(tmp_path / "docker-compose.yml") == ["-f", str(tmp_path / "docker-compose.yml")]
+
+
+def test_compose_file_args_adds_override_when_present(tmp_path):
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    (tmp_path / "docker-compose.override.yml").write_text("services: {}\n")
+
+    assert compose_file_args(tmp_path / "docker-compose.yml") == [
+        "-f", str(tmp_path / "docker-compose.yml"),
+        "-f", str(tmp_path / "docker-compose.override.yml"),
+    ]
+
+
+def test_update_stack_recreates_with_the_override(tmp_path):
+    # `up -d` without the override would recreate containers minus the user's local changes
+
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services: {}\n")
+    (tmp_path / "docker-compose.override.yml").write_text("services: {}\n")
+
+    with patch(
+        "installer.post_install.run_docker_command", return_value=MagicMock(returncode=0)
+    ) as mock_run:
+
+        update_stack(str(compose), str(tmp_path / ".env"))
+
+    for call in mock_run.call_args_list:
+        assert str(tmp_path / "docker-compose.override.yml") in call[0][0]
+
+
+def test_compose_up_command_matches_what_vulcan_runs(tmp_path):
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    (tmp_path / "docker-compose.override.yml").write_text("services: {}\n")
+
+    assert compose_up_command(tmp_path / "docker-compose.yml", tmp_path / ".env") == (
+        f"docker compose -f {tmp_path}/docker-compose.yml -f {tmp_path}/docker-compose.override.yml "
+        f"--env-file {tmp_path}/.env up -d"
+    )
 
 
 def test_update_stack_pull_failure_short_circuits_before_up():
