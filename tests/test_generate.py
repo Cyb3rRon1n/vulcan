@@ -1012,6 +1012,31 @@ def test_render_compose_stateful_services_opt_out_of_watchtower(domain):
                          "crowdsec", "authelia", "unbound", "pihole"}
 
 
+def test_render_compose_routes_netns_sharing_qbittorrent_and_pihole_via_their_hosts():
+    # qbittorrent (behind gluetun) and pihole (behind unbound) share another container's
+    # network namespace; Traefik's docker provider skips them, so the routers live on the host.
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"gluetun", "pihole", "traefik", "crowdsec", "authelia"},
+        domain="media.example.com"
+    )))["services"]
+
+    gluetun, unbound = services["gluetun"]["labels"], services["unbound"]["labels"]
+    assert "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.media.example.com`)" in gluetun
+    assert "traefik.http.services.qbittorrent.loadbalancer.server.port=8080" in gluetun
+    assert "traefik.http.routers.qbittorrent.middlewares=crowdsec@docker,authelia@docker" in gluetun
+    assert "traefik.http.routers.pihole.rule=Host(`pihole.media.example.com`)" in unbound
+    assert "traefik.http.services.pihole.loadbalancer.server.port=80" in unbound
+    assert "labels" not in services["qbittorrent"]
+
+
+def test_render_compose_netns_routes_absent_without_domain():
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"gluetun", "pihole", "traefik"}
+    )))["services"]
+
+    assert not any("traefik" in l for l in services["gluetun"]["labels"] + services["unbound"]["labels"])
+
+
 def test_render_compose_ntfy_caps_mounts_and_port():
     output = render_compose(make_config("light", enabled_optional={"ntfy", "homepage"}))
     block = _service_block(output, "ntfy", "homepage")
