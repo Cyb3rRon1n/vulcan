@@ -10,7 +10,7 @@ def test_all_known_services_have_a_resource_profile():
         "watchtower", "metube", "downtify", "netdata", "vaultwarden", "dashy", "crowdsec",
         "cloudflared", "filebrowser", "pihole", "tracearr", "threadfin",
         "portainer", "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
-        "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy", "byparr", "whisper"
+        "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy", "byparr", "whisper", "guacamole"
     }
 
     assert set(RESOURCE_PROFILES.keys()) == expected

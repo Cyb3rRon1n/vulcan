@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-47 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](roadmap.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+48 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](roadmap.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -83,6 +83,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Gluetun | Light | optional | VPN client (WireGuard/OpenVPN) — routes a download client's traffic through it. |
 | Pi-hole + Unbound | Light | optional | Network-wide DNS ad-blocking with a private recursive resolver. |
 | AdGuard Home | Light | optional | Alternative to Pi-hole — DNS ad-blocking with built-in per-client stats. |
+| Guacamole | Light | optional | Browser-based remote desktop (RDP/VNC/SSH) into machines on your LAN — admin-only behind Authelia; its own Postgres on a private network. |
 | Traefik | Heavy | optional | Reverse proxy — domain-based routing, automatic HTTPS. |
 | Tailscale | Heavy | optional | Private mesh VPN for remote access without exposing anything publicly. |
 | Cloudflare Tunnel | Heavy | optional | Reach the stack from outside with zero forwarded router ports. |

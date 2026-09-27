@@ -2328,3 +2328,128 @@ services:
           memory: "{{ limits.adguardhome.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'guacamole' in enabled %}
+  # One-shot: writes Guacamole's Postgres schema before the database's first start (build never
+  # needs Docker, so it can't generate it itself). Skips when the file already exists.
+  guac-initdb:
+    image: guacamole/guacamole:latest
+    container_name: guac-initdb
+    user: "${PUID}:${PGID}"
+    entrypoint: ["/bin/sh", "-c", "[ -s /initdb/initdb.sql ] || { /opt/guacamole/bin/initdb.sh --postgresql > /initdb/initdb.sql.tmp && mv -f /initdb/initdb.sql.tmp /initdb/initdb.sql; }; grep -q 'CREATE TABLE' /initdb/initdb.sql"]
+    volumes:
+      - ./config/guacamole/initdb:/initdb
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+  guac-postgres:
+    image: postgres:16
+    container_name: guac-postgres
+    # Runs as the stack user (the official image supports any uid that owns PGDATA), so the
+    # data files are readable by `vulcan backup` and no ownership-fixup capabilities are needed.
+    user: "${PUID}:${PGID}"
+    environment:
+      - POSTGRES_DB=guacamole_db
+      - POSTGRES_USER=guacamole_user
+      - POSTGRES_PASSWORD=${GUAC_POSTGRES_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ./config/guacamole/postgres:/var/lib/postgresql/data
+      - ./config/guacamole/initdb:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      guac-initdb:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guacamole_user -d guacamole_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    networks:
+      - guac
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.guacamole.cpus }}"
+          memory: "{{ limits.guacamole.memory }}"
+    restart: unless-stopped
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: guacd
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+    # The protocol proxy dials out to your LAN machines (RDP/VNC/SSH), so it needs the default
+    # network's outbound route as well as the private one Guacamole reaches it on.
+    networks:
+      - guac
+      - default
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.guacamole.cpus }}"
+          memory: "{{ limits.guacamole.memory }}"
+    restart: unless-stopped
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    environment:
+      - GUACD_HOSTNAME=guacd
+      - POSTGRESQL_HOSTNAME=guac-postgres
+      - POSTGRESQL_DATABASE=guacamole_db
+      - POSTGRESQL_USERNAME=guacamole_user
+      - POSTGRESQL_PASSWORD=${GUAC_POSTGRES_PASSWORD}
+    depends_on:
+      guac-postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_started
+    ports:
+      - "{{ ports['guacamole'] }}:8080"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain %}
+      - "traefik.enable=true"
+      # two networks: tell Traefik which one it shares with Guacamole (stack/ -> stack_default)
+      - "traefik.docker.network=stack_default"
+      - "traefik.http.routers.guacamole.rule=Host(`guacamole.{{ domain }}`)"
+      - "traefik.http.routers.guacamole.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.guacamole.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.guacamole.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.guacamole.loadbalancer.server.port=8080"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.guacamole.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    networks:
+      - guac
+      - default
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.guacamole.cpus }}"
+          memory: "{{ limits.guacamole.memory }}"
+    restart: unless-stopped
+
+networks:
+  # Postgres and guacd's control port are only reachable from Guacamole itself.
+  guac:
+    internal: true
+{% endif %}

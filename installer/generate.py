@@ -119,7 +119,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
     "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy",
-    "pihole",
+    "pihole", "guacamole",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -138,6 +138,8 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     # each with its own login) are not here. slskd is an admin download
     # tool with its own auth, same shape as the *arrs.
     "mylar3", "lazylibrarian", "slskd",
+    # A remote-desktop gateway into the LAN - admin only, never the media group.
+    "guacamole",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -151,7 +153,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Live TV": ["threadfin"],
     "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances", "ntfy"],
     "Security": ["authelia", "vaultwarden"],
-    "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome", "pihole"],
+    "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome", "pihole", "guacamole"],
 }
 
 # Which tab each Homepage group lands on in the generated settings.yaml
@@ -200,6 +202,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "threadfin": 34400,
     "portainer": 9000,
     "adguardhome": 3000,
+    "guacamole": 8087,
     "recyclarr": 9898,
     "decluttarr": 9899,
     "flaresolverr": 8191,
@@ -267,6 +270,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "threadfin": "M3U/IPTV proxy - emulates HDHomeRun tuner for Jellyfin/Plex/Emby live TV",
     "portainer": "Container management UI - deploy, monitor, and manage Docker containers",
     "adguardhome": "Network-wide ad blocking & DNS filtering with per-client stats",
+    "guacamole": "Browser-based remote desktop (RDP/VNC/SSH) into machines on your LAN",
     "recyclarr": "TRaSH Guides sync for Radarr/Sonarr",
     "decluttarr": "Download queue cleanup for Radarr/Sonarr",
     "flaresolverr": "CAPTCHA solver for indexers",
@@ -633,6 +637,7 @@ def render_env(
     vaultwarden_signups_allowed: str = "true",
     crowdsec_bouncer_key: str | None = None,
     watchtower_api_token: str | None = None,
+    guac_postgres_password: str | None = None,
     tunnel_token: str = "changeme",
     pihole_webpassword: str | None = None,
     jellyfin_api_key: str = "",
@@ -682,6 +687,9 @@ def render_env(
         # credential for an external service, so Vulcan can generate a
         # real value instead of a "changeme" placeholder.
         crowdsec_bouncer_key=crowdsec_bouncer_key or secrets.token_hex(32),
+        guacamole_enabled="guacamole" in enabled,
+        # Guacamole's own Postgres - internal-only network, but a real random password anyway.
+        guac_postgres_password=guac_postgres_password or secrets.token_hex(24),
         watchtower_enabled="watchtower" in enabled,
         # Bearer token for Watchtower's metrics API (Homepage's watchtower widget reads it).
         watchtower_api_token=watchtower_api_token or secrets.token_hex(24),
@@ -693,6 +701,9 @@ def render_env(
         backup_offsite_target=backup_offsite_target,
         backup_offsite_ssh_key=backup_offsite_ssh_key
     )
+
+
+_HREF_PATHS = {"guacamole": "/guacamole/", "threadfin": "/web/"}
 
 
 def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str | None:
@@ -710,18 +721,6 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
 
     enabled = enabled_service_keys(config)
 
-    # qBittorrent's own Traefik labels are skipped whenever Gluetun is
-    # active (network_mode: service:gluetun has no network identity of
-    # its own for Traefik's Docker provider to discover - see the
-    # compose template) - a real, qbittorrent-specific exception to
-    # the otherwise-generic "routed" rule below. Found and fixed while
-    # adding the Traefik dashboard tile: this exception was missing
-    # here even though the compose template itself already has it, so
-    # a Gluetun + qBittorrent + Traefik + domain combination
-    # previously generated a real dead link (a 404, no matching
-    # router) instead of the working host-port fallback qBittorrent
-    # actually has through Gluetun's own static port mapping.
-    qbittorrent_via_gluetun = key == "qbittorrent" and "gluetun" in enabled
 
     # A direct user request: Homepage (and only Homepage) stays off the
     # public routed set even with Traefik+domain active for every other
@@ -738,11 +737,15 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
 
     routed = (
         "traefik" in enabled and config.domain
-        and not qbittorrent_via_gluetun and not homepage_kept_private and not dashy_kept_private
+        and not homepage_kept_private and not dashy_kept_private
     )
 
+    # Apps whose web UI isn't at "/" - a tile pointing at the root lands on a 404 (Guacamole's
+    # Tomcat has no ROOT context) or on machine-facing XML (Threadfin's HDHomeRun endpoint).
+    path = _HREF_PATHS.get(key, "")
+
     if routed:
-        return f"https://{key}.{config.domain}"
+        return f"https://{key}.{config.domain}{path}"
 
     ports = resolve_ports(config)
 
@@ -755,7 +758,7 @@ def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> st
         # deliberately avoided).
         return None
 
-    return f"http://{host_ip or 'localhost'}:{ports[key]}"
+    return f"http://{host_ip or 'localhost'}:{ports[key]}{path}"
 
 
 def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> str:
@@ -1454,6 +1457,10 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         watchtower_api_token=(
             _preserved_vpn_value(output_dir, "WATCHTOWER_API_TOKEN", "") or None
         ),
+        # Must survive rebuilds: the database was initialised with it on first start.
+        guac_postgres_password=(
+            _preserved_vpn_value(output_dir, "GUAC_POSTGRES_PASSWORD", "") or None
+        ),
         tunnel_token=_preserved_vpn_value(output_dir, "TUNNEL_TOKEN", "changeme"),
         pihole_webpassword=(
             _preserved_vpn_value(output_dir, "PIHOLE_WEBPASSWORD", "") or None
@@ -1817,6 +1824,19 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "FlareSolverr is only lightly maintained now - if it can't solve a "
             "given indexer, enable the optional Byparr service (a drop-in replacement "
             "with the same API) and point the proxy at http://byparr:8191/ instead."
+        )
+
+    if "guacamole" in enabled_service_keys(config):
+
+        # Pre-create as the user: Postgres runs as PUID:PGID so its files stay readable by
+        # `vulcan backup`, and Docker would otherwise create missing bind mounts as root.
+        for sub in ("postgres", "initdb"):
+            (output_dir / "config" / "guacamole" / sub).mkdir(parents=True, exist_ok=True)
+
+        warnings.append(
+            "Guacamole's first login is guacadmin / guacadmin - log in and change it immediately "
+            "(Settings > Preferences), or better: create your own admin user, then delete guacadmin. "
+            "The web UI is under /guacamole/ (the domain root 404s by design)."
         )
 
     if "byparr" in enabled_service_keys(config):

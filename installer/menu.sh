@@ -1539,6 +1539,7 @@ _guided_setup_customize_services() {
         "gluetun:Gluetun (VPN):Infrastructure"
         "pihole:Pi-hole + Unbound (DNS ad-blocker):Infrastructure"
         "adguardhome:AdGuard Home (DNS ad-blocker):Infrastructure"
+        "guacamole:Guacamole (remote desktop gateway):Infrastructure"
         "traefik:Traefik (reverse proxy):Infrastructure"
         "cloudflared:Cloudflare Tunnel:Infrastructure"
         "tailscale:Tailscale (private remote access):Infrastructure"

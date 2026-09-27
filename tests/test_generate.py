@@ -1154,6 +1154,51 @@ def test_render_compose_byparr_and_whisper_are_internal_only():
     assert "./config/whisper:/data/whisper-models" in services["whisper"]["volumes"]
 
 
+def test_render_compose_guacamole_shape():
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", custom_services={"guacamole", "traefik", "crowdsec", "authelia"}, domain="media.example.com")))
+    svc = services["services"]
+
+    assert {"guac-initdb", "guac-postgres", "guacd", "guacamole"} <= set(svc)
+    assert services["networks"]["guac"]["internal"] is True
+    assert svc["guac-postgres"]["networks"] == ["guac"]                  # database never on the stack network
+    assert svc["guac-postgres"]["user"] == "${PUID}:${PGID}"             # files readable by vulcan backup
+    assert svc["guac-postgres"]["depends_on"]["guac-initdb"]["condition"] == "service_completed_successfully"
+    assert svc["guacamole"]["depends_on"]["guac-postgres"]["condition"] == "service_healthy"
+    assert svc["guac-initdb"]["restart"] == "no"
+    labels = svc["guacamole"]["labels"]
+    assert "traefik.docker.network=stack_default" in labels
+    assert "traefik.http.services.guacamole.loadbalancer.server.port=8080" in labels
+    assert "traefik.http.routers.guacamole.middlewares=crowdsec@docker,authelia@docker" in labels
+    assert svc["guacamole"]["ports"] == ["8087:8080"]
+
+
+def test_guacamole_postgres_password_generated_and_preserved(tmp_path):
+    config = make_config("light", custom_services={"guacamole"})
+    config.media_path = str(tmp_path / "media-root")
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    env = (tmp_path / "stack" / ".env").read_text()
+    password = next(l.split("=", 1)[1] for l in env.splitlines() if l.startswith("GUAC_POSTGRES_PASSWORD="))
+    assert len(password) == 48
+    assert (tmp_path / "stack" / "config" / "guacamole" / "postgres").is_dir()
+    assert (tmp_path / "stack" / "config" / "guacamole" / "initdb").is_dir()
+
+    write_stack(config, output_dir=tmp_path / "stack")
+    assert f"GUAC_POSTGRES_PASSWORD={password}" in (tmp_path / "stack" / ".env").read_text()
+
+
+def test_homepage_links_include_app_subpaths():
+    routed = render_homepage_services(make_config(
+        "heavy", custom_services={"guacamole", "threadfin", "traefik"}, domain="media.example.com"), host_ip=None)
+    local = render_homepage_services(make_config(
+        "heavy", custom_services={"guacamole", "threadfin"}), host_ip="192.168.1.10")
+
+    assert "https://guacamole.media.example.com/guacamole/" in routed
+    assert "https://threadfin.media.example.com/web/" in routed
+    assert "http://192.168.1.10:8087/guacamole/" in local
+
+
 def test_render_compose_ntfy_caps_mounts_and_port():
     output = render_compose(make_config("light", enabled_optional={"ntfy", "homepage"}))
     block = _service_block(output, "ntfy", "homepage")
@@ -1480,7 +1525,7 @@ def test_every_rendered_service_has_no_new_privileges():
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == all_keys | {"unbound"}
+    assert set(data["services"].keys()) == all_keys | HELPER_CONTAINERS
 
     for name, service in data["services"].items():
         assert "no-new-privileges:true" in service.get("security_opt", []), (
@@ -1534,7 +1579,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # added capabilities - no privilege-drop or ownership-fixup step to
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
-    "byparr", "whisper",
+    "byparr", "whisper", "guacamole", "guac-initdb", "guac-postgres", "guacd",
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
@@ -1621,6 +1666,10 @@ SPECIAL_CAP_SERVICES = {
     "vaultwarden": ["DAC_OVERRIDE"],
 }
 
+# Containers rendered alongside a service key rather than being one: pihole's resolver,
+# Guacamole's schema writer / database / protocol proxy.
+HELPER_CONTAINERS = {"unbound", "guac-initdb", "guac-postgres", "guacd"}
+
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
 
 
@@ -1667,14 +1716,14 @@ def test_every_service_has_cap_drop_all():
     to ALL_SERVICES, not a subset - a future service added without a
     cap_drop entry should fail here rather than silently ship unhardened.
     """
-    assert ALL_CAPPED_SERVICES == {s.key for s in ALL_SERVICES} | {"unbound"}
+    assert ALL_CAPPED_SERVICES == {s.key for s in ALL_SERVICES} | HELPER_CONTAINERS
 
     all_keys = {s.key for s in ALL_SERVICES}
     config = make_config("heavy", custom_services=all_keys, gpu_vendor="nvidia", domain="example.com")
     output = render_compose(config)
     data = yaml.safe_load(output)
 
-    assert set(data["services"].keys()) == all_keys | {"unbound"}
+    assert set(data["services"].keys()) == all_keys | HELPER_CONTAINERS
 
     for name, service in data["services"].items():
         assert service.get("cap_drop") == ["ALL"], f"{name} is missing cap_drop: ALL"
@@ -1977,17 +2026,11 @@ def test_render_homepage_services_omits_traefik_tile_without_domain():
     assert list(parsed[0].keys()) == ["Guides"]
 
 
-def test_render_homepage_services_qbittorrent_uses_host_port_not_broken_route_when_gluetun_and_traefik_both_active():
+def test_render_homepage_services_qbittorrent_routed_via_gluetun_when_traefik_active():
     """
-    Regression lock for a real bug found while adding the Traefik
-    dashboard tile: qBittorrent's own Traefik labels are skipped
-    whenever Gluetun is active (network_mode: service:gluetun has no
-    network identity for Traefik's Docker provider to discover), but
-    _service_href() didn't know that - with Traefik+domain also
-    active, it generated https://qbittorrent.<domain>, a real dead
-    link (no matching router exists). It must fall back to the real
-    working host-port URL instead, the same URL it already correctly
-    uses when Traefik isn't routing at all.
+    qBittorrent behind Gluetun used to have no Traefik route at all, so its tile fell back to
+    the host port. Since its router lives on the gluetun container it is routable, and the tile
+    must use the domain like every other routed service.
     """
 
     output = render_homepage_services(
@@ -1999,8 +2042,7 @@ def test_render_homepage_services_qbittorrent_uses_host_port_not_broken_route_wh
         host_ip=None
     )
 
-    assert "http://localhost:8080" in output
-    assert "https://qbittorrent.media.example.com" not in output
+    assert "https://qbittorrent.media.example.com" in output
 
 
 def test_render_homepage_services_omits_empty_groups():
