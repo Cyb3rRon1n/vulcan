@@ -11,10 +11,13 @@ Skip any section for a service you didn't enable - your guided-menu/CLI run
 also printed a copy of this same order, trimmed to just what you actually
 enabled, right after the stack came up.
 
-!!! note "Representative mockups, not literal captures"
-    The screenshots below are hand-built to show the shape of each screen,
-    not pixel-accurate captures of the real apps - the real UI you'll see
-    will differ in layout and styling.
+!!! note "About the screenshots"
+    The form screenshots are real captures from a throwaway demo stack
+    (dummy data, fake API keys - never a real install), filled with exactly
+    the values each step tells you to use. A few overview images (the
+    Vaultwarden signup, Gluetun log, Homepage and Cloudflare Tunnel route)
+    are still hand-built mockups; app UIs change between versions, so yours
+    may differ slightly in layout.
 
 ## What `./install` does
 
@@ -136,13 +139,22 @@ Prowlarr then pushes every indexer into each app and keeps them in sync -
 you never add indexers inside Radarr/Sonarr directly. Container names work
 as hostnames because every service shares the stack's Docker network.
 
+<p align="center">
+  <img src="images/screenshots/prowlarr-add-radarr.png" alt="Prowlarr Settings > Apps > Add Application - Radarr with Prowlarr Server http://prowlarr:9696 and Radarr Server http://radarr:7878" style="max-width: 100%; width: 720px;">
+</p>
+
 **FlareSolverr**, if you enabled it, needs no setup of its own - but
 Prowlarr won't use it until you tell it to. Settings > Indexers > add an
 **Indexer Proxy** > **FlareSolverr**: Host `http://flaresolverr:8191/`,
 Request Timeout `60`, and give it a **tag** (e.g. `flaresolverr`). Then
 open each indexer that sits behind Cloudflare's challenge page and add
 that same tag - only tagged indexers route through FlareSolverr. Prowlarr
-flags most of the ones that need it. If FlareSolverr can't get past a
+flags most of the ones that need it.
+
+<p align="center">
+  <img src="images/screenshots/prowlarr-flaresolverr-proxy.png" alt="Prowlarr Add Indexer Proxy - FlareSolverr with tag flaresolverr and host http://flaresolverr:8191/" style="max-width: 100%; width: 640px;">
+</p>
+ If FlareSolverr can't get past a
 particular indexer's challenge, enable the optional **Byparr** service (a
 drop-in replacement on the same API) and point this proxy at
 `http://byparr:8191/` instead - see [integrations](integrations.md#tougher-cloudflare-solving-byparr).
@@ -171,6 +183,10 @@ For each one you enabled (indexers already arrive from Prowlarr, step 3):
    `qbittorrent` doesn't resolve), otherwise `qbittorrent`; Port `8080`;
    your qBittorrent login (step 5); a **Category** per app (`radarr`,
    `tv-sonarr`, `lidarr`) so each app only imports its own downloads.
+
+<p align="center">
+  <img src="images/screenshots/radarr-qbittorrent-client.png" alt="Radarr Add Download Client - qBittorrent with Host gluetun, Port 8080, Category radarr" style="max-width: 100%; width: 640px;">
+</p>
 3. **Settings > Profiles** - pick what quality you actually want. The
    defaults grab almost anything; [Recyclarr](#11-recyclarr-decluttarr-maintainerr)
    can sync the well-known TRaSH Guides profiles for you instead.
@@ -203,6 +219,10 @@ Save Path** to `/data/downloads`. Every *arr app and qBittorrent all see
 your media library at `/data`, so this one path lines up everywhere and
 no "remote path mapping" is needed. SABnzbd: same idea, set its complete
 folder to `/data/downloads` under Config > Folders.
+
+<p align="center">
+  <img src="images/screenshots/qbittorrent-save-path.png" alt="qBittorrent Options > Downloads > Saving Management with Default Save Path /data/downloads" style="max-width: 100%; width: 640px;">
+</p>
 
 Then connect each *arr app above to the client:
 Settings > Download Clients > Add.
@@ -297,10 +317,16 @@ those, pick a provider with PF or accept slower/incoming-limited peering.
 
 If you enabled it:
 
-1. **Settings > Languages** - create a **Languages Profile** (e.g.
-   English) and set it as the default for both series and movies.
+1. **Settings > Languages** - first pick your languages in **Languages
+   Filter** (the profile table stays empty - "No Enabled Languages" - until
+   you do), then **Add New Profile** (e.g. English), and set it as the
+   default for both series and movies under *Default Language Profiles*.
    **Bazarr searches nothing until a profile exists and is assigned** -
    the most common "Bazarr isn't doing anything" cause.
+<p align="center">
+  <img src="images/screenshots/bazarr-language-profile.png" alt="Bazarr Edit Languages Profile named English with English added" style="max-width: 100%; width: 640px;">
+</p>
+
 2. **Settings > Providers** - add a few. OpenSubtitles.com (free account)
    covers most things; add others for your languages.
 3. **Settings > Sonarr / Radarr** - Address `sonarr` / `radarr`, ports
@@ -322,6 +348,10 @@ sees your media at `/data/media`:
 | Music | `/data/media/music` |
 | Books | `/data/media/books` |
 | YouTube (MeTube) | `/data/media/youtube` - content type *Mixed* or *Home videos* |
+
+<p align="center">
+  <img src="images/screenshots/jellyfin-add-library.png" alt="Jellyfin Add Media Library - content type Movies with folder /data/media/movies" style="max-width: 100%; width: 640px;">
+</p>
 
 A few settings worth changing right away:
 
@@ -371,6 +401,10 @@ If you enabled it, its setup wizard runs on the first visit:
    (`/data/media/movies`), tick **Default Server**. **Add Sonarr** the same
    way (`sonarr`, `8989`, `/data/media/tv`); if you keep anime separately,
    set the anime profile/root folder there too.
+
+<p align="center">
+  <img src="images/screenshots/seerr-add-radarr.png" alt="Seerr Add New Radarr Server - Default Server ticked, hostname radarr, port 7878" style="max-width: 100%; width: 640px;">
+</p>
 3. **Users > Import Jellyfin Users**, then decide each user's permissions -
    *Request* for everyone, *Auto-Approve* only for people whose requests
    you don't want to review.
@@ -499,6 +533,10 @@ above are actually running.
   and a notification (Settings > Notifications - ntfy, Discord, email,
   Signal...) so an outage actually reaches you. Interval 60 s with 2
   retries avoids alerts for a container that's just restarting.
+
+<p align="center">
+  <img src="images/screenshots/uptime-kuma-monitor.png" alt="Uptime Kuma Add New Monitor - HTTP(s) for http://radarr:7878/ping, interval 60, retries 2" style="max-width: 100%; width: 420px;">
+</p>
 - **CrowdSec** - confirm it's really reading traffic, not just running:
 
   ```
