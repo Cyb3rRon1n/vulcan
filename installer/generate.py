@@ -270,6 +270,8 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "recyclarr": "TRaSH Guides sync for Radarr/Sonarr",
     "decluttarr": "Download queue cleanup for Radarr/Sonarr",
     "flaresolverr": "CAPTCHA solver for indexers",
+    "byparr": "Cloudflare challenge solver - drop-in FlareSolverr replacement (same API), actively maintained",
+    "whisper": "Speech-to-text subtitle generator for Bazarr when no subtitles exist anywhere",
     "watchtower": "Automatic container updates",
     "gluetun": "VPN client for WireGuard/OpenVPN",
     "tailscale": "Private network mesh VPN",
@@ -1813,8 +1815,25 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "FlareSolverr, Host http://flaresolverr:8191/, give it a tag, then add "
             "that tag to each indexer that sits behind a Cloudflare challenge. "
             "FlareSolverr is only lightly maintained now - if it can't solve a "
-            "given indexer, docs/integrations.md shows how to swap in Byparr "
-            "(a drop-in replacement with the same API, added via a compose override)."
+            "given indexer, enable the optional Byparr service (a drop-in replacement "
+            "with the same API) and point the proxy at http://byparr:8191/ instead."
+        )
+
+    if "byparr" in enabled_service_keys(config):
+
+        warnings.append(
+            "Byparr is a drop-in FlareSolverr replacement on the same API. Point Prowlarr at it: "
+            "Settings > Indexers > add an Indexer Proxy > FlareSolverr, Host http://byparr:8191/, "
+            "give it a tag, and add that tag to each indexer behind a Cloudflare challenge. "
+            "Suwayomi is wired to it automatically."
+        )
+
+    if "whisper" in enabled_service_keys(config):
+
+        warnings.append(
+            "Whisper generates subtitles when no provider has any. Enable it in Bazarr: Settings > "
+            "Providers > Whisper, Endpoint http://whisper:9000, timeout 3600. It is CPU-heavy - "
+            "each episode takes minutes - so Bazarr only uses it as a last resort."
         )
 
     if "mylar3" in enabled_service_keys(config):

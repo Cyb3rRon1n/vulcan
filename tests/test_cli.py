@@ -4574,3 +4574,6 @@ def test_userdata_export_explains_missing_api_key():
 
     assert result.exit_code == 1
     assert "JELLYFIN_API_KEY" in result.output and "API Keys" in result.output
+def test_whisper_requires_bazarr():
+    assert _check_service_conflicts({"whisper"}) is not None
+    assert _check_service_conflicts({"whisper", "bazarr"}) is None

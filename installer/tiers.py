@@ -67,6 +67,8 @@ _MEDIUM_SERVICES = _LIGHT_SERVICES + [
     ServiceDefinition("seerr", "Seerr (media requests)", category="Media Server"),
     ServiceDefinition("bazarr", "Bazarr", category="Media Management"),
     ServiceDefinition("flaresolverr", "FlareSolverr", category="Media Management"),
+    ServiceDefinition("byparr", "Byparr (FlareSolverr alternative)", optional=True, category="Media Management"),
+    ServiceDefinition("whisper", "Whisper (AI subtitles for Bazarr)", optional=True, category="Media Management"),
     ServiceDefinition("tracearr", "Tracearr (stream analytics)", optional=True, category="Monitoring"),
     ServiceDefinition("uptime-kuma", "Uptime Kuma", optional=True, category="Monitoring"),
     ServiceDefinition("watchtower", "Watchtower", optional=True, category="Utilities"),

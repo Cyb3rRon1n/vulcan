@@ -21,6 +21,10 @@ RESOURCE_PROFILES: dict[str, str] = {
     "seerr": "light",
     "bazarr": "light",
     "flaresolverr": "light",
+    # A headless Firefox per solve (~2GB RSS measured) - light/standard limits OOM it.
+    "byparr": "heavy",
+    # faster-whisper speech-to-text; the medium model sat at ~2.7GB RSS on a live host.
+    "whisper": "heavy",
     "gluetun": "light",
     "lidarr": "standard",
     "readarr": "standard",

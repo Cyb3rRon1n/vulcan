@@ -2048,6 +2048,7 @@ _SERVICE_DEPS: list[tuple[str, str, str]] = [
     ("cloudflared", "traefik", "Cloudflare Tunnel requires Traefik as the reverse proxy."),
     ("authelia", "traefik", "Authelia requires Traefik for forward-auth middleware."),
     ("crowdsec", "traefik", "CrowdSec requires Traefik for its bouncer middleware."),
+    ("whisper", "bazarr", "Whisper only generates subtitles through Bazarr."),
 ]
 
 
