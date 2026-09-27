@@ -1,3 +1,4 @@
+import pytest
 import json
 import re
 from unittest.mock import MagicMock, patch
@@ -995,6 +996,20 @@ def test_render_compose_calibre_web_automated_never_gets_authelia_middleware():
     assert "traefik.http.routers.calibre-web-automated.rule=Host(`calibre-web-automated.media.example.com`)" in block
     assert "traefik.http.routers.calibre-web-automated.middlewares=crowdsec@docker" in block
     assert "authelia@docker" not in block
+
+
+@pytest.mark.parametrize("domain", [None, "media.example.com"])
+def test_render_compose_stateful_services_opt_out_of_watchtower(domain):
+    optional = {"gluetun", "vaultwarden", "cloudflared", "traefik", "crowdsec",
+                "authelia", "watchtower", "unbound", "pihole"}
+    kw = {"domain": domain} if domain else {}
+    services = yaml.safe_load(render_compose(make_config("heavy", enabled_optional=optional, **kw)))["services"]
+
+    opted_out = {n for n, s in services.items()
+                 if "com.centurylinklabs.watchtower.enable=false" in (s.get("labels") or [])}
+
+    assert opted_out == {"jellyfin", "vaultwarden", "gluetun", "traefik", "cloudflared",
+                         "crowdsec", "authelia", "unbound", "pihole"}
 
 
 def test_render_compose_ntfy_caps_mounts_and_port():
