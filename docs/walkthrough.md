@@ -360,7 +360,9 @@ above are actually running.
 - **Uptime Kuma** needs a one-time account, then a monitor added per
   service you want to track.
 - **Netdata** and the **Traefik dashboard** need no setup at all - both
-  are ready to view as soon as their containers start. Netdata's Docker
+  are ready to view as soon as their containers start. With a domain,
+  Netdata is at `netdata.<domain>` (it runs on the host network, so vulcan
+  routes it through a generated `config/traefik/dynamic/netdata.yml`). Netdata's Docker
   collector is switched off on purpose (it cost ~6 CPU cores of
   `dockerd`/`containerd` on a busy host); per-container charts still work -
   see [integrations](integrations.md#real-time-monitoring-netdata).

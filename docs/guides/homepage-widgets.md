@@ -144,7 +144,21 @@ Notes:
 - Widget types exist for most of the stack: `sonarr`, `radarr`, `lidarr`,
   `readarr`, `prowlarr`, `bazarr`, `qbittorrent`, `sabnzbd`, `jellyfin`,
   `jellyseerr`, `authelia` (via its API), `traefik`, `netdata`, `glances`,
-  `uptimekuma`, `pihole`, `portainer`. Full list on the widgets page.
+  `uptimekuma`, `pihole`, `portainer`, `watchtower`. Full list on the widgets page.
+- **Watchtower** has no web UI, so it gets no tile by default, but its
+  metrics API is already switched on (internal only, no port published).
+  The token is `WATCHTOWER_API_TOKEN` in `stack/.env`:
+
+  ```yaml
+  - Monitoring:
+      - Watchtower:
+          icon: watchtower.png
+          description: Daily container auto-updates (last scan)
+          widget:
+            type: watchtower
+            url: http://watchtower:8080
+            key: YOUR_WATCHTOWER_API_TOKEN   # from stack/.env
+  ```
 
 ## Release calendar
 
