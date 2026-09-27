@@ -73,3 +73,8 @@ htmlcov/
 # agent tooling scratch
 .omo/
 .serena/
+
+# Local AI-tooling scratch (never commit)
+ph/
+.superpowers/
+.claude/

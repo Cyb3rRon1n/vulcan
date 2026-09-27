@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-47 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+47 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](roadmap.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 

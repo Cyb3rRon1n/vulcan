@@ -39,3 +39,5 @@ Vulcan inspects your Linux host's real hardware, recommends a sized tier (Light 
 - **Setting up fresh storage?** See [Storage Planning](storage.md).
 - **Already have a stack running?** See [Maintaining a Stack](maintenance.md).
 - **Just generated a stack?** Follow the [Post-Install Walkthrough](walkthrough.md) in the right order.
+- **Protecting what you've built?** Nightly config backups, rebuild-proof Jellyfin user data (favorites, ratings, watch history) and off-box copies: [Maintaining a Stack](maintenance.md#jellyfin-user-data).
+- **Want to change something Vulcan generates?** Put it in `stack/docker-compose.override.yml` so rebuilds keep it: [Changing settings after install](walkthrough.md#keep-your-own-changes-in-stackdocker-composeoverrideyml).
