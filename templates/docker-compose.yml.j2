@@ -12,8 +12,9 @@ services:
       - ${MEDIA_PATH}/media:/data/media:ro
     ports:
       - "{{ ports['jellyfin'] }}:8096"
-{% if 'traefik' in enabled and domain %}
     labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain %}
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.{{ domain }}`)"
       - "traefik.http.routers.jellyfin.entrypoints=websecure{{ tunnel_entrypoints }}"
@@ -470,8 +471,9 @@ services:
       - ./config/vaultwarden:/data
     ports:
       - "{{ ports['vaultwarden'] }}:80"
-{% if 'traefik' in enabled and domain %}
     labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain %}
       - "traefik.enable=true"
       - "traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.{{ domain }}`)"
       - "traefik.http.routers.vaultwarden.entrypoints=websecure{{ tunnel_entrypoints }}"
@@ -752,6 +754,8 @@ services:
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     # Verified empirically (docker run --cap-drop=ALL against the real
     # image). NET_ADMIN: the VPN tunnel. NET_RAW: gluetun's own
     # healthcheck ICMP probe (without it, it logs "not permitted ...
@@ -1352,8 +1356,9 @@ services:
     environment:
       - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
 {% endif %}
-{% if domain %}
     labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+{% if domain %}
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.{{ domain }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure{{ tunnel_entrypoints }}"
@@ -1394,6 +1399,8 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     # Verified empirically (docker run --cap-drop=ALL against the real
     # image) - starts and runs cleanly with zero added capabilities, no
@@ -1430,6 +1437,7 @@ services:
     depends_on:
       - traefik
     labels:
+      - "com.centurylinklabs.watchtower.enable=false"
       - "traefik.enable=true"
 {# Bouncer middleware definition lives on crowdsec's own container
    block, same precedent as Authelia's forwardAuth middleware labels
@@ -1488,8 +1496,9 @@ services:
       - ./config/authelia/secrets:/secrets
     ports:
       - "{{ ports['authelia'] }}:9091"
-{% if 'traefik' in enabled and domain %}
     labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain %}
       - "traefik.enable=true"
       - "traefik.http.routers.authelia.rule=Host(`authelia.{{ domain }}`)"
       - "traefik.http.routers.authelia.entrypoints=websecure{{ tunnel_entrypoints }}"
@@ -1870,6 +1879,12 @@ services:
     environment:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=86400
+      # Updates every container EXCEPT those labelled
+      # com.centurylinklabs.watchtower.enable=false: jellyfin, vaultwarden,
+      # gluetun, traefik, cloudflared, crowdsec, authelia, unbound, pihole.
+      # An unattended restart of those drops sessions, the VPN/tunnel/DNS or
+      # hits a live SQLite DB mid-use (a real Authelia logout + Jellyfin I/O
+      # storm on a live host) - update them by hand with `vulcan update`.
       - TZ=${TZ}
       # containrrr/watchtower:latest's bundled Docker client defaults to a
       # stale API version (1.25) instead of negotiating with the real daemon,
@@ -1948,6 +1963,8 @@ services:
   unbound:
     image: klutchell/unbound:latest
     container_name: unbound
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     ports:
       - "{{ ports['pihole'] }}:80"
     volumes:
@@ -1977,6 +1994,8 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     depends_on:
       - unbound
     environment:
