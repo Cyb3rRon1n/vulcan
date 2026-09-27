@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **slskd** (Soulseek music client) — searchable from Lidarr via the `Lidarr.Plugin.Slskd` plugin (needs Lidarr on the `nightly` tag), or standalone. Pre-seeded `slskd.yml` with a generated web password + Lidarr-plugin API key.
 - 43 known services.
 
+### Fixed
+- **CrowdSec was blind.** Hardened Traefik (`cap_drop: ALL`) couldn't open its PUID-owned access log and failed silently, so CrowdSec read nothing; Traefik now gets `DAC_OVERRIDE` when CrowdSec is enabled. Through a Cloudflare Tunnel every visitor also looked like the cloudflared container's private IP: the tunnel entrypoint now trusts `X-Forwarded-For` from private (container) addresses and the bouncer reads the real client IP. The bouncer tolerates 2 failed decision pulls (`updatemaxfailure=2`) instead of blocking all traffic whenever CrowdSec restarts.
+
 ### Changed
 - **Vulcan now honours `stack/docker-compose.override.yml`** everywhere it runs Compose (`start`, `update`, `restore`, `pull`, `export-images`, the menu's per-service restart) and in the start command `build` prints. Before, every call passed `-f stack/docker-compose.yml` alone, which makes Compose skip the override — so `vulcan update` recreated containers without your local changes and could orphan override-only services.
 - **Watchtower no longer auto-updates stateful/infra services** — Jellyfin, Vaultwarden, Authelia, Traefik, Cloudflared, CrowdSec, Gluetun, Unbound and Pi-hole carry `com.centurylinklabs.watchtower.enable=false`; update them with `vulcan update`.

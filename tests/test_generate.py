@@ -1037,6 +1037,37 @@ def test_render_compose_netns_routes_absent_without_domain():
     assert not any("traefik" in l for l in services["gluetun"]["labels"] + services["unbound"]["labels"])
 
 
+def test_render_compose_traefik_can_write_access_log_for_crowdsec():
+    # cap_drop ALL alone left Traefik unable to open the PUID-owned access log - silently -
+    # so CrowdSec had nothing to read. DAC_OVERRIDE only when there's a log to write.
+    with_cs = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")))["services"]
+    without = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"traefik"}, domain="media.example.com")))["services"]
+
+    assert with_cs["traefik"]["cap_add"] == ["DAC_OVERRIDE"]
+    assert "--accesslog.filepath=/var/log/traefik/access.log" in with_cs["traefik"]["command"]
+    assert "cap_add" not in without["traefik"]
+
+
+def test_render_compose_crowdsec_sees_real_client_ip_through_the_tunnel():
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"traefik", "crowdsec", "cloudflared"}, domain="media.example.com")))["services"]
+
+    private = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    assert f"--entrypoints.tunnel.forwardedHeaders.trustedIPs={private}" in services["traefik"]["command"]
+    bouncer = services["crowdsec"]["labels"]
+    assert f"traefik.http.middlewares.crowdsec.plugin.bouncer.forwardedheaderstrustedips={private}" in bouncer
+    assert "traefik.http.middlewares.crowdsec.plugin.bouncer.updatemaxfailure=2" in bouncer
+
+
+def test_render_compose_tunnel_trust_only_with_cloudflared():
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", enabled_optional={"traefik", "crowdsec"}, domain="media.example.com")))["services"]
+
+    assert not any("forwardedHeaders" in c for c in services["traefik"]["command"])
+
+
 def test_render_compose_ntfy_caps_mounts_and_port():
     output = render_compose(make_config("light", enabled_optional={"ntfy", "homepage"}))
     block = _service_block(output, "ntfy", "homepage")
