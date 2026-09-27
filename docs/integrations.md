@@ -244,7 +244,7 @@ Pi-hole (v6) provides DNS-level ad blocking across your entire network, with Unb
 2. Or configure each device manually to use this host's IP as its DNS server
 3. Access the Pi-hole admin panel at `http://<host>:8053`, log in with `PIHOLE_WEBPASSWORD` from `stack/.env`
 
-When Traefik is also enabled with a domain, Pi-hole is routed at `pihole.<domain>`.
+When Traefik is also enabled with a domain, Pi-hole is routed at `pihole.<domain>`. Because Pi-hole shares Unbound's network namespace (and Traefik's Docker provider ignores such containers), that router is generated on the `unbound` container, pointed at port 80 inside the shared namespace - qBittorrent behind Gluetun is routed the same way, via `gluetun`.
 
 ## Alternative DNS ad-blocker (AdGuard Home)
 

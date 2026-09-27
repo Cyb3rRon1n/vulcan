@@ -173,7 +173,10 @@ give Readarr the real password. Everything else works either way.
 
 If Gluetun is enabled, qBittorrent shares its network namespace - the
 connection settings work the same either way, just confirm step 6 below is
-actually connected first.
+actually connected first. With Traefik and a domain, qBittorrent's web UI is
+still at `qbittorrent.<domain>`: Traefik can't see a container that shares
+another's network, so that router is generated on the `gluetun` container
+instead (the same trick routes Pi-hole via `unbound`).
 
 SABnzbd additionally needs your Usenet provider's server details entered
 through its own setup wizard before it can download anything.
@@ -348,7 +351,10 @@ above are actually running.
 - **Uptime Kuma** needs a one-time account, then a monitor added per
   service you want to track.
 - **Netdata** and the **Traefik dashboard** need no setup at all - both
-  are ready to view as soon as their containers start.
+  are ready to view as soon as their containers start. Netdata's Docker
+  collector is switched off on purpose (it cost ~6 CPU cores of
+  `dockerd`/`containerd` on a busy host); per-container charts still work -
+  see [integrations](integrations.md#real-time-monitoring-netdata).
 
 <p align="center">
   <img src="images/screenshots/homepage-dashboard.svg" alt="Homepage dashboard example" style="max-width: 100%; width: 820px;">
@@ -472,6 +478,47 @@ that file ended up root-owned (Authelia's image runs as its own root),
 After a domain change, also update the Cloudflare route's subdomain/domain
 (above) and restart `crowdsec` + `traefik` + `authelia` so their plugins
 reconnect.
+
+### Keep your own changes in `stack/docker-compose.override.yml`
+
+`vulcan build` rewrites `stack/docker-compose.yml` from the template every
+time, so **anything you edit in that file by hand is lost on the next
+build**. Put local changes - an extra service, a different image tag, a
+higher CPU limit, extra labels - in `stack/docker-compose.override.yml`
+instead. Vulcan never writes that file, `vulcan backup` archives it, and
+Compose merges it on top of the generated file automatically:
+
+```yaml
+# stack/docker-compose.override.yml - only what differs from the generated file
+services:
+  jellyfin:
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"   # more transcoding headroom than the tier default
+```
+
+The catch: Compose only loads the override when you **don't** pass `-f`.
+Once you have one, start the stack from inside `stack/`:
+
+```
+cd stack && docker compose up -d
+```
+
+(`docker compose -f stack/docker-compose.yml ...`, as printed by `build`,
+silently skips the override.) Merge rules worth knowing: `labels` and
+`environment` entries are merged key by key, but a `command` list is
+**replaced** wholesale - override a command by copying the whole list.
+
+To see what a rebuild would actually change before applying it, compare the
+merged config before and after:
+
+```
+cd stack && docker compose config > /tmp/before.yml
+cd .. && vulcan build --non-interactive --yes && cd stack
+docker compose config | diff /tmp/before.yml -    # empty = nothing changes
+docker compose up -d --dry-run                    # which containers would restart
+```
 
 **Homepage / Dashy tiles keep the old domain.** `stack/config/homepage/services.yaml`
 (and Dashy's config) are seeded once and never overwritten - by design, so
