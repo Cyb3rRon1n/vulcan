@@ -173,7 +173,7 @@ The generator pre-seeds `stack/config/slskd/slskd.yml` with a generated web pass
 
 To let **Lidarr** search Soulseek:
 
-1. Pin Lidarr to the plugins branch — `lscr.io/linuxserver/lidarr:nightly` (or `ghcr.io/hotio/lidarr:nightly`). **This is a one-way DB migration** — back up `stack/config/lidarr` first; you can't return to `latest`/`master` without that backup.
+1. Lidarr must run the plugins branch — vulcan does this for you: with slskd enabled, Lidarr's image is `lscr.io/linuxserver/lidarr:nightly`. **Switching an existing Lidarr to nightly is a one-way DB migration** — back up `stack/config/lidarr` first (`vulcan backup` covers it); you can't return to `latest` without that backup.
 2. System → Plugins → install `https://github.com/allquiet-hub/Lidarr.Plugin.Slskd`, restart.
 3. Add **slskd** as a download client (Settings → Download Clients) *and* an indexer (Settings → Indexers) — host `slskd`, port `5030`, API key = the `api_keys` value from `slskd.yml`.
 
