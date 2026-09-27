@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 46 known services.
 
 ### Fixed
+- **Intel GPU false positive on servers.** Detection matched "intel" and "vga" anywhere in `lspci`, so a Xeon board (Intel chipset + ASPEED BMC video, no transcoding hardware) was treated as an Intel GPU — passing a useless `/dev/dri` to Jellyfin and skipping its no-GPU CPU scaling. Now the VGA/3D/display line itself must be Intel.
 - **CrowdSec was blind.** Hardened Traefik (`cap_drop: ALL`) couldn't open its PUID-owned access log and failed silently, so CrowdSec read nothing; Traefik now gets `DAC_OVERRIDE` when CrowdSec is enabled. Through a Cloudflare Tunnel every visitor also looked like the cloudflared container's private IP: the tunnel entrypoint now trusts `X-Forwarded-For` from private (container) addresses and the bouncer reads the real client IP. The bouncer tolerates 2 failed decision pulls (`updatemaxfailure=2`) instead of blocking all traffic whenever CrowdSec restarts.
 
 ### Changed
