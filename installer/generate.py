@@ -119,6 +119,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
     "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy",
+    "pihole",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -150,7 +151,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Live TV": ["threadfin"],
     "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances", "ntfy"],
     "Security": ["authelia", "vaultwarden"],
-    "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome"],
+    "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome", "pihole"],
 }
 
 # Which tab each Homepage group lands on in the generated settings.yaml
