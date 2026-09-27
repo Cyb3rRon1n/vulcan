@@ -60,6 +60,28 @@ def _parse_compose_ps_json(stdout: str) -> list[dict]:
     return [json.loads(line) for line in stdout.splitlines() if line.strip()]
 
 
+def compose_file_args(compose_path) -> list[str]:
+    """`-f` args for the generated stack, plus stack/docker-compose.override.yml when it
+    exists. Docker Compose only auto-loads the override when no `-f` is given, so every
+    `-f docker-compose.yml` call silently dropped the user's local changes (extra services,
+    raised limits) - and `up -d` then recreated containers without them."""
+
+    args = ["-f", str(compose_path)]
+    override = Path(compose_path).with_name("docker-compose.override.yml")
+
+    if override.is_file():
+
+        args += ["-f", str(override)]
+
+    return args
+
+
+def compose_up_command(compose_path, env_path) -> str:
+    """The start command to show the user - same files `vulcan` itself would use."""
+
+    return " ".join(["docker", "compose", *compose_file_args(compose_path), "--env-file", str(env_path), "up", "-d"])
+
+
 def verify_stack_running(compose_path: str) -> dict:
     """
     Real post-start verification, not just trusting `docker compose up
@@ -73,7 +95,7 @@ def verify_stack_running(compose_path: str) -> dict:
     """
 
     result = subprocess.run(
-        ["docker", "compose", "-f", str(compose_path), "ps", "--format", "json"],
+        ["docker", "compose", *compose_file_args(compose_path), "ps", "--format", "json"],
         capture_output=True,
         text=True
     )
@@ -101,7 +123,7 @@ def verify_stack_running(compose_path: str) -> dict:
 def pull_stack(compose_path: str, env_path: str) -> dict:
 
     pull = run_docker_command(
-        ["docker", "compose", "-f", compose_path, "--env-file", env_path, "pull"]
+        ["docker", "compose", *compose_file_args(compose_path), "--env-file", env_path, "pull"]
     )
 
     if pull.returncode != 0:
@@ -131,7 +153,7 @@ def update_stack(compose_path: str, env_path: str, on_phase=None) -> dict:
         on_phase("Recreate containers")
 
     up = run_docker_command(
-        ["docker", "compose", "-f", compose_path, "--env-file", env_path, "up", "-d"]
+        ["docker", "compose", *compose_file_args(compose_path), "--env-file", env_path, "up", "-d"]
     )
 
     if up.returncode != 0:
@@ -156,7 +178,7 @@ def export_images(
     try:
 
         list_result = subprocess.run(
-            ["docker", "compose", "-f", compose_path, "--env-file", env_path, "config", "--images"],
+            ["docker", "compose", *compose_file_args(compose_path), "--env-file", env_path, "config", "--images"],
             capture_output=True,
             text=True
         )
@@ -462,7 +484,7 @@ def restore_stack(
     if Path(compose_path).exists():
 
         down = run_docker_command(
-            ["docker", "compose", "-f", compose_path, "--env-file", env_path, "down"]
+            ["docker", "compose", *compose_file_args(compose_path), "--env-file", env_path, "down"]
         )
 
         if down.returncode != 0:
@@ -550,7 +572,7 @@ def uninstall_stack(
     if Path(compose_path).exists():
 
         down = run_docker_command(
-            ["docker", "compose", "-f", compose_path, "--env-file", env_path, "down"]
+            ["docker", "compose", *compose_file_args(compose_path), "--env-file", env_path, "down"]
         )
 
         if down.returncode != 0:

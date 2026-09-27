@@ -47,6 +47,8 @@ from installer.generate import (
 )
 from installer.post_install import (
     backup_stack,
+    compose_file_args,
+    compose_up_command,
     export_images,
     import_images,
     latest_backup,
@@ -873,8 +875,7 @@ def pull():
 
     console.print(
         "[green]Images pulled.[/green] Run this whenever you're ready - no network "
-        f"access needed at that point:\n  docker compose -f {compose_path} --env-file "
-        f"{STACK_DIR / '.env'} up -d"
+        f"access needed at that point:\n  {compose_up_command(compose_path, STACK_DIR / '.env')}"
     )
 
 
@@ -950,7 +951,7 @@ def start():
     proc = run_docker_command(
         [
             "docker", "compose",
-            "-f", result["compose_path"],
+            *compose_file_args(result["compose_path"]),
             "--env-file", result["env_path"],
             "up", "-d"
         ]
@@ -1301,7 +1302,7 @@ def restore(
         if start is True:
 
             proc = run_docker_command(
-                ["docker", "compose", "-f", str(compose_path), "--env-file", str(env_path), "up", "-d"]
+                ["docker", "compose", *compose_file_args(compose_path), "--env-file", str(env_path), "up", "-d"]
             )
 
             if proc.returncode == 0:
@@ -1320,7 +1321,7 @@ def restore(
     if do_start and start is not True:
 
         proc = run_docker_command(
-            ["docker", "compose", "-f", str(compose_path), "--env-file", str(env_path), "up", "-d"]
+            ["docker", "compose", *compose_file_args(compose_path), "--env-file", str(env_path), "up", "-d"]
         )
 
         if proc.returncode == 0:
@@ -2864,8 +2865,7 @@ def _resolve_port_conflicts(config: GenerationConfig, result: dict) -> dict:
         if not resolved_any:
             console.print(
                 "[red]Free the port(s) above, then run this when you're ready:\n"
-                f"  docker compose -f {result['compose_path']} --env-file "
-                f"{result['env_path']} up -d[/red]"
+                f"  {compose_up_command(result['compose_path'], result['env_path'])}[/red]"
             )
             raise typer.Exit(code=1)
 
@@ -2998,7 +2998,7 @@ def _start(
     proc = run_docker_command(
         [
             "docker", "compose",
-            "-f", result["compose_path"],
+            *compose_file_args(result["compose_path"]),
             "--env-file", result["env_path"],
             "up", "-d"
         ],
@@ -3070,8 +3070,7 @@ def _report_stack_generated(
 
     panel.note(
         "\nRun this when you're ready:\n"
-        f"  docker compose -f {build_result['compose_path']} "
-        f"--env-file {build_result['env_path']} up -d"
+        f"  {compose_up_command(build_result['compose_path'], build_result['env_path'])}"
     )
 
     if config.auth_users:

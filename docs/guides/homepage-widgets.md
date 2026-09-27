@@ -315,5 +315,5 @@ then per tile:
 socket mount (a compose change), recreate the container:
 
 ```
-docker compose -f stack/docker-compose.yml --env-file stack/.env up -d homepage
+(cd stack && docker compose up -d homepage)
 ```
