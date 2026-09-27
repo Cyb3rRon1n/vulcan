@@ -51,7 +51,7 @@ Prefer the original plain-prompt flow over the guided `whiptail` menu (e.g. on a
 `--dry-run` implies `--no-start --non-interactive --yes` — no confirmation prompts, no Docker operations. After generating, review `stack/docker-compose.yml` and `stack/.env`, then start manually when ready:
 
 ```bash
-docker compose -f stack/docker-compose.yml --env-file stack/.env up -d
+(cd stack && docker compose up -d)
 ```
 
 ### Multi-user Authelia (RBAC)

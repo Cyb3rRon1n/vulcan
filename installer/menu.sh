@@ -206,7 +206,7 @@ confirm_and_run() {
         echo "✓ Done."
     else
         echo "✗ Failed (exit $status) - see output above."
-        echo "  Tip: Check 'docker compose -f stack/docker-compose.yml logs <service>' for details."
+        echo "  Tip: Check 'cd stack && docker compose logs <service>' for details."
     fi
 
     # Guided Setup's own success path flows straight into the Setup
@@ -719,7 +719,7 @@ stack_status_flow() {
         msg+="$line\n"
     done
     msg+="\nLegend: ✓ healthy ● running ⟳ starting/restarting ✗ failed/unhealthy ○ created\n\n"
-    msg+="Tip: Run 'docker compose -f stack/docker-compose.yml logs <service>' for details."
+    msg+="Tip: Run 'cd stack && docker compose logs <service>' for details."
 
     whiptail --backtitle "$BACKTITLE" --title "Stack Status" \
         --msgbox "$msg" "$DLG_ROWS" "$DLG_COLS" --scrolltext
@@ -870,7 +870,7 @@ configure_services_flow() {
             gluetun)
                 if ! prompt_edit_then_restart "gluetun" \
                     "Gluetun VPN Setup" \
-                    $'Gluetun needs your VPN provider credentials in stack/.env:\n\n1. Edit stack/.env and set:\n   VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n   VPN_TYPE=wireguard (or openvpn)\n\nFor WireGuard:\n   WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\nFor OpenVPN:\n   OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\nFull provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n\nAfter editing .env: docker compose -f stack/docker-compose.yml up -d gluetun'; then
+                    $'Gluetun needs your VPN provider credentials in stack/.env:\n\n1. Edit stack/.env and set:\n   VPN_SERVICE_PROVIDER=<your_provider> (e.g. protonvpn, mullvad, nordvpn)\n   VPN_TYPE=wireguard (or openvpn)\n\nFor WireGuard:\n   WIREGUARD_PRIVATE_KEY=<from provider>\n   WIREGUARD_ADDRESSES=<from provider>\n\nFor OpenVPN:\n   OPENVPN_USER=<username>\n   OPENVPN_PASSWORD=<password>\n\nFull provider list: https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers\n\nAfter editing .env: cd stack && docker compose up -d gluetun'; then
                     continue
                 fi
                 ;;
@@ -899,7 +899,7 @@ configure_services_flow() {
 - Admin user: check stack/config/authelia/users_database.yml\n\
 - Password was hashed during setup\n\n\
 To add users: edit stack/config/authelia/users_database.yml\n\
-and run: docker compose -f stack/docker-compose.yml restart authelia\n\n\
+and run: cd stack && docker compose restart authelia\n\n\
 Access: https://authelia.${PREVIOUS_DOMAIN:-yourdomain.com}" \
                     "$DLG_ROWS" "$DLG_COLS"
                 ;;
@@ -939,12 +939,14 @@ prompt_edit_then_restart() {
                     # shellcheck disable=SC1090
                     source "stack/.env"
                 fi
-                if docker compose -f stack/docker-compose.yml up -d "$service" 2>/dev/null; then
+                # from inside stack/ so Compose also loads docker-compose.override.yml -
+                # `-f docker-compose.yml` alone would recreate $service without the user's overrides
+                if (cd stack && docker compose up -d "$service") 2>/dev/null; then
                     whiptail --backtitle "$BACKTITLE" --title "$title" --msgbox \
                         "$service restarted successfully."$'\n\n'"Re-checking status..." "$DLG_ROWS" "$DLG_COLS"
                 else
                     whiptail --backtitle "$BACKTITLE" --title "$title - Error" --msgbox \
-                        "Failed to restart $service. Check logs:"$'\n'"  docker compose -f stack/docker-compose.yml logs $service" "$DLG_ROWS" "$DLG_COLS"
+                        "Failed to restart $service. Check logs:"$'\n'"  cd stack && docker compose logs $service" "$DLG_ROWS" "$DLG_COLS"
                 fi
                 ;;
             recheck)
@@ -1365,13 +1367,13 @@ guided_setup() {
 
             local complete_msg="Vulcan setup is complete!\n\nYour stack is running."
             [ -n "$urls" ] && complete_msg+="\n\nService URLs:\n$urls"
-            complete_msg+="\n\nTo manage your stack:\n  docker compose -f stack/docker-compose.yml ps\n  docker compose -f stack/docker-compose.yml down"
+            complete_msg+="\n\nTo manage your stack:\n  cd stack\n  docker compose ps\n  docker compose down"
             [ -n "$summary" ] && complete_msg+="\n\n$summary"
 
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
                 --msgbox "$complete_msg" "$DLG_ROWS" "$DLG_COLS" --scrolltext
         else
-            local complete_msg="Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d"
+            local complete_msg="Vulcan setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  cd stack && docker compose up -d"
             [ -n "$summary" ] && complete_msg+="\n\n$summary"
 
             whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \

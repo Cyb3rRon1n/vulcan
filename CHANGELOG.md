@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - 43 known services.
 
 ### Changed
+- **Vulcan now honours `stack/docker-compose.override.yml`** everywhere it runs Compose (`start`, `update`, `restore`, `pull`, `export-images`, the menu's per-service restart) and in the start command `build` prints. Before, every call passed `-f stack/docker-compose.yml` alone, which makes Compose skip the override — so `vulcan update` recreated containers without your local changes and could orphan override-only services.
 - **Watchtower no longer auto-updates stateful/infra services** — Jellyfin, Vaultwarden, Authelia, Traefik, Cloudflared, CrowdSec, Gluetun, Unbound and Pi-hole carry `com.centurylinklabs.watchtower.enable=false`; update them with `vulcan update`.
 - **qBittorrent (behind Gluetun) and Pi-hole are routed through Traefik again** — their routers now live on `gluetun`/`unbound`, since Traefik skips containers that share another's network namespace. Pi-hole gets a Homepage tile (Infrastructure).
 - **`vulcan backup` includes `docker-compose.override.yml` and `.vulcan-state.json`** when present, so a restore brings back local changes and saved install choices.

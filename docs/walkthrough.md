@@ -218,12 +218,12 @@ env vars this stack doesn't wire up yet): see
 each page has the exact env vars and where to get them.
 
 Once `stack/.env` is filled in, restart the stack (`sudo vulcan update`, or
-`docker compose -f stack/docker-compose.yml up -d --force-recreate gluetun`
+`(cd stack && docker compose up -d --force-recreate gluetun)`
 for just this container) and confirm the tunnel actually connected before
 trusting qBittorrent's traffic -
 
 ```
-docker compose -f stack/docker-compose.yml logs gluetun
+(cd stack && docker compose logs gluetun)
 ```
 
 qBittorrent has no network access at all if Gluetun can't connect (that's
@@ -237,8 +237,8 @@ silently drops BitTorrent traffic. Fix: uncomment the port-forwarding
 block in the `gluetun:` service in `stack/docker-compose.yml` (set
 `VPN_PORT_FORWARDING_PROVIDER` to match your provider), turn on
 qBittorrent > Options > WebUI > "Bypass authentication for clients on
-localhost", and `docker compose -f stack/docker-compose.yml up -d
---force-recreate gluetun`. `PORT_FORWARD_ONLY=on` then keeps Gluetun on
+localhost", and `(cd stack && docker compose up -d
+--force-recreate gluetun)`. `PORT_FORWARD_ONLY=on` then keeps Gluetun on
 P2P-capable servers across every reconnect and the forwarded port
 re-syncs into qBittorrent automatically. Mullvad has dropped port
 forwarding; NordVPN and Surfshark have no Gluetun support for it - on
@@ -436,10 +436,9 @@ native-app login of its own, so Authelia protects all of those cleanly.
      that exact name (anything that isn't the tunnel's own
      `<uuid>.cfargotunnel.com` CNAME), then save the route again.
   4. Once `TUNNEL_TOKEN` is in `stack/.env`, apply it to the running
-     stack: `docker compose -f stack/docker-compose.yml --env-file
-     stack/.env up -d` (recreates the changed container - `vulcan update`
+     stack: `(cd stack && docker compose up -d)` (recreates the changed container - `vulcan update`
      pulls *new images*, which is not what you want here). Then
-     `docker compose -f stack/docker-compose.yml logs cloudflared` should
+     `(cd stack && docker compose logs cloudflared)` should
      show `Registered tunnel connection`.
 
   Traefik's `80`/`443` ports stay published either way - this adds a
@@ -466,7 +465,7 @@ domain, add/remove services, add Authelia users, etc.:
 
 ```
 vulcan build --non-interactive --yes --domain newdomain.com   # (+ any other flags)
-docker compose -f stack/docker-compose.yml --env-file stack/.env up -d
+(cd stack && docker compose up -d)
 ```
 
 The `build` step only rewrites `stack/` - the **`docker compose up -d`**
@@ -498,15 +497,18 @@ services:
           cpus: "12.0"   # more transcoding headroom than the tier default
 ```
 
-The catch: Compose only loads the override when you **don't** pass `-f`.
-Once you have one, start the stack from inside `stack/`:
+Compose only auto-loads the override when you **don't** pass `-f`, so run
+your own compose commands from inside `stack/`:
 
 ```
-cd stack && docker compose up -d
+(cd stack && docker compose up -d)
 ```
 
-(`docker compose -f stack/docker-compose.yml ...`, as printed by `build`,
-silently skips the override.) Merge rules worth knowing: `labels` and
+(A bare `docker compose -f stack/docker-compose.yml ...` silently skips the
+override.) Vulcan's own commands - `start`, `update`, `restore`, `pull`, the
+menu's per-service restart - and the start command `build` prints all add
+`-f stack/docker-compose.override.yml` automatically when the file exists.
+Merge rules worth knowing: `labels` and
 `environment` entries are merged key by key, but a `command` list is
 **replaced** wholesale - override a command by copying the whole list.
 
@@ -528,7 +530,7 @@ hostnames. Delete them and rebuild to re-seed:
 ```
 rm stack/config/homepage/services.yaml stack/config/dashy/*.yml
 vulcan build --non-interactive --yes
-docker compose -f stack/docker-compose.yml --env-file stack/.env up -d homepage dashy
+(cd stack && docker compose up -d homepage dashy)
 ```
 (If `rm` is permission-denied, do it from a container:
 `docker run --rm -v "$PWD/stack:/s" alpine rm -f /s/config/homepage/services.yaml`.)
