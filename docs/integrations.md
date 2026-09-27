@@ -222,84 +222,26 @@ A web UI for the containers themselves — start/stop/restart, read logs, exec i
 
 ## Remote desktop gateway (Guacamole)
 
-**Apache Guacamole** gives you clientless RDP/VNC/SSH into other machines on your LAN — no client software, just a browser tab through Traefik. It isn't a first-class Vulcan service yet: it's three containers (`guacamole` web app, `guacd` protocol proxy, a `guac-postgres` connection-database) rather than the one-container-per-`ServiceDefinition` shape everything else in the generator assumes, so it hasn't been templated in. That's the only reason — all three images run cleanly under `cap_drop: ALL` + `no-new-privileges`, so there's no hardening blocker to solve first (tracked as a first-class candidate: [ROADMAP.md](roadmap.md)).
+**Apache Guacamole** gives you clientless RDP, VNC and SSH into other machines on your LAN — no client software, just a browser tab. Enable the optional `guacamole` service (Infrastructure). Vulcan runs it as four containers:
 
-Run it as **its own compose project** next to the stack (e.g. `~/guacamole/docker-compose.yml`) with **its own `.env`** holding `GUAC_POSTGRES_PASSWORD=<random>` and `DOMAIN=yourdomain.com`. Don't put those in `stack/.env`: `vulcan build` rewrites that file and drops keys it doesn't know, so the database password would vanish on the next rebuild. The project joins the stack's network (`stack_default`) so Traefik can route it:
+| Container | Role |
+|---|---|
+| `guacamole` | the web app — host port `8087`, or `guacamole.<domain>` through Traefik |
+| `guacd` | the protocol proxy that actually dials RDP/VNC/SSH to your machines |
+| `guac-postgres` | its connection/user database, stored in `config/guacamole/postgres` |
+| `guac-initdb` | a one-shot that writes the database schema before Postgres's first start, then exits |
 
-```yaml
-services:
-  guac-postgres:
-    image: postgres:16
-    container_name: guac-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: guacamole_db
-      POSTGRES_USER: guacamole_user
-      POSTGRES_PASSWORD: ${GUAC_POSTGRES_PASSWORD}
-    volumes:
-      - guac-pgdata:/var/lib/postgresql/data
-      - ./initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro   # one-time: docker run --rm guacamole/guacamole /opt/guacamole/bin/initdb.sh --postgresql > initdb.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U guacamole_user -d guacamole_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    cap_drop: [ALL]
-    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]   # postgres initdb needs these on first boot
-    security_opt: [no-new-privileges:true]
-    networks: [guac-net]
+Postgres and guacd's control port sit on a private internal network only Guacamole can reach. Postgres runs as your `PUID:PGID`, so its files are included in `vulcan backup` (your saved connections survive a restore). The database password is generated into `stack/.env` as `GUAC_POSTGRES_PASSWORD` and kept across rebuilds — don't change it after the first start, the database was created with it. Every container runs under `cap_drop: ALL` + `no-new-privileges` with no added capabilities.
 
-  guacd:
-    image: guacamole/guacd
-    container_name: guacd
-    restart: unless-stopped
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    networks: [guac-net]
+**First steps:**
 
-  guacamole:
-    image: guacamole/guacamole
-    container_name: guacamole
-    restart: unless-stopped
-    environment:
-      GUACD_HOSTNAME: guacd
-      POSTGRESQL_HOSTNAME: guac-postgres
-      POSTGRESQL_DATABASE: guacamole_db
-      POSTGRESQL_USERNAME: guacamole_user
-      POSTGRESQL_PASSWORD: ${GUAC_POSTGRES_PASSWORD}
-    depends_on:
-      guac-postgres: { condition: service_healthy }
-      guacd: { condition: service_started }
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=stack_default"
-      - "traefik.http.routers.guacamole.rule=Host(`guacamole.${DOMAIN}`)"
-      - "traefik.http.routers.guacamole.entrypoints=websecure,tunnel"   # drop ",tunnel" for LAN-only (needs a split-horizon DNS override instead — see below)
-      - "traefik.http.routers.guacamole.tls=true"
-      - "traefik.http.services.guacamole.loadbalancer.server.port=8080"
-      - "traefik.http.routers.guacamole.middlewares=authelia@docker"   # admin tier — it's a remote-desktop gateway into your LAN
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    networks: [guac-net, stack_default]
+1. Open `http://<host>:8087/guacamole/` (or `https://guacamole.<domain>/guacamole/`) — **the `/guacamole/` path is required**, the bare root 404s by design (the Homepage tile already includes it).
+2. Log in with the default **`guacadmin` / `guacadmin`** and immediately either change its password (Settings > Preferences) or, better, create your own admin user (Settings > Users, all permissions), log in as it, and delete `guacadmin`.
+3. Settings > Connections > New Connection — protocol (RDP/VNC/SSH), the target's LAN IP and port, and its credentials. Test it from the home screen.
 
-networks:
-  guac-net:
-  stack_default:
-    external: true
+**Access control:** through Traefik it's behind CrowdSec and Authelia's **admin-only** rule — it's a gateway into your LAN, so the `media` group can never reach it. `websecure` alone doesn't mean LAN-only if `*.yourdomain.com` is a Cloudflare Tunnel wildcard (see [No forwarded ports at all](#no-forwarded-ports-at-all-cloudflare-tunnel)): the wildcard sends every subdomain through the tunnel regardless of entrypoint, so Authelia is what actually protects it. If you only want it on the LAN, use the host port (`:8087`) and leave it out of your tunnel/DNS.
 
-volumes:
-  guac-pgdata:
-```
-
-`guac-postgres`'s `depends_on: condition: service_healthy` needs that `healthcheck:` block — Postgres has none built in, and `docker compose up` refuses to start a dependent service against a dependency with no defined healthcheck rather than racing it. Only the `guacamole` service joins `stack_default` (Traefik's network); `guac-postgres` and `guacd` stay on the isolated `guac-net` — least-privilege, they never need to be reachable from outside the trio. No host port is published at all — everything reaches it through Traefik+Authelia, so there's nothing to reserve or collide with (`8443:8080`, suggested by Guacamole's own quickstart docs, isn't needed once Traefik fronts it). First login is `guacadmin` / `guacadmin` — change it immediately, then add your RDP/VNC/SSH connections.
-
-**Use `POSTGRESQL_*`, never `POSTGRES_*`, for the `guacamole` service's own environment** (as above — `guac-postgres`, the plain official `postgres:16` image, is the one exception, since *that* image genuinely wants `POSTGRES_USER`/`POSTGRES_PASSWORD`). The `guacamole/guacamole` image ships an entrypoint script (`010-migrate-legacy-variables.sh`) that auto-migrates the deprecated `POSTGRES_*` prefix to the current `POSTGRESQL_*` one — but that script has a real bug (a `while read` loop whose control variable gets reset to empty at EOF, then used one more time in a cleanup line) that silently zeroes out whichever `POSTGRES_*` variable happens to be processed last, every time — confirmed by reproducing it in isolation. Using the current `POSTGRESQL_*` names directly skips that code path entirely.
-
-**Verify the schema actually got created**, not just that Postgres is healthy: `docker exec guac-postgres psql -U guacamole_user -d guacamole_db -c '\dt'` should list `guacamole_user`, `guacamole_connection`, etc. Postgres only ever runs `/docker-entrypoint-initdb.d/*` scripts once, against a truly empty data directory, and never retries — so if `initdb.sql` was missing, empty, or invalid the *first* time `guac-postgres` ever started (e.g. a bad `docker run ... initdb.sh > initdb.sql` left an error message in the file instead of real SQL, and a later fixed re-run doesn't know to regenerate a file that already exists), the container comes up "healthy" forever with zero tables, and every login attempt 500s with `relation "guacamole_user" does not exist`. Fix without discarding the volume: apply the (correctly-generated) `initdb.sql` directly — `docker exec -i guac-postgres psql -U guacamole_user -d guacamole_db < initdb.sql`.
-
-**The webapp only serves under `/guacamole/`, not root** — `https://guacamole.<domain>/` 404s (Tomcat has no ROOT context here), only `https://guacamole.<domain>/guacamole/` works. Any bookmark, Homepage tile `href`, or other link needs that trailing path — a root link sends you through an Authelia login that correctly comes back to `/` and *then* 404s, which looks like a broken deployment but is really just a wrong URL.
-
-**`websecure` alone doesn't mean LAN-only** if `*.yourdomain.com` DNS is a Cloudflare Tunnel wildcard (see [No forwarded ports at all](#no-forwarded-ports-at-all-cloudflare-tunnel) above) — that wildcard sends every subdomain through Cloudflare's edge regardless of which Traefik entrypoint the router itself listens on, so a `websecure`-only router with no matching Cloudflare Public Hostname just 404s at Cloudflare's edge (check `docker logs cloudflared` for the request never arriving, vs. a real Traefik 404, to tell the two apart). To make a new service reachable through the tunnel, add `,tunnel` to its `entrypoints` label (matching every other tunnel-routed service) *and* add its Public Hostname in Cloudflare Zero Trust — both are required, neither alone is enough. For something you genuinely want LAN-only despite a wildcard tunnel DNS record, the working pattern is a Pi-hole Local DNS Record overriding that one subdomain to the host's LAN IP for local clients, keeping the `websecure`-only entrypoint so the tunnel never sees it.
+**Troubleshooting:** `docker compose logs guac-initdb` should end cleanly (exit 0); `docker exec guac-postgres psql -U guacamole_user -d guacamole_db -c '\dt'` should list `guacamole_user`, `guacamole_connection`, …. The schema file is `config/guacamole/initdb/initdb.sql` — Postgres only runs it on its very first start (empty data folder), so if the first start failed, stop the stack, empty `config/guacamole/postgres/`, and start again.
 
 ## Stream analytics (Tracearr)
 

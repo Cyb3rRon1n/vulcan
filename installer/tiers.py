@@ -61,6 +61,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("pihole", "Pi-hole + Unbound (DNS ad-blocker)", optional=True, category="Infrastructure"),
     ServiceDefinition("portainer", "Portainer", optional=True, category="Utilities"),
     ServiceDefinition("adguardhome", "AdGuard Home", optional=True, category="Infrastructure"),
+    ServiceDefinition("guacamole", "Guacamole (remote desktop gateway)", optional=True, category="Infrastructure"),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

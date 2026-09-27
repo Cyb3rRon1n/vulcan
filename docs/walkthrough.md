@@ -380,9 +380,9 @@ download client → your library → Jellyfin, with no further clicks.
 
 ## 10. Threadfin
 
-If you enabled it: Threadfin's web UI lives at `/web/` (its container
-listens at the domain root for HDHomeRun tuner-discovery XML instead - if
-clicking its tile lands you on an XML page rather than the UI, that's why).
+If you enabled it: Threadfin's web UI lives at `/web/` - the domain root
+serves HDHomeRun tuner-discovery XML for Jellyfin instead. The Homepage tile
+already links to `/web/`; if you type the address yourself, add it.
 
 1. **Playlist tab** - add your M3U source (a paid IPTV subscription's M3U
    URL, or an HDHomeRun/ATSC tuner you own). Don't use pirated/free IPTV
@@ -513,6 +513,11 @@ above are actually running.
   unattended restart would hurt (Jellyfin, Authelia, Traefik, Vaultwarden,
   CrowdSec, Cloudflared, Gluetun, Pi-hole/Unbound) - update those with
   `vulcan update` at a quiet moment.
+- **Guacamole** (remote desktop into your LAN machines): open
+  `/guacamole/` on it, log in as `guacadmin` / `guacadmin`, and **replace
+  that account first** - create your own admin, then delete `guacadmin`.
+  Then add connections (RDP/VNC/SSH).
+  [Details](integrations.md#remote-desktop-gateway-guacamole)
 - **Tracearr** (stream stats), **ntfy** (push notifications) and
   **Glances** (host stats) need no setup beyond their first-visit account,
   where they have one - see [Optional Integrations](integrations.md).
