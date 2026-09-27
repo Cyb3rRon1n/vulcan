@@ -14,12 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Whisper** (optional, requires Bazarr) — faster-whisper speech-to-text so Bazarr can generate subtitles when no provider has any.
 - **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS), **Suwayomi** (self-hosted Tachiyomi/Mihon — browse + download manga), **Mylar3** (comic/manga PVR), and **LazyLibrarian** (ebook/audiobook PVR, the maintained Readarr alternative). Kavita moved into it.
 - **slskd** (Soulseek music client) — searchable from Lidarr via the `Lidarr.Plugin.Slskd` plugin (needs Lidarr on the `nightly` tag), or standalone. Pre-seeded `slskd.yml` with a generated web password + Lidarr-plugin API key.
-- 43 known services.
+- 46 known services.
 
 ### Fixed
 - **CrowdSec was blind.** Hardened Traefik (`cap_drop: ALL`) couldn't open its PUID-owned access log and failed silently, so CrowdSec read nothing; Traefik now gets `DAC_OVERRIDE` when CrowdSec is enabled. Through a Cloudflare Tunnel every visitor also looked like the cloudflared container's private IP: the tunnel entrypoint now trusts `X-Forwarded-For` from private (container) addresses and the bouncer reads the real client IP. The bouncer tolerates 2 failed decision pulls (`updatemaxfailure=2`) instead of blocking all traffic whenever CrowdSec restarts.
 
 ### Changed
+- **Walkthrough overhaul** — fixed three wrong instructions (Jellyfin has no built-in 2FA; *arr apps are connected from Prowlarr's Settings > Apps, not "Sync with Prowlarr"; qBittorrent's first login is a temporary password in its log) and two wrong host paths (MeTube/Downtify). Exact root folders, download-client host (`gluetun` behind the VPN), Seerr/Bazarr/Jellyfin setup that actually works, and new steps for music & reading, monitoring (incl. verifying CrowdSec reads traffic), and backups.
 - **Jellyfin gets CPU headroom for software transcoding** on hosts without a GPU: a quarter of the logical CPUs, never below the tier value, capped at 12.
 - **Netdata is reachable at `netdata.<domain>`** — it runs on the host network, which Traefik's docker provider can't route, so vulcan now generates a Traefik file-provider route (`config/traefik/dynamic/netdata.yml`, rewritten every build).
 - **Watchtower's metrics API is on** (token generated into `stack/.env` as `WATCHTOWER_API_TOKEN`) for Homepage's watchtower widget — see the widgets guide.

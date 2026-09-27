@@ -54,6 +54,8 @@ Scripted use is also supported:
 
 `--non-interactive` requires `--yes` and an explicit `--tier`/`--media-path`. `--start` is opt-in on every path: generating a stack never launches it without being asked or told. Use `--plain` for the plain-prompt flow (no whiptail).
 
+**Next:** every app still needs its one-time setup (accounts, API keys, wiring apps together) — follow the [Post-Install Walkthrough](docs/walkthrough.md) top to bottom; the order matters.
+
 <p align="center">
   <img src="docs/images/screenshots/main-menu.svg" alt="Vulcan Main Menu example" style="max-width: 100%; width: 700px;"><br>
   <sub>The persistent Main Menu (representative mockup, real <code>whiptail</code> theme) — <a href="https://cyb3rron1n.github.io/vulcan/">more in the docs →</a></sub>
@@ -114,7 +116,7 @@ A device backing `/`/`/boot`/`/boot/efi` can never be selected as a target — n
 
 ## Maintaining an Existing Stack
 
-Commands reachable from the Main Menu (not CLI-only):
+Most are also in the Main Menu; `userdata` and `plan` are CLI-only:
 
 | Command | What it does |
 |---|---|
@@ -123,13 +125,15 @@ Commands reachable from the Main Menu (not CLI-only):
 | `sudo vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (+ override and saved state when present) to `backups/`, then copies off-box if `BACKUP_OFFSITE_TARGET` is set |
 | `vulcan userdata export` | Snapshots every Jellyfin user's favorites, 👍/👎, watched status and resume points (rebuild-proof) to `exports/userdata/<date>/` |
 | `vulcan userdata restore <snapshot> [--apply]` | Writes a snapshot back onto a (rebuilt) Jellyfin — dry run unless `--apply` |
-| `sudo vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup |
+| `sudo vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, `.env` (and the override + saved state when archived) from a backup |
 | `sudo vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |
 | `vulcan plan export [file]` | Writes the current stack's shape (tier, services, settings — no credentials) to a shareable JSON file |
 | `vulcan build --from-plan <file>` | Builds a new stack from an exported plan, on this machine or another — every other flag still overrides the plan's value for that field |
 
 Airgap/offline: `--offline` skips the Docker install attempt; `vulcan export`/`import` move a stack's images to a machine never online at all, and `vulcan export-bundle`/`install-bundle` (or `./install --bundle FILE`) carry Vulcan's own Python deps for a zero-network first boot.
+
+**Your own changes** (an extra service, a higher CPU limit, a pinned image) belong in `stack/docker-compose.override.yml`: `vulcan build` rewrites `docker-compose.yml` every time but never touches the override, and every vulcan command loads it. See [Changing settings after install](docs/walkthrough.md#changing-settings-after-install).
 
 Full detail, destructive vs. safe, and airgap installs: [Maintaining a Stack →](https://cyb3rron1n.github.io/vulcan/maintenance/) (or [docs/maintenance.md](docs/maintenance.md)).
 

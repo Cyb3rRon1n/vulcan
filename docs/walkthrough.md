@@ -100,10 +100,10 @@ in Vaultwarden now.
 Authelia protects every other Traefik-routed service in this stack with a
 real login and brute-force lockout. If you added users with `--auth-users`,
 the admin user (you) has full access to everything; users in the `media`
-group can only reach Jellyfin and Jellyseerr — management services like
+group can only reach Jellyfin and Seerr — management services like
 Radarr, Sonarr, and the Traefik dashboard are blocked for them.
 
-Jellyfin and Jellyseerr are deliberately excluded from Authelia's own login
+Jellyfin and Seerr are deliberately excluded from Authelia's own login
 (see "A note on Authelia" below) — their native apps can't complete a
 browser-redirect flow, so their own login is the real protection layer for
 those two services.
@@ -123,6 +123,19 @@ this stack can find anything until this step is done.
 
 Settings > Indexers > Add Indexer, for each tracker/indexer you use.
 
+**Connect the *arr apps here, in Prowlarr** - not the other way round.
+Settings > **Apps** > + > Radarr (then Sonarr, Lidarr, Readarr as enabled):
+
+- **Prowlarr Server:** `http://prowlarr:9696`
+- **Radarr Server:** `http://radarr:7878` (Sonarr `http://sonarr:8989`,
+  Lidarr `http://lidarr:8686`, Readarr `http://readarr:8787`)
+- **API Key:** that app's key from its Settings > General (save it in
+  Vaultwarden - Seerr, Bazarr, Recyclarr and Decluttarr need it too)
+
+Prowlarr then pushes every indexer into each app and keeps them in sync -
+you never add indexers inside Radarr/Sonarr directly. Container names work
+as hostnames because every service shares the stack's Docker network.
+
 **FlareSolverr**, if you enabled it, needs no setup of its own - but
 Prowlarr won't use it until you tell it to. Settings > Indexers > add an
 **Indexer Proxy** > **FlareSolverr**: Host `http://flaresolverr:8191/`,
@@ -136,20 +149,51 @@ drop-in replacement on the same API) and point this proxy at
 
 ## 4. Radarr / Sonarr / Lidarr / Readarr
 
-For each one you enabled:
+For each one you enabled (indexers already arrive from Prowlarr, step 3):
 
-1. Settings > Indexers > Sync with Prowlarr (or add Prowlarr as an
-   indexer source directly - Prowlarr's own docs cover both).
-2. Settings > Media Management, confirm the root folder points at your
-   media library (already mounted correctly by Vulcan, just confirm it).
-3. Settings > General, copy the API key - save it in Vaultwarden. You'll
-   need it again for Recyclarr, Decluttarr, or Jellyseerr if you enabled
-   those.
+1. **Settings > Media Management > Root Folders > Add** - the library
+   folder inside the container. Every *arr app sees your whole media path
+   at `/data`, so:
+
+   | App | Root folder |
+   |---|---|
+   | Radarr | `/data/media/movies` |
+   | Sonarr | `/data/media/tv` |
+   | Lidarr | `/data/media/music` |
+   | Readarr | `/data/media/books/ebooks` |
+
+   Leave **Use Hardlinks instead of Copy** on: downloads (`/data/downloads`)
+   and the library are on the same mount, so a finished download is linked
+   into the library instantly instead of copied (no double disk usage while
+   it seeds).
+2. **Settings > Download Clients > + > qBittorrent** - Host **`gluetun`**
+   if you enabled Gluetun (qBittorrent lives inside Gluetun's network, so
+   `qbittorrent` doesn't resolve), otherwise `qbittorrent`; Port `8080`;
+   your qBittorrent login (step 5); a **Category** per app (`radarr`,
+   `tv-sonarr`, `lidarr`) so each app only imports its own downloads.
+3. **Settings > Profiles** - pick what quality you actually want. The
+   defaults grab almost anything; [Recyclarr](#11-recyclarr-decluttarr-maintainerr)
+   can sync the well-known TRaSH Guides profiles for you instead.
+4. **Settings > General** - copy the API key into Vaultwarden if you
+   haven't already.
 
 ## 5. qBittorrent / SABnzbd
 
-Set a real login on first visit (not the container image's documented
-default) - save it in Vaultwarden.
+**First login:** the image prints a one-time password for the `admin`
+user in its log - find it with
+
+```
+(cd stack && docker compose logs qbittorrent | grep -i "temporary password")
+```
+
+log in with it, then set your own under Tools > Options > WebUI >
+Authentication (and save it in Vaultwarden). The temporary one changes
+every restart until you do.
+
+**Set a seeding limit** (Tools > Options > BitTorrent > Seeding Limits - a
+ratio, a time, or both, with action *Pause*). Without one, nothing ever
+counts as "done", so Decluttarr's cleanup never fires and finished
+torrents sit in the client forever.
 
 **Set the save path first.** qBittorrent's image defaults to `/downloads`,
 which it doesn't have mounted - the *arr apps then can't follow completed
@@ -251,21 +295,60 @@ those, pick a provider with PF or accept slower/incoming-limited peering.
 
 ## 7. Bazarr
 
-If you enabled it: connect it to Radarr and/or Sonarr (Settings >
-Radarr/Sonarr) once they have some content in their libraries - Bazarr
-searches for subtitles against what's already tracked there.
+If you enabled it:
+
+1. **Settings > Languages** - create a **Languages Profile** (e.g.
+   English) and set it as the default for both series and movies.
+   **Bazarr searches nothing until a profile exists and is assigned** -
+   the most common "Bazarr isn't doing anything" cause.
+2. **Settings > Providers** - add a few. OpenSubtitles.com (free account)
+   covers most things; add others for your languages.
+3. **Settings > Sonarr / Radarr** - Address `sonarr` / `radarr`, ports
+   `8989` / `7878`, their API keys. Bazarr works against what's already in
+   their libraries.
+4. Optional: the **Whisper** service can *generate* subtitles when no
+   provider has any - see [integrations](integrations.md#ai-subtitles-whisper-for-bazarr).
 
 ## 8. Jellyfin
 
-Create your library folders (Dashboard > Libraries > Add Media Library) -
-one per content type, pointed at the matching folder under
-`/data/media` inside the container.
+The first visit runs Jellyfin's setup wizard - create your admin account
+(strong, unique password; save it in Vaultwarden), then add libraries. Jellyfin
+sees your media at `/data/media`:
 
-Then, **enable Jellyfin's own two-factor authentication**
-(Dashboard > My Profile). This matters more here than for any other
-service in this stack: even with Authelia enabled, Jellyfin is
+| Library (content type) | Folder |
+|---|---|
+| Movies | `/data/media/movies` |
+| Shows | `/data/media/tv` |
+| Music | `/data/media/music` |
+| Books | `/data/media/books` |
+| YouTube (MeTube) | `/data/media/youtube` - content type *Mixed* or *Home videos* |
+
+A few settings worth changing right away:
+
+- **Shows metadata:** Dashboard > Plugins > Catalog > install **TheTVDB**,
+  restart, then enable it under the Shows library's metadata downloaders.
+  Without it, shows that arrive without an `.nfo` file keep their raw
+  folder name (`Name (2020) [tvdbid-12345]`) as their title.
+- **Heavy scheduled tasks:** on a large library, *Extract Chapter Images*
+  and *Generate Trickplay Images* run ffmpeg over every file and can
+  exhaust the container's memory (seen at 4 GB on ~1,300 movies). In
+  Dashboard > Scheduled Tasks, remove their triggers or schedule them for
+  overnight if you want the thumbnails.
+- **Transcoding:** if Vulcan detected a GPU, set Dashboard > Playback >
+  Transcoding > Hardware acceleration to match it (Intel/AMD: VAAPI or QSV;
+  NVIDIA: NVENC). Without a GPU, Vulcan already gives Jellyfin extra CPU.
+- **Users:** Dashboard > Users > + for each household member. Their
+  favorites, 👍/👎 and watch history can be backed up and restored -
+  see step 15.
+
+**Security - Jellyfin has no built-in two-factor authentication**
+(it's a long-standing feature request; third-party plugins exist - vet
+one before trusting it). Even with Authelia enabled, Jellyfin is
 deliberately excluded from it (see "A note on Authelia" below), so its own
-login is the real, only protection in front of it.
+passwords are the real protection. Give every user a strong password, keep
+CrowdSec enabled in front of it (step 14 shows how to confirm it's actually
+working), and turn off **Allow remote connections** for accounts that only
+ever watch at home (Dashboard > Users > the user > *Profile*).
 
 Last, **create an API key for user-data backups** (Dashboard > API Keys >
 +, name it `vulcan`) and paste it after `JELLYFIN_API_KEY=` in
@@ -276,11 +359,24 @@ or re-added. `vulcan userdata export` saves them keyed by TMDb/TVDb/IMDb
 ids so `vulcan userdata restore` can put them back on any Jellyfin - see
 [Maintaining a Stack](maintenance.md#jellyfin-user-data).
 
-## 9. Jellyseerr
+## 9. Seerr (requests)
 
-If you enabled it: connect it to Jellyfin (for your library) and to
-Radarr/Sonarr (so requests actually get fulfilled) through its own setup
-wizard.
+If you enabled it, its setup wizard runs on the first visit:
+
+1. **Sign in with Jellyfin** - server `http://jellyfin:8096`, your Jellyfin
+   admin login. Select the libraries to sync (Movies, Shows) so Seerr knows
+   what you already have.
+2. **Settings > Services > Add Radarr** - Hostname `radarr`, Port `7878`,
+   API key, then Test and pick the **Quality Profile** and **Root Folder**
+   (`/data/media/movies`), tick **Default Server**. **Add Sonarr** the same
+   way (`sonarr`, `8989`, `/data/media/tv`); if you keep anime separately,
+   set the anime profile/root folder there too.
+3. **Users > Import Jellyfin Users**, then decide each user's permissions -
+   *Request* for everyone, *Auto-Approve* only for people whose requests
+   you don't want to review.
+
+A request now goes Seerr → Radarr/Sonarr → Prowlarr's indexers → the
+download client → your library → Jellyfin, with no further clicks.
 
 ## 10. Threadfin
 
@@ -326,8 +422,16 @@ setup rather than replacing any part of it:
     even with decluttarr running - the job silently never fires,
     found live on a real install.
 - **Maintainerr** has no pre-seeded config - connect it to Jellyfin (or
-  Plex/Emby) and Radarr/Sonarr through its own setup wizard, then create
-  your library-cleanup rules there.
+  Plex/Emby), Radarr/Sonarr and Seerr through its own settings, then create
+  library-cleanup rules. It deletes media, so be careful:
+  - **Wait for real watch history.** Rules like "nobody watched it in a
+    year" are meaningless on a new server - on one a month old, such a rule
+    matched 918 of 1,317 movies. Give it months first.
+  - **Start review-only:** leave *Take action after days* empty and attach
+    no Radarr/Sonarr action, so matches only land in a collection you can
+    look through. Switch deletion on later, per rule, once you trust it.
+  - Exclude anything a user requested (Seerr *request date* doesn't exist)
+    and anything someone favorited.
 
 ## 12. MeTube / Downtify
 
@@ -335,11 +439,36 @@ If you enabled either: paste a URL to start a download, then add a
 Jellyfin library pointed at their output folder so the result shows up
 there automatically:
 
-- MeTube: `stack/media/youtube` on the host
-- Downtify: `stack/media/music/downtify` on the host (inside your existing
-  Music library path, so no new Jellyfin library is needed for this one)
+- MeTube: `<media path>/media/youtube` on the host (`/data/media/youtube`
+  in Jellyfin)
+- Downtify: `<media path>/media/music/downtify` (inside your existing Music
+  library, so no new Jellyfin library is needed for this one)
 
-## 13. Homepage / Dashy / Uptime Kuma / Netdata / Traefik dashboard
+## 13. Music & reading
+
+If you enabled any of these - each has its own full section in
+[Optional Integrations](integrations.md); the short version:
+
+- **Lidarr + slskd (Soulseek)** - set your Soulseek username/password in
+  `stack/config/slskd/slskd.yml`, then in Lidarr install the slskd plugin
+  and add slskd as both a download client and an indexer (host `slskd`,
+  port `5030`, API key from `slskd.yml`). Vulcan already runs Lidarr on the
+  `nightly` image the plugin needs.
+  [Details](integrations.md#music-via-soulseek-slskd-lidarr-plugin)
+- **Navidrome** - create the admin account on first visit; it reads
+  `media/music` read-only, so everything Lidarr/slskd imports appears on
+  its own. Any Subsonic app (phone, desktop) can stream from it.
+  [Details](integrations.md#music-streaming-navidrome)
+- **Reading** - Mylar3 (comics) and LazyLibrarian (ebooks/audiobooks)
+  download, Suwayomi downloads manga, and **Komga** / **Kavita** /
+  **Calibre-Web** are the readers. Everything lands under
+  `media/books/{comics,manga,ebooks}`. Add Komga libraries at
+  `/data/books/comics`, `/data/books/manga`, `/data/books/ebooks`; Kavita's
+  are under `/books/...`.
+  [Details](integrations.md#reading-comics-manga-ebooks-komga-kavita-suwayomi-mylar3-lazylibrarian-calibre-web-automated)
+
+## 14. Dashboards & monitoring
+
 
 Check these last - they only have something to show once the services
 above are actually running.
@@ -358,8 +487,35 @@ above are actually running.
   runs as a fixed container uid/gid (1000:1000, no PUID/PGID support) -
   if your own PUID/PGID differ, you may need `sudo` to edit
   `stack/config/dashy/conf.yml` directly on the host.
-- **Uptime Kuma** needs a one-time account, then a monitor added per
-  service you want to track.
+- **Uptime Kuma** asks you to create its admin account on first visit.
+  Then add an **HTTP** monitor per service - internal URLs test the app
+  itself, public ones test the whole path (DNS, Cloudflare, Traefik, login):
+  - internal: `http://radarr:7878/ping`, `http://sonarr:8989/ping`,
+    `http://prowlarr:9696/ping`, `http://jellyfin:8096/health`,
+    `http://gluetun:8080/` (qBittorrent)
+  - public: `https://jellyfin.<domain>/health`,
+    `https://seerr.<domain>/api/v1/status`, `https://authelia.<domain>/api/health`
+
+  and a notification (Settings > Notifications - ntfy, Discord, email,
+  Signal...) so an outage actually reaches you. Interval 60 s with 2
+  retries avoids alerts for a container that's just restarting.
+- **CrowdSec** - confirm it's really reading traffic, not just running:
+
+  ```
+  docker exec crowdsec cscli metrics show acquisition   # "Lines read" must grow
+  docker exec crowdsec cscli bouncers list              # recent last_pull
+  ```
+
+  If *Lines read* stays at 0, CrowdSec is protecting nothing - check that
+  `stack/config/traefik/logs/access.log` is being written. `cscli decisions
+  list` shows who's currently banned.
+- **Watchtower** updates containers daily **except** the ones an
+  unattended restart would hurt (Jellyfin, Authelia, Traefik, Vaultwarden,
+  CrowdSec, Cloudflared, Gluetun, Pi-hole/Unbound) - update those with
+  `vulcan update` at a quiet moment.
+- **Tracearr** (stream stats), **ntfy** (push notifications) and
+  **Glances** (host stats) need no setup beyond their first-visit account,
+  where they have one - see [Optional Integrations](integrations.md).
 - **Netdata** and the **Traefik dashboard** need no setup at all - both
   are ready to view as soon as their containers start. With a domain,
   Netdata is at `netdata.<domain>` (it runs on the host network, so vulcan
@@ -371,6 +527,24 @@ above are actually running.
 <p align="center">
   <img src="images/screenshots/homepage-dashboard.svg" alt="Homepage dashboard example" style="max-width: 100%; width: 820px;">
 </p>
+
+## 15. Backups
+
+Do this once everything above works - it's what makes all of it
+recoverable:
+
+1. **Config:** `vulcan backup` archives every app's settings and databases
+   (safe while running). Run it now, and nightly from cron.
+2. **Users' watch data:** `vulcan userdata export` saves everyone's
+   favorites, 👍/👎, watched status and resume points in a form that
+   survives a Jellyfin rebuild (needs the API key from step 8).
+3. **Off the machine:** a backup on the same disks as the stack dies with
+   them. Set `BACKUP_OFFSITE_TARGET` in `stack/.env` to an rsync-over-SSH
+   destination (a NAS, another server) and every `vulcan backup` copies
+   itself there.
+
+Commands, the cron lines, and hardening the off-box target:
+[Maintaining a Stack](maintenance.md#off-box-backups).
 
 ## A note on Authelia
 
@@ -384,7 +558,7 @@ own API instead. Putting Authelia in front of either one would just break
 their native apps outright.
 
 Everything else Vulcan routes (the *arr apps, download clients,
-Jellyseerr, Homepage, dashboards) is a plain browser-only web UI with no
+Seerr, Homepage, dashboards) is a plain browser-only web UI with no
 native-app login of its own, so Authelia protects all of those cleanly.
 
 ## Reaching everything remotely
@@ -403,7 +577,7 @@ native-app login of its own, so Authelia protects all of those cleanly.
      `CF_DNS_API_TOKEN`. This is what lets Traefik prove domain ownership
      to Let's Encrypt without opening any port for the challenge itself.
   2. **Add a DNS record for each subdomain you're routing** (Jellyfin,
-     Jellyseerr, whatever else was in your `--services` list) - Cloudflare
+     Seerr, whatever else was in your `--services` list) - Cloudflare
      dashboard → your domain → DNS → Add record → type `A` → name
      `jellyfin` (etc.) → content = this host's public IP.
   3. **Decide proxy status per record** - this is the actual "hide my
@@ -460,7 +634,7 @@ native-app login of its own, so Authelia protects all of those cleanly.
 Both can be enabled together - Tailscale for your own admin access
 (Homepage, Traefik's dashboard, anything you'd rather keep off the public
 internet entirely), Traefik+domain for the one or two services (Jellyfin,
-Jellyseerr) you actually want reachable by other people.
+Seerr) you actually want reachable by other people.
 
 **Gluetun and Tailscale can also run side by side.** Gluetun is
 container-scoped - only qBittorrent routes its traffic out through the
