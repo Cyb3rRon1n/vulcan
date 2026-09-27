@@ -6,8 +6,8 @@ Every command below is also reachable from the guided menu's own **Main Menu** (
 |---|---|
 | `vulcan update` | Pulls the latest images and recreates containers |
 | `vulcan pull` | Pulls images without starting anything |
-| `vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` to `backups/` |
-| `vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup archive |
+| `vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (plus `docker-compose.override.yml` and `.vulcan-state.json` when present) to `backups/` |
+| `vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, `.env` and (if archived) the override + saved state from a backup archive |
 | `vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 
 `vulcan update` is the on-demand alternative to Heavy tier's Watchtower (which updates continuously on its own) — useful for every other tier, for a cron job, or to force an update right now instead of waiting for the next poll. It confirms before touching anything running (`--non-interactive --yes` for scripted use).
