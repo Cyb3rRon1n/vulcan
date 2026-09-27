@@ -266,6 +266,15 @@ service in this stack: even with Authelia enabled, Jellyfin is
 deliberately excluded from it (see "A note on Authelia" below), so its own
 login is the real, only protection in front of it.
 
+Last, **create an API key for user-data backups** (Dashboard > API Keys >
++, name it `vulcan`) and paste it after `JELLYFIN_API_KEY=` in
+`stack/.env`. A config backup restores Jellyfin's settings, but every
+user's favorites, 👍/👎, watched status and resume points are tied to
+Jellyfin's internal item ids, which change if the library is ever rebuilt
+or re-added. `vulcan userdata export` saves them keyed by TMDb/TVDb/IMDb
+ids so `vulcan userdata restore` can put them back on any Jellyfin - see
+[Maintaining a Stack](maintenance.md#jellyfin-user-data).
+
 ## 9. Jellyseerr
 
 If you enabled it: connect it to Jellyfin (for your library) and to
