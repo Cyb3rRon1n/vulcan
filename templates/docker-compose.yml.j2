@@ -756,6 +756,23 @@ services:
     container_name: gluetun
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain and 'qbittorrent' in enabled %}
+      # qbittorrent shares this container's network namespace (network_mode:
+      # service:...), and Traefik's docker provider skips such containers -
+      # so its router has to live here, pointed at qbittorrent's port inside
+      # the shared netns.
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.{{ domain }}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.qbittorrent.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.qbittorrent.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.qbittorrent.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
     # image). NET_ADMIN: the VPN tunnel. NET_RAW: gluetun's own
     # healthcheck ICMP probe (without it, it logs "not permitted ...
@@ -1965,6 +1982,23 @@ services:
     container_name: unbound
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
+{% if 'traefik' in enabled and domain %}
+      # pihole shares this container's network namespace (network_mode:
+      # service:...), and Traefik's docker provider skips such containers -
+      # so its router has to live here, pointed at pihole's port inside
+      # the shared netns.
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.{{ domain }}`)"
+      - "traefik.http.routers.pihole.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.pihole.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.pihole.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.pihole.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
     ports:
       - "{{ ports['pihole'] }}:80"
     volumes:
