@@ -92,7 +92,7 @@ def test_medium_services_include_all_light_services_plus_additions():
 
     assert light_keys.issubset(medium_keys)
     assert medium_keys - light_keys == {
-        "seerr", "bazarr", "flaresolverr",
+        "seerr", "bazarr", "flaresolverr", "byparr", "whisper",
         "threadfin", "tracearr", "uptime-kuma", "watchtower"
     }
 
@@ -157,7 +157,7 @@ def test_all_services_is_exactly_the_union_of_every_tier():
     }
 
     assert all_keys == union_keys
-    assert len(all_keys) == 44
+    assert len(all_keys) == 46
     assert len(ALL_SERVICES) == len(all_keys)
 
 

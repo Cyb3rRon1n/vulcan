@@ -1521,6 +1521,8 @@ _guided_setup_customize_services() {
         "prowlarr:Prowlarr (indexers):Media Management"
         "bazarr:Bazarr (subtitles):Media Management"
         "flaresolverr:FlareSolverr:Media Management"
+        "byparr:Byparr (FlareSolverr alternative):Media Management"
+        "whisper:Whisper (AI subtitles for Bazarr):Media Management"
         "recyclarr:Recyclarr (TRaSH sync):Media Management"
         "decluttarr:Decluttarr (download queue cleanup):Media Management"
         "maintainerr:Maintainerr (library cleanup):Media Management"

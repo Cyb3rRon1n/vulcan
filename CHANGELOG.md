@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - **`vulcan userdata export` / `restore`** — rebuild-proof snapshots of every Jellyfin user's favorites, 👍/👎, watched status and resume points (keyed by TMDb/TVDb/IMDb ids), plus Seerr requests; restore is a dry run unless `--apply`. Needs `JELLYFIN_API_KEY` in `stack/.env`.
 - **Off-box backups** — set `BACKUP_OFFSITE_TARGET` (rsync over SSH) and `vulcan backup` also copies `backups/` + `exports/userdata/` there; a failed copy exits 2 without touching the local backup.
+- **Byparr** (optional) — maintained, Firefox-based drop-in FlareSolverr replacement; Suwayomi prefers it automatically. Runs fully hardened (verified solving a real Cloudflare challenge under `cap_drop: ALL`).
+- **Whisper** (optional, requires Bazarr) — faster-whisper speech-to-text so Bazarr can generate subtitles when no provider has any.
 - **Reading** service category with **Komga** (comic/manga/ebook reader + OPDS), **Suwayomi** (self-hosted Tachiyomi/Mihon — browse + download manga), **Mylar3** (comic/manga PVR), and **LazyLibrarian** (ebook/audiobook PVR, the maintained Readarr alternative). Kavita moved into it.
 - **slskd** (Soulseek music client) — searchable from Lidarr via the `Lidarr.Plugin.Slskd` plugin (needs Lidarr on the `nightly` tag), or standalone. Pre-seeded `slskd.yml` with a generated web password + Lidarr-plugin API key.
 - 43 known services.

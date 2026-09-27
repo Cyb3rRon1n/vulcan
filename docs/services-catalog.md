@@ -4,7 +4,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 **Tier** below is the lowest tier that includes a service by default; **core** services are on by default at that tier, **optional** ones are opt-in at every tier via custom mode. See [Tiers & Custom Mode](tiers.md).
 
-45 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
+47 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](../ROADMAP.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
 ## Media Server
 
@@ -37,6 +37,8 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Maintainerr | Light | optional | Cleans up unwatched/unwanted media on your own rules. |
 | Bazarr | Medium | core | Finds and manages subtitles. |
 | FlareSolverr | Medium | core | Solves CAPTCHA/anti-bot challenges some indexers put up. |
+| Byparr | Medium | optional | Drop-in FlareSolverr replacement (same API), Firefox-based and actively maintained — gets past challenges FlareSolverr can't. Suwayomi uses it automatically. |
+| Whisper | Medium | optional | Speech-to-text subtitles for Bazarr when no provider has any (requires Bazarr; CPU-heavy). |
 | Lidarr | Heavy | optional | Finds and organizes music. |
 | Readarr | Heavy | optional | Finds and organizes books/ebooks. |
 

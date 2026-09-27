@@ -183,20 +183,34 @@ LazyLibrarian also has a Soulseek provider that can point at the same slskd, but
 
 **FlareSolverr** (`flaresolverr`, port 8191) is the built-in indexer proxy: add it in Prowlarr under Settings → Indexers → Indexer Proxy, tag the indexers that need it. It's only lightly maintained now and can't get past some current Cloudflare/Turnstile challenges.
 
-**Byparr** is a drop-in replacement — same `/v1` API, Camoufox-based. It isn't a first-class Vulcan service because its headless browser needs a relaxed container sandbox (it won't run under `cap_drop: ALL` + `no-new-privileges`, which every generated service uses). Add it via `docker-compose.override.yml`:
+**Byparr** is a drop-in replacement — same `/v1` API, Camoufox (Firefox) based, actively maintained — and an optional Vulcan service (`byparr`, Media Management). Enable it and:
+
+- **Suwayomi** is pointed at `http://byparr:8191` automatically (it prefers Byparr when both solvers are on).
+- **Prowlarr**: Settings → Indexers → add an Indexer Proxy → *FlareSolverr*, Host `http://byparr:8191/`, Request Timeout `60`, give it a tag and add that tag to each Cloudflare-guarded indexer.
+- **Mylar3**: set `flaresolverr_url = http://byparr:8191/` in `config/mylar3/mylar/config.ini`.
+
+It runs hardened like every other service (`cap_drop: ALL` + `no-new-privileges`, verified solving a real Cloudflare challenge that way) with a 2 GB `/dev/shm` (Firefox crashes mid-solve on Docker's 64 MB default) and no published port. You can untick `flaresolverr` once Byparr is wired in — nothing else depends on it.
+
+**One thing to watch:** Byparr keeps a browser open between solves, and occasionally a solved page's tab keeps spinning at ~1 core while Byparr is otherwise idle. If `docker stats byparr` shows high CPU with nothing in `docker logs byparr` for minutes, `docker restart byparr` clears it (a cron that does this only when it's busy *and* idle is a reasonable safety net).
+
+## AI subtitles (Whisper for Bazarr)
+
+When no subtitle provider has anything for an episode — common for older, foreign or niche releases — Bazarr can **generate** one with speech-to-text. The optional `whisper` service (`onerahmet/openai-whisper-asr-webservice`, faster-whisper engine) provides that; it requires Bazarr.
+
+1. Enable `whisper`, then in Bazarr: **Settings → Providers → Whisper**, Endpoint `http://whisper:9000`, Timeout `3600`.
+2. Bazarr treats it as a provider of last resort, so it only runs when nothing else matched.
+
+It's CPU-heavy — each episode takes minutes — and runs on the `heavy` resource profile. The default model is `small`, which fits every tier; on a Heavy host `medium` (~2.7 GB RAM measured) is noticeably more accurate:
 
 ```yaml
+# stack/docker-compose.override.yml
 services:
-  byparr:
-    image: ghcr.io/thephaseless/byparr:latest
-    container_name: byparr
+  whisper:
     environment:
-      - TZ=${TZ}
-    shm_size: 2gb          # Camoufox crashes mid-solve with the 64M default
-    restart: unless-stopped
+      - ASR_MODEL=medium
 ```
 
-Then point Prowlarr's FlareSolverr indexer proxy at `http://byparr:8191/` (the proxy attaches to indexers by tag — make sure each Cloudflare-guarded indexer carries that tag). Update `FLARESOLVERR_URL` for Suwayomi and `flaresolverr_url` in Mylar's config the same way. You can leave the `flaresolverr` container running or untick it — nothing else depends on it.
+Models download on first use into `config/whisper`.
 
 ## Web file manager (FileBrowser)
 

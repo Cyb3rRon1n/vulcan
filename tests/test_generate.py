@@ -1134,6 +1134,24 @@ def test_netdata_route_absent_without_domain(tmp_path):
 
     write_stack(config, output_dir=tmp_path / "stack")
     assert not (tmp_path / "stack" / "config" / "traefik" / "dynamic" / "netdata.yml").exists()
+def test_render_compose_suwayomi_prefers_byparr_over_flaresolverr():
+    both = yaml.safe_load(render_compose(make_config(
+        "heavy", custom_services={"suwayomi", "flaresolverr", "byparr"})))["services"]
+    only_fs = yaml.safe_load(render_compose(make_config(
+        "heavy", custom_services={"suwayomi", "flaresolverr"})))["services"]
+
+    assert "FLARESOLVERR_URL=http://byparr:8191" in both["suwayomi"]["environment"]
+    assert "FLARESOLVERR_URL=http://flaresolverr:8191" in only_fs["suwayomi"]["environment"]
+
+
+def test_render_compose_byparr_and_whisper_are_internal_only():
+    services = yaml.safe_load(render_compose(make_config(
+        "heavy", custom_services={"byparr", "whisper", "bazarr"})))["services"]
+
+    assert "ports" not in services["byparr"] and "ports" not in services["whisper"]
+    assert services["byparr"]["shm_size"] == "2gb"
+    assert "ASR_ENGINE=faster_whisper" in services["whisper"]["environment"]
+    assert "./config/whisper:/data/whisper-models" in services["whisper"]["volumes"]
 
 
 def test_render_compose_ntfy_caps_mounts_and_port():
@@ -1516,6 +1534,7 @@ FIVE_CAP_SET = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 # added capabilities - no privilege-drop or ownership-fixup step to
 # support, verified against the real image with no cap_add at all.
 ZERO_CAP_SERVICES = {
+    "byparr", "whisper",
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
