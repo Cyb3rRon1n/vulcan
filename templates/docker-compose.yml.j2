@@ -1352,6 +1352,10 @@ services:
       - "--api.dashboard=true"
 {% if 'cloudflared' in enabled %}
       - "--entrypoints.tunnel.address=:8081"
+      # Tunnel traffic arrives from the cloudflared container, which puts the visitor's real IP
+      # in X-Forwarded-For. Trust that only from private (container) addresses - :8081 is never
+      # published - so the access log and CrowdSec see visitors instead of cloudflared's IP.
+      - "--entrypoints.tunnel.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 {% endif %}
 {% if domain %}
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -1403,6 +1407,12 @@ services:
     # ROADMAP.md's cap_drop entry.
     cap_drop:
       - ALL
+{% if 'crowdsec' in enabled %}
+    # Root in the container can't open the PUID-owned access log without DAC_OVERRIDE once
+    # every cap is dropped - and Traefik fails SILENTLY, leaving CrowdSec with nothing to read.
+    cap_add:
+      - DAC_OVERRIDE
+{% endif %}
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -1473,6 +1483,12 @@ services:
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.enabled=true"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecmode=stream"
       - "traefik.http.middlewares.crowdsec.plugin.bouncer.crowdseclapikey=${CROWDSEC_BOUNCER_KEY}"
+      # Real client IP from X-Forwarded-For when the previous hop is a container (cloudflared),
+      # otherwise every tunnel visitor looks like one private, whitelisted IP.
+      - "traefik.http.middlewares.crowdsec.plugin.bouncer.forwardedheaderstrustedips=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      # stream mode: tolerate 2 failed decision pulls (~2 min) before failing closed. At 0 the
+      # bouncer blocks every request whenever CrowdSec restarts or starts after Traefik.
+      - "traefik.http.middlewares.crowdsec.plugin.bouncer.updatemaxfailure=2"
 {% endif %}
     # Verified empirically (docker run --cap-drop=ALL against the real
     # image) - starts and runs cleanly with zero added capabilities, no
