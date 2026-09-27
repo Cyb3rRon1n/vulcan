@@ -435,12 +435,15 @@ def detect_gpu() -> str | None:
                 timeout=5
             )
 
-            output = result.stdout.lower()
+            # Per line: the display device itself must be Intel. Checking the whole output
+            # matched any Intel chipset line + any VGA line - e.g. a Xeon server's Intel
+            # host bridge + its ASPEED BMC video (no transcoding at all) came out "intel".
+            for line in result.stdout.lower().splitlines():
 
-            if "intel" in output and (
-                "vga" in output or "3d controller" in output
-            ):
-                return "intel"
+                if "intel" in line and any(
+                    kind in line for kind in ("vga compatible controller", "3d controller", "display controller")
+                ):
+                    return "intel"
 
         except (subprocess.SubprocessError, OSError):
             pass
