@@ -120,7 +120,9 @@ Commands reachable from the Main Menu (not CLI-only):
 |---|---|
 | `sudo vulcan update` | Pulls latest images and recreates containers |
 | `sudo vulcan pull` | Pulls images without starting anything |
-| `sudo vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (+ override and saved state when present) to `backups/` |
+| `sudo vulcan backup` | Archives `stack/config/` + `docker-compose.yml`/`.env` (+ override and saved state when present) to `backups/`, then copies off-box if `BACKUP_OFFSITE_TARGET` is set |
+| `vulcan userdata export` | Snapshots every Jellyfin user's favorites, 👍/👎, watched status and resume points (rebuild-proof) to `exports/userdata/<date>/` |
+| `vulcan userdata restore <snapshot> [--apply]` | Writes a snapshot back onto a (rebuilt) Jellyfin — dry run unless `--apply` |
 | `sudo vulcan restore [file]` | Restores `config/`, `docker-compose.yml`, and `.env` from a backup |
 | `sudo vulcan uninstall` | Stops the stack and deletes `stack/` entirely — back to a clean slate |
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |

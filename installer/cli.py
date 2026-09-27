@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -39,14 +40,17 @@ from installer.generate import (
     export_plan,
     find_next_available_port,
     load_plan,
+    _preserved_vpn_value,
     load_previous_state,
     render_setup_order,
     render_stack_summary,
     resolve_ports,
     write_stack,
 )
+from installer.userdata import USERDATA_DIR, Jellyfin, export_userdata, restore_userdata
 from installer.post_install import (
     backup_stack,
+    push_offsite,
     compose_file_args,
     compose_up_command,
     export_images,
@@ -119,6 +123,11 @@ plan_app = typer.Typer(
     help="Export the current stack's shape (tier, services, settings - no secrets) to a shareable file."
 )
 app.add_typer(plan_app, name="plan")
+
+userdata_app = typer.Typer(
+    help="Export/restore every Jellyfin user's favorites, likes, watched status and resume points."
+)
+app.add_typer(userdata_app, name="userdata")
 
 console = Console()
 
@@ -1091,6 +1100,98 @@ def backup():
 
     for warning in result["warnings"]:
         console.print(f"[yellow]! {warning}[/yellow]")
+
+    target = _preserved_vpn_value(STACK_DIR, "BACKUP_OFFSITE_TARGET", "")
+
+    if target:
+
+        # backups/ already carries the override + saved state inside each archive; exports/userdata
+        # holds the Jellyfin user-data snapshots (`vulcan userdata export`).
+        pushed = push_offsite(target, [Path("backups"), USERDATA_DIR],
+                              _preserved_vpn_value(STACK_DIR, "BACKUP_OFFSITE_SSH_KEY", ""))
+
+        if pushed["success"]:
+            console.print(f"[green]Copied off-box to {target}[/green]")
+        else:
+            console.print(f"[red]Off-box copy to {target} FAILED for: {', '.join(pushed['errors'])} "
+                          "- the local backup is fine; check SSH access to the target.[/red]")
+            raise typer.Exit(code=2)
+
+
+def _jellyfin_for_userdata(url: str | None) -> Jellyfin:
+
+    key = _preserved_vpn_value(STACK_DIR, "JELLYFIN_API_KEY", "")
+
+    if not key:
+        console.print(
+            "[red]No JELLYFIN_API_KEY in stack/.env.[/red] Create one in Jellyfin (Dashboard > API Keys > +), "
+            "paste it after JELLYFIN_API_KEY= in stack/.env, and re-run."
+        )
+        raise typer.Exit(code=1)
+
+    if url is None:
+        state = load_previous_state(STACK_DIR)
+        port = resolve_ports(_config_from_previous_state(state))["jellyfin"] if state else 8096
+        url = f"http://localhost:{port}"
+
+    return Jellyfin(url, key)
+
+
+@userdata_app.command(name="export")
+def userdata_export(
+    jellyfin_url: str | None = typer.Option(None, "--jellyfin-url", help="Default: this stack's Jellyfin"),
+):
+    """
+    Snapshot every Jellyfin user's favorites, 👍/👎, watched status and resume points (plus Seerr
+    requests and the library list) into exports/userdata/<date>/, keyed by TMDb/TVDb/IMDb ids so
+    they survive a Jellyfin rebuild. Keeps the newest 30. Safe to run from cron.
+    """
+
+    jf = _jellyfin_for_userdata(jellyfin_url)
+    seerr = None
+    seerr_settings = STACK_DIR / "config" / "seerr" / "settings.json"
+    state = load_previous_state(STACK_DIR)
+
+    if state and seerr_settings.exists():
+        try:
+            key = json.loads(seerr_settings.read_text())["main"]["apiKey"]
+            seerr = (f"http://localhost:{resolve_ports(_config_from_previous_state(state))['seerr']}", key)
+        except (OSError, KeyError, ValueError):
+            console.print("[yellow]! Couldn't read Seerr's API key - exporting without Seerr requests.[/yellow]")
+
+    result = export_userdata(jf, seerr=seerr)
+    items = sum(result["users"].values())
+    console.print(
+        f"[green]Exported {len(result['users'])} users ({items} items), {result['requests']} Seerr requests, "
+        f"{result['titles']} titles -> {result['path']}[/green]"
+    )
+
+
+@userdata_app.command(name="restore")
+def userdata_restore(
+    snapshot: Path = typer.Argument(..., help="An exports/userdata/<date> folder"),
+    user: str | None = typer.Option(None, "--user", help="Only this Jellyfin user"),
+    apply: bool = typer.Option(False, "--apply", help="Actually write (default is a dry run)"),
+    jellyfin_url: str | None = typer.Option(None, "--jellyfin-url", help="Default: this stack's Jellyfin"),
+):
+    """
+    Write a snapshot back onto Jellyfin, matching titles by TMDb/TVDb/IMDb ids and users by name
+    (create the users first). Dry run unless --apply.
+    """
+
+    if not (snapshot / "users").is_dir():
+        console.print(f"[red]{snapshot} isn't a userdata snapshot (no users/ folder).[/red]")
+        raise typer.Exit(code=1)
+
+    for r in restore_userdata(_jellyfin_for_userdata(jellyfin_url), snapshot, user=user, apply=apply):
+        if "error" in r:
+            console.print(f"[yellow]{r['user']}: {r['error']}[/yellow]")
+            continue
+        missing = f", {len(r['missing'])} not in this library" if r["missing"] else ""
+        console.print(f"{r['user']}: {r['matched']} matched{' and restored' if apply else ''}{missing}")
+
+    if not apply:
+        console.print("Dry run - add --apply to write.")
 
 
 @plan_app.command(name="export")

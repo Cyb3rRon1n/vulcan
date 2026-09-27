@@ -584,7 +584,10 @@ def render_env(
     vaultwarden_signups_allowed: str = "true",
     crowdsec_bouncer_key: str | None = None,
     tunnel_token: str = "changeme",
-    pihole_webpassword: str | None = None
+    pihole_webpassword: str | None = None,
+    jellyfin_api_key: str = "",
+    backup_offsite_target: str = "",
+    backup_offsite_ssh_key: str = ""
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -632,7 +635,10 @@ def render_env(
         cloudflared_enabled="cloudflared" in enabled,
         tunnel_token=tunnel_token,
         pihole_enabled="pihole" in enabled,
-        pihole_webpassword=pihole_webpassword or secrets.token_hex(16)
+        pihole_webpassword=pihole_webpassword or secrets.token_hex(16),
+        jellyfin_api_key=jellyfin_api_key,
+        backup_offsite_target=backup_offsite_target,
+        backup_offsite_ssh_key=backup_offsite_ssh_key
     )
 
 
@@ -1395,7 +1401,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         tunnel_token=_preserved_vpn_value(output_dir, "TUNNEL_TOKEN", "changeme"),
         pihole_webpassword=(
             _preserved_vpn_value(output_dir, "PIHOLE_WEBPASSWORD", "") or None
-        )
+        ),
+        # User-filled, optional - must survive a rebuild (unknown .env keys are dropped).
+        jellyfin_api_key=_preserved_vpn_value(output_dir, "JELLYFIN_API_KEY", ""),
+        backup_offsite_target=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_TARGET", ""),
+        backup_offsite_ssh_key=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_SSH_KEY", "")
     )
 
     compose_path.write_text(render_compose(config, host_ip))
