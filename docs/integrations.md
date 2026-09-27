@@ -110,6 +110,8 @@ If Homepage or Dashy is included, it boots with real tiles for every other web-f
 
 Live CPU/RAM/disk/network/temperature and per-container awareness, matched to its own official recommended configuration.
 
+One deliberate deviation: vulcan seeds `config/netdata/config/go.d.conf` with `modules: docker: no`. netdata's Docker collector polls the Docker API every second and, on a real 45-container host, kept `dockerd` + `containerd` busy on about 6 CPU cores around the clock (measured 6.3 -> 0.2 cores with it off). Per-container CPU/RAM/network charts are unaffected - netdata reads those from cgroups - you only lose its container-state/health-count charts. The file is seeded once and never overwritten; delete it (or set `docker: yes`) to turn the collector back on.
+
 ## Lightweight system monitor + dashboard widgets (Glances)
 
 A single small container (`nicolargo/glances`, port 61208) exposing a REST API. Unlike Netdata it has a normal Docker-network identity, so it routes through Traefik/Authelia like any other service. Its real value is powering Homepage's per-metric `glances` widgets (CPU, RAM, disk I/O, top processes, temperature) — see the [Dashboard Widgets Guide](guides/homepage-widgets.md) for exact widget configs and what does/doesn't work in the default routed setup.

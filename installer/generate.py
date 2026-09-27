@@ -45,6 +45,12 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
+# netdata's go.d docker collector polls the Docker API every second and, measured on a live
+# 45-container host, kept dockerd+containerd at ~6 cores around the clock (6.3 -> 0.2 with it
+# off). Per-container CPU/RAM/net charts don't need it - those come from cgroups. Seeded once;
+# netdata's own entrypoint copies its stock config in with `cp -an`, so this file survives.
+_NETDATA_GO_D = "modules:\n  docker: no\n"
+
 def render_homepage_widgets(config: "GenerationConfig", host_ip: str | None = None) -> str:
     """
     Seeded once into config/homepage/widgets.yaml (Homepage's top info
@@ -1669,6 +1675,15 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 "Jellyfin and Seerr only. Add more users by re-running with --auth-users "
                 "or by editing stack/config/authelia/users_database.yml directly."
             )
+
+    if "netdata" in enabled_service_keys(config):
+
+        go_d_path = output_dir / "config" / "netdata" / "config" / "go.d.conf"
+
+        if not go_d_path.exists():
+
+            go_d_path.parent.mkdir(parents=True, exist_ok=True)
+            go_d_path.write_text(_NETDATA_GO_D)
 
     if "crowdsec" in enabled_service_keys(config):
 
