@@ -380,6 +380,16 @@ CrowdSec enabled in front of it (step 14 shows how to confirm it's actually
 working), and turn off **Allow remote connections** for accounts that only
 ever watch at home (Dashboard > Users > the user > *Profile*).
 
+**Tell Jellyfin which traffic is really remote** (Dashboard > Networking).
+Everything reached through Traefik (or the Cloudflare Tunnel) arrives from a
+private Docker address, so out of the box Jellyfin counts every viewer as
+"on your LAN" - *Allow remote connections* and the per-user
+*Internet streaming bitrate limit* then never take effect. Set **LAN
+networks** to your home subnet (e.g. `192.168.1.0/24`) and **Known proxies**
+to `traefik` (add `cloudflared` too if you use the tunnel), save, and restart
+Jellyfin once - known proxies are only read at startup. Check it worked in
+Dashboard > Activity: remote sessions should now show the viewer's real IP.
+
 Last, **create an API key for user-data backups** (Dashboard > API Keys >
 +, name it `vulcan`) and paste it after `JELLYFIN_API_KEY=` in
 `stack/.env`. A config backup restores Jellyfin's settings, but every
