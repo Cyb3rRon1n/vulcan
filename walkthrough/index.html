@@ -1,0 +1,1906 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Deploy a self-hosted media homelab, sized to your hardware - a tailored Docker Compose stack.">
+      
+      
+      
+      
+        <link rel="prev" href="../maintenance/">
+      
+      
+        <link rel="next" href="../guides/homepage-widgets/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../images/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Post-Install Walkthrough - Vulcan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#post-install-walkthrough" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Vulcan" class="md-header__button md-logo" aria-label="Vulcan" data-md-component="logo">
+      
+  <img src="../images/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Vulcan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Post-Install Walkthrough
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Cyb3rRon1n/vulcan" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Cyb3rRon1n/vulcan
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Vulcan" class="md-nav__button md-logo" aria-label="Vulcan" data-md-component="logo">
+      
+  <img src="../images/logo.svg" alt="logo">
+
+    </a>
+    Vulcan
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Cyb3rRon1n/vulcan" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Cyb3rRon1n/vulcan
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers & Custom Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optional Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Planning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintaining a Stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Post-Install Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Post-Install Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-install-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What ./install does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns-services-and-port-53" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS services and port 53
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-vaultwarden-do-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Vaultwarden - do this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-authelia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Authelia
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-prowlarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Prowlarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-radarr-sonarr-lidarr-readarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Radarr / Sonarr / Lidarr / Readarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-qbittorrent-sabnzbd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. qBittorrent / SABnzbd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-gluetun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Gluetun
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-bazarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Bazarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-jellyfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Jellyfin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-seerr-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Seerr (requests)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-threadfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Threadfin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-recyclarr-decluttarr-maintainerr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Recyclarr / Decluttarr / Maintainerr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-metube-downtify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. MeTube / Downtify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-music-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Music &amp; reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-dashboards-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Dashboards &amp; monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-note-on-authelia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A note on Authelia
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reaching-everything-remotely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching everything remotely
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changing-settings-after-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing settings after install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Changing settings after install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keep-your-own-changes-in-stackdocker-composeoverrideyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep your own changes in stack/docker-compose.override.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/homepage-widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide: Homepage Widgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-install-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What ./install does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns-services-and-port-53" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS services and port 53
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-vaultwarden-do-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Vaultwarden - do this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-authelia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Authelia
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-prowlarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Prowlarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-radarr-sonarr-lidarr-readarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Radarr / Sonarr / Lidarr / Readarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-qbittorrent-sabnzbd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. qBittorrent / SABnzbd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-gluetun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Gluetun
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-bazarr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Bazarr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-jellyfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Jellyfin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-seerr-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Seerr (requests)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-threadfin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Threadfin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-recyclarr-decluttarr-maintainerr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Recyclarr / Decluttarr / Maintainerr
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-metube-downtify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. MeTube / Downtify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-music-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Music &amp; reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-dashboards-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Dashboards &amp; monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-note-on-authelia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A note on Authelia
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reaching-everything-remotely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reaching everything remotely
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changing-settings-after-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing settings after install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Changing settings after install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keep-your-own-changes-in-stackdocker-composeoverrideyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep your own changes in stack/docker-compose.override.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Cyb3rRon1n/vulcan/edit/main/docs/walkthrough.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="post-install-walkthrough">Post-install walkthrough<a class="headerlink" href="#post-install-walkthrough" title="Permanent link">&para;</a></h1>
+<p>Vulcan generates and starts your stack, but every app still needs its own
+one-time setup - accounts, API keys, connecting apps to each other. This is
+the order to do that in. Later steps depend on earlier ones being done
+first, so working top to bottom avoids a lot of "why isn't this working"
+detours (e.g. Radarr can't do anything useful until Prowlarr has indexers,
+and qBittorrent needs a real login before anything else should touch it).</p>
+<p>Skip any section for a service you didn't enable - your guided-menu/CLI run
+also printed a copy of this same order, trimmed to just what you actually
+enabled, right after the stack came up.</p>
+<div class="admonition note">
+<p class="admonition-title">About the screenshots</p>
+<p>The form screenshots are real captures from a throwaway demo stack
+(dummy data, fake API keys - never a real install), filled with exactly
+the values each step tells you to use. A few overview images (the
+Vaultwarden signup, Gluetun log, Homepage and Cloudflare Tunnel route)
+are still hand-built mockups; app UIs change between versions, so yours
+may differ slightly in layout.</p>
+</div>
+<h2 id="what-install-does">What <code>./install</code> does<a class="headerlink" href="#what-install-does" title="Permanent link">&para;</a></h2>
+<p><code>./install</code> runs one <strong>Phase 0</strong> pass before anything else: it installs
+missing system packages (<code>git</code>, <code>python3-venv</code>, <code>whiptail</code>, <code>mdadm</code>) and
+Docker Engine + <code>docker compose</code> on Ubuntu/Debian/Fedora/Arch, adds your
+user to the <code>docker</code> group, and escalates to root <strong>once</strong> (a heads-up
+block, then <code>sudo</code>) if it needs to. On an unsupported distro it prints the
+packages to install by hand and stops. Phase 0 is also its own command:
+<code>vulcan preflight</code> reports, <code>vulcan preflight --fix</code> installs.</p>
+<p>After Phase 0 the guided run is an explicit sequence:</p>
+<ol>
+<li><strong>Preflight</strong> - re-check Phase 0</li>
+<li><strong>Detect</strong> hardware</li>
+<li><strong>Recommend</strong> a tier</li>
+<li><strong>Shape</strong> - pick the tier and services</li>
+<li><strong>Confirm</strong> what's about to be generated</li>
+<li><strong>Build</strong> (<code>vulcan build</code>) - write <code>stack/docker-compose.yml</code> + <code>.env</code>,
+   start nothing; works even with Docker down</li>
+<li><strong>Configure</strong> (<code>vulcan configure</code>) - prompt for the credentials the
+   enabled services need (Gluetun VPN provider + WireGuard key, Cloudflare
+   Tunnel <code>TUNNEL_TOKEN</code>, Tailscale <code>TS_AUTHKEY</code>, Pi-hole web password) and
+   write them into <code>stack/.env</code>; not validated here</li>
+<li><strong>Start</strong> (<code>vulcan start</code>) - needs Docker; port/network check, then
+   <code>docker compose up -d</code>, then a container-stayed-up check</li>
+<li><strong>Report</strong> - every enabled service's real URL</li>
+</ol>
+<h2 id="dns-services-and-port-53">DNS services and port 53<a class="headerlink" href="#dns-services-and-port-53" title="Permanent link">&para;</a></h2>
+<p>If you enabled <strong>AdGuard Home</strong> or <strong>Pi-hole</strong> (which runs with Unbound)
+on Ubuntu, their DNS port <code>:53</code> collides with <code>systemd-resolved</code>. The
+symptom: AdGuard/Unbound exits on start, and with Pi-hole you get a
+cryptic <code>namespace path ... no such file or directory</code> because Pi-hole
+shares Unbound's network namespace. Disable the stub listener <strong>before</strong>
+starting the stack:</p>
+<div class="highlight"><pre><span></span><code>sudo mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\nDNSStubListener=no\n' | sudo tee /etc/systemd/resolved.conf.d/no-stub.conf
+sudo systemctl restart systemd-resolved
+</code></pre></div>
+<h2 id="1-vaultwarden-do-this-first">1. Vaultwarden - do this first<a class="headerlink" href="#1-vaultwarden-do-this-first" title="Permanent link">&para;</a></h2>
+<p>If you enabled it: visit it and create your account before touching
+anything else below. Every login, password, and API key you create for the
+rest of this walkthrough goes here as you create it - it's much easier to
+save each one in the moment than to try to gather them all after the fact.</p>
+<p align="center">
+  <img src="images/screenshots/vaultwarden-signup.svg" alt="Vaultwarden account creation example" style="max-width: 100%; width: 820px;">
+</p>
+
+<p><strong>Browser extension</strong> (so it can save/fill credentials as you go through the
+rest of this walkthrough) - official store listings, confirmed current via
+<code>bitwarden.com/download</code>'s own outbound links:</p>
+<ul>
+<li><strong>Chrome / Brave / Vivaldi</strong>: https://chromewebstore.google.com/detail/bitwarden-free-password-m/nngceckbapebfimnlniiiahkandclblb</li>
+<li><strong>Firefox</strong>: https://addons.mozilla.org/en-US/firefox/addon/bitwarden-password-manager/</li>
+<li><strong>Edge</strong>: https://microsoftedge.microsoft.com/addons/detail/jbkfoedolllekgbhcbcoahefnbanhhlh</li>
+<li><strong>Opera</strong>: https://addons.opera.com/extensions/details/bitwarden-free-password-manager/</li>
+<li><strong>Safari</strong>: no standalone extension listing - install the Bitwarden desktop app (Mac App Store, or <code>bitwarden.com/download</code>), which bundles the Safari extension and lets you enable it from Safari's own Extensions settings</li>
+</ul>
+<p>After installing: Settings → gear icon → Self-hosted → set the Server URL to
+<code>http://&lt;your-ip&gt;:8222</code> <strong>before</strong> logging in, then log in with the account
+you just created.</p>
+<p>Once you've created every account you need, set <code>VAULTWARDEN_SIGNUPS_ALLOWED=false</code>
+in <code>stack/.env</code> and restart the container to stop accepting new signups.</p>
+<p>Vaultwarden is deliberately <strong>not</strong> routed through Authelia even if you
+enabled Authelia too - see "A note on Authelia" below for why. Its own
+master password (and its own optional two-factor authentication, worth
+turning on) is the real protection layer for this one service.</p>
+<h2 id="2-authelia">2. Authelia<a class="headerlink" href="#2-authelia" title="Permanent link">&para;</a></h2>
+<p>If you enabled it: your admin login was already created during install -
+you set the username/password yourself when Vulcan asked. Save that login
+in Vaultwarden now.</p>
+<p>Authelia protects every other Traefik-routed service in this stack with a
+real login and brute-force lockout. If you added users with <code>--auth-users</code>,
+the admin user (you) has full access to everything; users in the <code>media</code>
+group can only reach Jellyfin and Seerr — management services like
+Radarr, Sonarr, and the Traefik dashboard are blocked for them.</p>
+<p>Jellyfin and Seerr are deliberately excluded from Authelia's own login
+(see "A note on Authelia" below) — their native apps can't complete a
+browser-redirect flow, so their own login is the real protection layer for
+those two services.</p>
+<p>You can add more users later by either:</p>
+<ul>
+<li>Re-running with <code>--auth-users "username:password:group,..."</code> (this never
+  overwrites the admin account), or</li>
+<li>Editing <code>stack/config/authelia/users_database.yml</code> directly (same YAML
+  format, restart the Authelia container to apply).</li>
+</ul>
+<h2 id="3-prowlarr">3. Prowlarr<a class="headerlink" href="#3-prowlarr" title="Permanent link">&para;</a></h2>
+<p>If you enabled it: add your indexers first. Radarr, Sonarr, Lidarr, and
+Readarr all search <em>through</em> Prowlarr, not on their own, so nothing else in
+this stack can find anything until this step is done.</p>
+<p>Settings &gt; Indexers &gt; Add Indexer, for each tracker/indexer you use.</p>
+<p><strong>Connect the *arr apps here, in Prowlarr</strong> - not the other way round.
+Settings &gt; <strong>Apps</strong> &gt; + &gt; Radarr (then Sonarr, Lidarr, Readarr as enabled):</p>
+<ul>
+<li><strong>Prowlarr Server:</strong> <code>http://prowlarr:9696</code></li>
+<li><strong>Radarr Server:</strong> <code>http://radarr:7878</code> (Sonarr <code>http://sonarr:8989</code>,
+  Lidarr <code>http://lidarr:8686</code>, Readarr <code>http://readarr:8787</code>)</li>
+<li><strong>API Key:</strong> that app's key from its Settings &gt; General (save it in
+  Vaultwarden - Seerr, Bazarr, Recyclarr and Decluttarr need it too)</li>
+</ul>
+<p>Prowlarr then pushes every indexer into each app and keeps them in sync -
+you never add indexers inside Radarr/Sonarr directly. Container names work
+as hostnames because every service shares the stack's Docker network.</p>
+<p align="center">
+  <img src="images/screenshots/prowlarr-add-radarr.png" alt="Prowlarr Settings > Apps > Add Application - Radarr with Prowlarr Server http://prowlarr:9696 and Radarr Server http://radarr:7878" style="max-width: 100%; width: 720px;">
+</p>
+
+<p><strong>FlareSolverr</strong>, if you enabled it, needs no setup of its own - but
+Prowlarr won't use it until you tell it to. Settings &gt; Indexers &gt; add an
+<strong>Indexer Proxy</strong> &gt; <strong>FlareSolverr</strong>: Host <code>http://flaresolverr:8191/</code>,
+Request Timeout <code>60</code>, and give it a <strong>tag</strong> (e.g. <code>flaresolverr</code>). Then
+open each indexer that sits behind Cloudflare's challenge page and add
+that same tag - only tagged indexers route through FlareSolverr. Prowlarr
+flags most of the ones that need it.</p>
+<p align="center">
+  <img src="images/screenshots/prowlarr-flaresolverr-proxy.png" alt="Prowlarr Add Indexer Proxy - FlareSolverr with tag flaresolverr and host http://flaresolverr:8191/" style="max-width: 100%; width: 640px;">
+</p>
+<p>If FlareSolverr can't get past a
+particular indexer's challenge, enable the optional <strong>Byparr</strong> service (a
+drop-in replacement on the same API) and point this proxy at
+<code>http://byparr:8191/</code> instead - see <a href="../integrations/#tougher-cloudflare-solving-byparr">integrations</a>.</p>
+<h2 id="4-radarr-sonarr-lidarr-readarr">4. Radarr / Sonarr / Lidarr / Readarr<a class="headerlink" href="#4-radarr-sonarr-lidarr-readarr" title="Permanent link">&para;</a></h2>
+<p>For each one you enabled (indexers already arrive from Prowlarr, step 3):</p>
+<ol>
+<li><strong>Settings &gt; Media Management &gt; Root Folders &gt; Add</strong> - the library
+   folder inside the container. Every *arr app sees your whole media path
+   at <code>/data</code>, so:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>App</th>
+<th>Root folder</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Radarr</td>
+<td><code>/data/media/movies</code></td>
+</tr>
+<tr>
+<td>Sonarr</td>
+<td><code>/data/media/tv</code></td>
+</tr>
+<tr>
+<td>Lidarr</td>
+<td><code>/data/media/music</code></td>
+</tr>
+<tr>
+<td>Readarr</td>
+<td><code>/data/media/books/ebooks</code></td>
+</tr>
+</tbody>
+</table>
+<p>Leave <strong>Use Hardlinks instead of Copy</strong> on: downloads (<code>/data/downloads</code>)
+   and the library are on the same mount, so a finished download is linked
+   into the library instantly instead of copied (no double disk usage while
+   it seeds).
+2. <strong>Settings &gt; Download Clients &gt; + &gt; qBittorrent</strong> - Host <strong><code>gluetun</code></strong>
+   if you enabled Gluetun (qBittorrent lives inside Gluetun's network, so
+   <code>qbittorrent</code> doesn't resolve), otherwise <code>qbittorrent</code>; Port <code>8080</code>;
+   your qBittorrent login (step 5); a <strong>Category</strong> per app (<code>radarr</code>,
+   <code>tv-sonarr</code>, <code>lidarr</code>) so each app only imports its own downloads.</p>
+<p align="center">
+  <img src="images/screenshots/radarr-qbittorrent-client.png" alt="Radarr Add Download Client - qBittorrent with Host gluetun, Port 8080, Category radarr" style="max-width: 100%; width: 640px;">
+</p>
+<ol>
+<li><strong>Settings &gt; Profiles</strong> - pick what quality you actually want. The
+   defaults grab almost anything; <a href="#11-recyclarr-decluttarr-maintainerr">Recyclarr</a>
+   can sync the well-known TRaSH Guides profiles for you instead.</li>
+<li><strong>Settings &gt; General</strong> - copy the API key into Vaultwarden if you
+   haven't already.</li>
+</ol>
+<h2 id="5-qbittorrent-sabnzbd">5. qBittorrent / SABnzbd<a class="headerlink" href="#5-qbittorrent-sabnzbd" title="Permanent link">&para;</a></h2>
+<p><strong>First login:</strong> the image prints a one-time password for the <code>admin</code>
+user in its log - find it with</p>
+<div class="highlight"><pre><span></span><code>(cd stack &amp;&amp; docker compose logs qbittorrent | grep -i "temporary password")
+</code></pre></div>
+<p>log in with it, then set your own under Tools &gt; Options &gt; WebUI &gt;
+Authentication (and save it in Vaultwarden). The temporary one changes
+every restart until you do.</p>
+<p><strong>Set a seeding limit</strong> (Tools &gt; Options &gt; BitTorrent &gt; Seeding Limits - a
+ratio, a time, or both, with action <em>Pause</em>). Without one, nothing ever
+counts as "done", so Decluttarr's cleanup never fires and finished
+torrents sit in the client forever.</p>
+<p><strong>Set the save path first.</strong> qBittorrent's image defaults to <code>/downloads</code>,
+which it doesn't have mounted - the <em>arr apps then can't follow completed
+downloads ("this directory does not appear to exist inside the
+container"). In qBittorrent </em><em>Tools &gt; Options &gt; Downloads</em><em> set </em><em>Default
+Save Path</em><em> to <code>/data/downloads</code>. Every </em>arr app and qBittorrent all see
+your media library at <code>/data</code>, so this one path lines up everywhere and
+no "remote path mapping" is needed. SABnzbd: same idea, set its complete
+folder to <code>/data/downloads</code> under Config &gt; Folders.</p>
+<p align="center">
+  <img src="images/screenshots/qbittorrent-save-path.png" alt="qBittorrent Options > Downloads > Saving Management with Default Save Path /data/downloads" style="max-width: 100%; width: 640px;">
+</p>
+
+<p>Then connect each *arr app above to the client:
+Settings &gt; Download Clients &gt; Add.</p>
+<p><strong>A note on the LAN auth-bypass.</strong> qBittorrent's image ships with
+"Bypass authentication for clients on localhost/whitelisted subnets"
+covering the Docker network, so the *arr apps reach it without the
+password. Radarr/Sonarr/Lidarr handle that fine. The now-abandoned
+Readarr does not (it hard-requires the pre-5.x login response and errors
+with "Authentication failure" even when the password is right) - if you
+need Readarr specifically, turn that bypass off in Options &gt; WebUI and
+give Readarr the real password. Everything else works either way.</p>
+<p>If Gluetun is enabled, qBittorrent shares its network namespace - the
+connection settings work the same either way, just confirm step 6 below is
+actually connected first. With Traefik and a domain, qBittorrent's web UI is
+still at <code>qbittorrent.&lt;domain&gt;</code>: Traefik can't see a container that shares
+another's network, so that router is generated on the <code>gluetun</code> container
+instead (the same trick routes Pi-hole via <code>unbound</code>).</p>
+<p>SABnzbd additionally needs your Usenet provider's server details entered
+through its own setup wizard before it can download anything.</p>
+<h2 id="6-gluetun">6. Gluetun<a class="headerlink" href="#6-gluetun" title="Permanent link">&para;</a></h2>
+<p>If you enabled it, <code>stack/.env</code> has three placeholder values that need your
+real VPN credentials before Gluetun can connect at all -
+<code>VPN_SERVICE_PROVIDER</code>, <code>VPN_TYPE</code> (defaults to <code>wireguard</code>), and
+<code>WIREGUARD_PRIVATE_KEY</code>. A fourth, <code>WIREGUARD_ADDRESSES</code>, is only required
+by some providers (noted below) - leave it blank otherwise.</p>
+<p>These two work with just <code>WIREGUARD_PRIVATE_KEY</code> (no <code>WIREGUARD_ADDRESSES</code>
+needed):</p>
+<ul>
+<li><strong>ProtonVPN</strong> - <code>VPN_SERVICE_PROVIDER=protonvpn</code>. Generate a config at
+  <a href="https://account.proton.me/u/0/vpn/WireGuard">account.proton.me/u/0/vpn/WireGuard</a>
+  and copy the <code>PrivateKey</code> value shown - it works for all ProtonVPN
+  servers, not just the one you generated it for.</li>
+<li><strong>NordVPN</strong> - <code>VPN_SERVICE_PROVIDER=nordvpn</code>. Get your WireGuard private
+  key from <a href="https://my.nordaccount.com/dashboard/nordvpn/manual-configuration/service-credentials/">my.nordaccount.com</a>
+  (NordVPN's manual/service credentials, not your regular account
+  login).</li>
+</ul>
+<p>These two also need <code>WIREGUARD_ADDRESSES</code> set (the IPv4 address from your
+generated config's <code>Address</code> line, e.g. <code>10.64.222.21/32</code>):</p>
+<ul>
+<li><strong>Mullvad</strong> - <code>VPN_SERVICE_PROVIDER=mullvad</code>. Generate a config at
+  <a href="https://mullvad.net/en/account/wireguard-config">mullvad.net/en/account/wireguard-config</a>,
+  download it, and pull <code>PrivateKey</code> and <code>Address</code> from the file - not the
+  "Wireguard Key" shown on the Devices page, that's a different value.</li>
+<li><strong>Surfshark</strong> - <code>VPN_SERVICE_PROVIDER=surfshark</code>. In your account:
+  VPN → Manual Setup → Desktop or mobile → WireGuard → "I don't have a
+  keypair" → generate one, then download the config for the <code>Address</code> value.</li>
+</ul>
+<p>Other providers Gluetun supports (OpenVPN-only ones, or ones needing extra
+env vars this stack doesn't wire up yet): see
+<a href="https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers">gluetun-wiki's provider list</a> -
+each page has the exact env vars and where to get them.</p>
+<p>Once <code>stack/.env</code> is filled in, restart the stack (<code>sudo vulcan update</code>, or
+<code>(cd stack &amp;&amp; docker compose up -d --force-recreate gluetun)</code>
+for just this container) and confirm the tunnel actually connected before
+trusting qBittorrent's traffic -</p>
+<div class="highlight"><pre><span></span><code>(cd stack &amp;&amp; docker compose logs gluetun)
+</code></pre></div>
+<p>qBittorrent has no network access at all if Gluetun can't connect (that's
+the point - it fails closed, not open), so a stalled download queue here
+usually means check this first.</p>
+<p><strong>Port forwarding (ProtonVPN / PIA).</strong> If the tunnel is clearly connected
+but every torrent hangs at "downloading metadata" with 0 progress -
+healthy peer counts, no data - Gluetun landed on a non-P2P server, which
+silently drops BitTorrent traffic. Fix: uncomment the port-forwarding
+block in the <code>gluetun:</code> service in <code>stack/docker-compose.yml</code> (set
+<code>VPN_PORT_FORWARDING_PROVIDER</code> to match your provider), turn on
+qBittorrent &gt; Options &gt; WebUI &gt; "Bypass authentication for clients on
+localhost", and <code>(cd stack &amp;&amp; docker compose up -d
+--force-recreate gluetun)</code>. <code>PORT_FORWARD_ONLY=on</code> then keeps Gluetun on
+P2P-capable servers across every reconnect and the forwarded port
+re-syncs into qBittorrent automatically. Mullvad has dropped port
+forwarding; NordVPN and Surfshark have no Gluetun support for it - on
+those, pick a provider with PF or accept slower/incoming-limited peering.</p>
+<p align="center">
+  <img src="images/screenshots/gluetun-log.svg" alt="Gluetun connection log example" style="max-width: 100%; width: 820px;">
+</p>
+
+<h2 id="7-bazarr">7. Bazarr<a class="headerlink" href="#7-bazarr" title="Permanent link">&para;</a></h2>
+<p>If you enabled it:</p>
+<ol>
+<li><strong>Settings &gt; Languages</strong> - first pick your languages in <strong>Languages
+   Filter</strong> (the profile table stays empty - "No Enabled Languages" - until
+   you do), then <strong>Add New Profile</strong> (e.g. English), and set it as the
+   default for both series and movies under <em>Default Language Profiles</em>.
+   <strong>Bazarr searches nothing until a profile exists and is assigned</strong> -
+   the most common "Bazarr isn't doing anything" cause.</li>
+</ol>
+<p align="center">
+  <img src="images/screenshots/bazarr-language-profile.png" alt="Bazarr Edit Languages Profile named English with English added" style="max-width: 100%; width: 640px;">
+</p>
+
+<ol>
+<li><strong>Settings &gt; Providers</strong> - add a few. OpenSubtitles.com (free account)
+   covers most things; add others for your languages.</li>
+<li><strong>Settings &gt; Sonarr / Radarr</strong> - Address <code>sonarr</code> / <code>radarr</code>, ports
+   <code>8989</code> / <code>7878</code>, their API keys. Bazarr works against what's already in
+   their libraries.</li>
+<li>Optional: the <strong>Whisper</strong> service can <em>generate</em> subtitles when no
+   provider has any - see <a href="../integrations/#ai-subtitles-whisper-for-bazarr">integrations</a>.</li>
+</ol>
+<h2 id="8-jellyfin">8. Jellyfin<a class="headerlink" href="#8-jellyfin" title="Permanent link">&para;</a></h2>
+<p>The first visit runs Jellyfin's setup wizard - create your admin account
+(strong, unique password; save it in Vaultwarden), then add libraries. Jellyfin
+sees your media at <code>/data/media</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Library (content type)</th>
+<th>Folder</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Movies</td>
+<td><code>/data/media/movies</code></td>
+</tr>
+<tr>
+<td>Shows</td>
+<td><code>/data/media/tv</code></td>
+</tr>
+<tr>
+<td>Music</td>
+<td><code>/data/media/music</code></td>
+</tr>
+<tr>
+<td>Books</td>
+<td><code>/data/media/books</code></td>
+</tr>
+<tr>
+<td>YouTube (MeTube)</td>
+<td><code>/data/media/youtube</code> - content type <em>Mixed</em> or <em>Home videos</em></td>
+</tr>
+</tbody>
+</table>
+<p align="center">
+  <img src="images/screenshots/jellyfin-add-library.png" alt="Jellyfin Add Media Library - content type Movies with folder /data/media/movies" style="max-width: 100%; width: 640px;">
+</p>
+
+<p>A few settings worth changing right away:</p>
+<ul>
+<li><strong>Shows metadata:</strong> Dashboard &gt; Plugins &gt; Catalog &gt; install <strong>TheTVDB</strong>,
+  restart, then enable it under the Shows library's metadata downloaders.
+  Without it, shows that arrive without an <code>.nfo</code> file keep their raw
+  folder name (<code>Name (2020) [tvdbid-12345]</code>) as their title.</li>
+<li><strong>Heavy scheduled tasks:</strong> on a large library, <em>Extract Chapter Images</em>
+  and <em>Generate Trickplay Images</em> run ffmpeg over every file and can
+  exhaust the container's memory (seen at 4 GB on ~1,300 movies). In
+  Dashboard &gt; Scheduled Tasks, remove their triggers or schedule them for
+  overnight if you want the thumbnails.</li>
+<li><strong>Transcoding:</strong> if Vulcan detected a GPU, set Dashboard &gt; Playback &gt;
+  Transcoding &gt; Hardware acceleration to match it (Intel/AMD: VAAPI or QSV;
+  NVIDIA: NVENC). Without a GPU, Vulcan already gives Jellyfin extra CPU.</li>
+<li><strong>Users:</strong> Dashboard &gt; Users &gt; + for each household member. Their
+  favorites, 👍/👎 and watch history can be backed up and restored -
+  see step 15.</li>
+</ul>
+<p><strong>Security - Jellyfin has no built-in two-factor authentication</strong>
+(it's a long-standing feature request; third-party plugins exist - vet
+one before trusting it). Even with Authelia enabled, Jellyfin is
+deliberately excluded from it (see "A note on Authelia" below), so its own
+passwords are the real protection. Give every user a strong password, keep
+CrowdSec enabled in front of it (step 14 shows how to confirm it's actually
+working), and turn off <strong>Allow remote connections</strong> for accounts that only
+ever watch at home (Dashboard &gt; Users &gt; the user &gt; <em>Profile</em>).</p>
+<p><strong>Tell Jellyfin which traffic is really remote</strong> (Dashboard &gt; Networking).
+Everything reached through Traefik (or the Cloudflare Tunnel) arrives from a
+private Docker address, so out of the box Jellyfin counts every viewer as
+"on your LAN" - <em>Allow remote connections</em> and the per-user
+<em>Internet streaming bitrate limit</em> then never take effect. Set <strong>LAN
+networks</strong> to your home subnet (e.g. <code>192.168.1.0/24</code>) and <strong>Known proxies</strong>
+to <code>traefik</code> (add <code>cloudflared</code> too if you use the tunnel), save, and restart
+Jellyfin once - known proxies are only read at startup. Check it worked in
+Dashboard &gt; Activity: remote sessions should now show the viewer's real IP.</p>
+<p>Last, <strong>create an API key for user-data backups</strong> (Dashboard &gt; API Keys &gt;
++, name it <code>vulcan</code>) and paste it after <code>JELLYFIN_API_KEY=</code> in
+<code>stack/.env</code>. A config backup restores Jellyfin's settings, but every
+user's favorites, 👍/👎, watched status and resume points are tied to
+Jellyfin's internal item ids, which change if the library is ever rebuilt
+or re-added. <code>vulcan userdata export</code> saves them keyed by TMDb/TVDb/IMDb
+ids so <code>vulcan userdata restore</code> can put them back on any Jellyfin - see
+<a href="../maintenance/#jellyfin-user-data">Maintaining a Stack</a>.</p>
+<h2 id="9-seerr-requests">9. Seerr (requests)<a class="headerlink" href="#9-seerr-requests" title="Permanent link">&para;</a></h2>
+<p>If you enabled it, its setup wizard runs on the first visit:</p>
+<ol>
+<li><strong>Sign in with Jellyfin</strong> - server <code>http://jellyfin:8096</code>, your Jellyfin
+   admin login. Select the libraries to sync (Movies, Shows) so Seerr knows
+   what you already have.</li>
+<li><strong>Settings &gt; Services &gt; Add Radarr</strong> - Hostname <code>radarr</code>, Port <code>7878</code>,
+   API key, then Test and pick the <strong>Quality Profile</strong> and <strong>Root Folder</strong>
+   (<code>/data/media/movies</code>), tick <strong>Default Server</strong>. <strong>Add Sonarr</strong> the same
+   way (<code>sonarr</code>, <code>8989</code>, <code>/data/media/tv</code>); if you keep anime separately,
+   set the anime profile/root folder there too.</li>
+</ol>
+<p align="center">
+  <img src="images/screenshots/seerr-add-radarr.png" alt="Seerr Add New Radarr Server - Default Server ticked, hostname radarr, port 7878" style="max-width: 100%; width: 640px;">
+</p>
+<ol>
+<li><strong>Users &gt; Import Jellyfin Users</strong>, then decide each user's permissions -
+   <em>Request</em> for everyone, <em>Auto-Approve</em> only for people whose requests
+   you don't want to review.</li>
+</ol>
+<p>A request now goes Seerr → Radarr/Sonarr → Prowlarr's indexers → the
+download client → your library → Jellyfin, with no further clicks.</p>
+<h2 id="10-threadfin">10. Threadfin<a class="headerlink" href="#10-threadfin" title="Permanent link">&para;</a></h2>
+<p>If you enabled it: Threadfin's web UI lives at <code>/web/</code> - the domain root
+serves HDHomeRun tuner-discovery XML for Jellyfin instead. The Homepage tile
+already links to <code>/web/</code>; if you type the address yourself, add it.</p>
+<ol>
+<li><strong>Playlist tab</strong> - add your M3U source (a paid IPTV subscription's M3U
+   URL, or an HDHomeRun/ATSC tuner you own). Don't use pirated/free IPTV
+   list sites - those are unauthorized redistributions of paid channels.</li>
+<li><strong>XMLTV tab</strong> - add the matching EPG/guide-data URL from the same
+   source.</li>
+<li><strong>Mapping tab</strong> - pair each M3U channel to its XMLTV guide entry, assign
+   channel numbers, toggle on the ones you want active, then Save - this is
+   what turns "Active streams: 0" in its logs into a real count.</li>
+<li><strong>Settings</strong> - set compatibility mode to <strong>Emby/Jellyfin</strong> (this stack's
+   client).</li>
+<li>In <strong>Jellyfin</strong>: Dashboard &gt; Live TV &gt; Tuner Devices &gt; add an
+   <strong>HDHomeRun</strong> tuner at <code>http://threadfin:34400</code>, then Live TV &gt; TV Guide
+   Data Providers &gt; add an <strong>XMLTV</strong> source at
+   <code>http://threadfin:34400/xmltv/x.xml</code>.</li>
+</ol>
+<h2 id="11-recyclarr-decluttarr-maintainerr">11. Recyclarr / Decluttarr / Maintainerr<a class="headerlink" href="#11-recyclarr-decluttarr-maintainerr" title="Permanent link">&para;</a></h2>
+<p>Configure these last, once Radarr/Sonarr are already connected to Prowlarr
+and downloading successfully - all three sit on top of a working *arr
+setup rather than replacing any part of it:</p>
+<ul>
+<li><strong>Recyclarr</strong> needs each app's real API key and base URL added to
+  <code>stack/config/recyclarr/recyclarr.yml</code>.</li>
+<li><strong>Decluttarr</strong> was pre-seeded with real base URLs, but each <code>api_key</code> is
+  still a placeholder - edit <code>stack/config/decluttarr/config.yaml</code>
+  directly. It starts in <code>test_run: true</code> (a dry run) - flip that once
+  you've confirmed the config is right.</li>
+<li>For qBittorrent specifically, you don't need an api_key at all -
+    qBittorrent's own WebUI &gt; Options &gt; "Bypass authentication for
+    clients in whitelisted IP subnets" already covers the docker
+    network by default, just switch it on.</li>
+<li>Its <code>remove_done_seeding</code> job needs a real seeding limit configured
+    in qBittorrent (Options &gt; BitTorrent &gt; Seeding Limits - a ratio, a
+    time limit, or both). With no limit set, nothing ever counts as
+    "done seeding" and completed downloads sit in the client forever
+    even with decluttarr running - the job silently never fires,
+    found live on a real install.</li>
+<li><strong>Maintainerr</strong> has no pre-seeded config - connect it to Jellyfin (or
+  Plex/Emby), Radarr/Sonarr and Seerr through its own settings, then create
+  library-cleanup rules. It deletes media, so be careful:</li>
+<li><strong>Wait for real watch history.</strong> Rules like "nobody watched it in a
+    year" are meaningless on a new server - on one a month old, such a rule
+    matched 918 of 1,317 movies. Give it months first.</li>
+<li><strong>Start review-only:</strong> leave <em>Take action after days</em> empty and attach
+    no Radarr/Sonarr action, so matches only land in a collection you can
+    look through. Switch deletion on later, per rule, once you trust it.</li>
+<li>Exclude anything a user requested (Seerr <em>request date</em> doesn't exist)
+    and anything someone favorited.</li>
+</ul>
+<h2 id="12-metube-downtify">12. MeTube / Downtify<a class="headerlink" href="#12-metube-downtify" title="Permanent link">&para;</a></h2>
+<p>If you enabled either: paste a URL to start a download, then add a
+Jellyfin library pointed at their output folder so the result shows up
+there automatically:</p>
+<ul>
+<li>MeTube: <code>&lt;media path&gt;/media/youtube</code> on the host (<code>/data/media/youtube</code>
+  in Jellyfin)</li>
+<li>Downtify: <code>&lt;media path&gt;/media/music/downtify</code> (inside your existing Music
+  library, so no new Jellyfin library is needed for this one)</li>
+</ul>
+<h2 id="13-music-reading">13. Music &amp; reading<a class="headerlink" href="#13-music-reading" title="Permanent link">&para;</a></h2>
+<p>If you enabled any of these - each has its own full section in
+<a href="../integrations/">Optional Integrations</a>; the short version:</p>
+<ul>
+<li><strong>Lidarr + slskd (Soulseek)</strong> - set your Soulseek username/password in
+  <code>stack/config/slskd/slskd.yml</code>, then in Lidarr install the slskd plugin
+  and add slskd as both a download client and an indexer (host <code>slskd</code>,
+  port <code>5030</code>, API key from <code>slskd.yml</code>). Vulcan already runs Lidarr on the
+  <code>nightly</code> image the plugin needs.
+  <a href="../integrations/#music-via-soulseek-slskd-lidarr-plugin">Details</a></li>
+<li><strong>Navidrome</strong> - create the admin account on first visit; it reads
+  <code>media/music</code> read-only, so everything Lidarr/slskd imports appears on
+  its own. Any Subsonic app (phone, desktop) can stream from it.
+  <a href="../integrations/#music-streaming-navidrome">Details</a></li>
+<li><strong>Reading</strong> - Mylar3 (comics) and LazyLibrarian (ebooks/audiobooks)
+  download, Suwayomi downloads manga, and <strong>Komga</strong> / <strong>Kavita</strong> /
+  <strong>Calibre-Web</strong> are the readers. Everything lands under
+  <code>media/books/{comics,manga,ebooks}</code>. Add Komga libraries at
+  <code>/data/books/comics</code>, <code>/data/books/manga</code>, <code>/data/books/ebooks</code>; Kavita's
+  are under <code>/books/...</code>.
+  <a href="../integrations/#reading-comics-manga-ebooks-komga-kavita-suwayomi-mylar3-lazylibrarian-calibre-web-automated">Details</a></li>
+</ul>
+<h2 id="14-dashboards-monitoring">14. Dashboards &amp; monitoring<a class="headerlink" href="#14-dashboards-monitoring" title="Permanent link">&para;</a></h2>
+<p>Check these last - they only have something to show once the services
+above are actually running.</p>
+<ul>
+<li><strong>Homepage</strong> and <strong>Dashy</strong> were both pre-seeded with tiles for
+  everything you enabled, including a link back to this page (under
+  "Guides") - Dashy is a second, more visually customizable dashboard
+  option alongside Homepage, not a replacement; enable one or both.
+  Homepage also gets a tabbed dark <code>settings.yaml</code>, a <code>bookmarks.yaml</code>
+  scaffold, and <strong><code>stack/config/homepage/GUIDE.md</code></strong> - an editing
+  cheat-sheet sitting right next to the files it describes (open it in
+  FileBrowser). To add live per-service stats (qBittorrent speeds, <em>arr
+  queue counts), the top resources/network row, or Docker status dots,
+  see </em><em><a href="../guides/homepage-widgets/">Guide: Homepage Widgets</a></em>* - there's
+  no in-app editor, it's YAML in <code>stack/config/homepage/</code>. Dashy
+  runs as a fixed container uid/gid (1000:1000, no PUID/PGID support) -
+  if your own PUID/PGID differ, you may need <code>sudo</code> to edit
+  <code>stack/config/dashy/conf.yml</code> directly on the host.</li>
+<li><strong>Uptime Kuma</strong> asks you to create its admin account on first visit.
+  Then add an <strong>HTTP</strong> monitor per service - internal URLs test the app
+  itself, public ones test the whole path (DNS, Cloudflare, Traefik, login):</li>
+<li>internal: <code>http://radarr:7878/ping</code>, <code>http://sonarr:8989/ping</code>,
+    <code>http://prowlarr:9696/ping</code>, <code>http://jellyfin:8096/health</code>,
+    <code>http://gluetun:8080/</code> (qBittorrent)</li>
+<li>public: <code>https://jellyfin.&lt;domain&gt;/health</code>,
+    <code>https://seerr.&lt;domain&gt;/api/v1/status</code>, <code>https://authelia.&lt;domain&gt;/api/health</code></li>
+</ul>
+<p>and a notification (Settings &gt; Notifications - ntfy, Discord, email,
+  Signal...) so an outage actually reaches you. Interval 60 s with 2
+  retries avoids alerts for a container that's just restarting.</p>
+<p align="center">
+  <img src="images/screenshots/uptime-kuma-monitor.png" alt="Uptime Kuma Add New Monitor - HTTP(s) for http://radarr:7878/ping, interval 60, retries 2" style="max-width: 100%; width: 420px;">
+</p>
+<ul>
+<li><strong>CrowdSec</strong> - confirm it's really reading traffic, not just running:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>docker exec crowdsec cscli metrics show acquisition   # "Lines read" must grow
+docker exec crowdsec cscli bouncers list              # recent last_pull
+</code></pre></div>
+<p>If <em>Lines read</em> stays at 0, CrowdSec is protecting nothing - check that
+  <code>stack/config/traefik/logs/access.log</code> is being written. <code>cscli decisions
+  list</code> shows who's currently banned.
+- <strong>Watchtower</strong> updates containers daily <strong>except</strong> the ones an
+  unattended restart would hurt (Jellyfin, Authelia, Traefik, Vaultwarden,
+  CrowdSec, Cloudflared, Gluetun, Pi-hole/Unbound) - update those with
+  <code>vulcan update</code> at a quiet moment.
+- <strong>Guacamole</strong> (remote desktop into your LAN machines): open
+  <code>/guacamole/</code> on it, log in as <code>guacadmin</code> / <code>guacadmin</code>, and <strong>replace
+  that account first</strong> - create your own admin, then delete <code>guacadmin</code>.
+  Then add connections (RDP/VNC/SSH).
+  <a href="../integrations/#remote-desktop-gateway-guacamole">Details</a>
+- <strong>Atlas</strong> (network map + ops assistant): nothing to do for the map - open
+  its Homepage tile (or <code>/map</code>) and every container on this box is already
+  there, refreshed every 30 minutes. Add your other machines under <code>map.hosts</code>
+  in <code>stack/config/atlas/atlas.yaml</code>. For <code>atlas chat</code> (in a terminal:
+  <code>docker exec -it atlas atlas chat</code>) set <code>ATLAS_OLLAMA_HOST</code> in <code>.env</code> to an
+  Ollama server, then <code>docker compose up -d atlas atlas-refresh</code>.
+  <a href="../integrations/#network-map-and-ops-assistant-atlas">Details</a>
+- <strong>Tracearr</strong> (stream stats), <strong>ntfy</strong> (push notifications) and
+  <strong>Glances</strong> (host stats) need no setup beyond their first-visit account,
+  where they have one - see <a href="../integrations/">Optional Integrations</a>.
+- <strong>Netdata</strong> and the <strong>Traefik dashboard</strong> need no setup at all - both
+  are ready to view as soon as their containers start. With a domain,
+  Netdata is at <code>netdata.&lt;domain&gt;</code> (it runs on the host network, so vulcan
+  routes it through a generated <code>config/traefik/dynamic/netdata.yml</code>). Netdata's Docker
+  collector is switched off on purpose (it cost ~6 CPU cores of
+  <code>dockerd</code>/<code>containerd</code> on a busy host); per-container charts still work -
+  see <a href="../integrations/#real-time-monitoring-netdata">integrations</a>.</p>
+<p align="center">
+  <img src="images/screenshots/homepage-dashboard.svg" alt="Homepage dashboard example" style="max-width: 100%; width: 820px;">
+</p>
+
+<h2 id="15-backups">15. Backups<a class="headerlink" href="#15-backups" title="Permanent link">&para;</a></h2>
+<p>Do this once everything above works - it's what makes all of it
+recoverable:</p>
+<ol>
+<li><strong>Config:</strong> <code>vulcan backup</code> archives every app's settings and databases
+   (safe while running). Run it now, and nightly from cron.</li>
+<li><strong>Users' watch data:</strong> <code>vulcan userdata export</code> saves everyone's
+   favorites, 👍/👎, watched status and resume points in a form that
+   survives a Jellyfin rebuild (needs the API key from step 8).</li>
+<li><strong>Off the machine:</strong> a backup on the same disks as the stack dies with
+   them. Set <code>BACKUP_OFFSITE_TARGET</code> in <code>stack/.env</code> to an rsync-over-SSH
+   destination (a NAS, another server) and every <code>vulcan backup</code> copies
+   itself there.</li>
+</ol>
+<p>Commands, the cron lines, and hardening the off-box target:
+<a href="../maintenance/#off-box-backups">Maintaining a Stack</a>.</p>
+<h2 id="a-note-on-authelia">A note on Authelia<a class="headerlink" href="#a-note-on-authelia" title="Permanent link">&para;</a></h2>
+<p>Authelia puts a real login in front of almost every routed service in this
+stack - but not Jellyfin or Vaultwarden. Both are deliberately excluded,
+for the same reason: Authelia's forward-auth login works by redirecting
+your browser to a login page, and native apps (Jellyfin on a phone or
+smart TV, the Bitwarden/Vaultwarden apps and browser extension) can't
+complete that redirect - they expect to log in directly against the app's
+own API instead. Putting Authelia in front of either one would just break
+their native apps outright.</p>
+<p>Everything else Vulcan routes (the *arr apps, download clients,
+Seerr, Homepage, dashboards) is a plain browser-only web UI with no
+native-app login of its own, so Authelia protects all of those cleanly.</p>
+<h2 id="reaching-everything-remotely">Reaching everything remotely<a class="headerlink" href="#reaching-everything-remotely" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Tailscale</strong>, if enabled, puts every host-published port in this stack
+  on your private tailnet - reachable from any of your own devices with no
+  further setup, and nothing exposed publicly at all.</li>
+<li>
+<p><strong>Traefik + a domain + Cloudflare DNS</strong>, if enabled, is what makes
+  <code>jellyfin.yourdomain.com</code> (or any other <code>*.yourdomain.com</code>) work from
+  anywhere - a phone on cellular data, a smart TV app, a browser at a
+  friend's house. Three things Vulcan doesn't do for you:</p>
+</li>
+<li>
+<p><strong>Get a scoped Cloudflare API token.</strong> <a href="https://dash.cloudflare.com/profile/api-tokens/">dash.cloudflare.com/profile/api-tokens</a>
+     → Create Token → "Edit zone DNS" template → restrict it to your one
+     domain → Create Token, then copy it (shown once) into <code>stack/.env</code>'s
+     <code>CF_DNS_API_TOKEN</code>. This is what lets Traefik prove domain ownership
+     to Let's Encrypt without opening any port for the challenge itself.</p>
+</li>
+<li><strong>Add a DNS record for each subdomain you're routing</strong> (Jellyfin,
+     Seerr, whatever else was in your <code>--services</code> list) - Cloudflare
+     dashboard → your domain → DNS → Add record → type <code>A</code> → name
+     <code>jellyfin</code> (etc.) → content = this host's public IP.</li>
+<li><strong>Decide proxy status per record</strong> - this is the actual "hide my
+     public IP" switch, not a DNS server choice: orange cloud (Proxied)
+     routes through Cloudflare's edge, so your real IP never appears in a
+     public DNS lookup; grey cloud (DNS only) publishes it directly.
+     Either way, ports 80/443 still need to reach this host from your
+     router (port forward, or your ISP already routes them) - Cloudflare's
+     proxy hides <em>who</em> traffic came from publicly, it doesn't tunnel
+     traffic in without a real path to the host. That's what Cloudflare
+     Tunnel (below) is for.</li>
+<li>
+<p><strong>Cloudflare Tunnel</strong> (<code>cloudflared</code>, alongside <code>traefik</code>), if enabled, skips
+  port-forwarding entirely - an outbound-only connection to Cloudflare's edge,
+  no inbound port needed on your router at all.</p>
+</li>
+<li>
+<p><strong>Create the tunnel.</strong> Zero Trust dashboard → Networks → Tunnels →
+     Create a tunnel → name it → Docker environment → copy the token from
+     the run command shown (just the token, not the whole command) into
+     <code>stack/.env</code>'s <code>TUNNEL_TOKEN</code>.</p>
+</li>
+<li>
+<p><strong>Add a route</strong> (newer dashboard) / <strong>Public Hostname</strong> (older):</p>
+<ul>
+<li><strong>Subdomain:</strong> <code>*</code> (one wildcard route covers every service; the
+   dashboard rejects <code>*</code> on some plans - then add one route per
+   subdomain, all pointing at the same service below).</li>
+<li><strong>Domain:</strong> your domain.</li>
+<li><strong>Service:</strong> <code>https://traefik:8081</code> - HTTPS, not HTTP. Traefik
+   serves a self-signed cert on that internal entrypoint and every
+   router requires TLS, so a plain <code>http://</code> URL 404s every request.</li>
+<li>Expand <strong>Additional application settings → TLS</strong> and turn on
+   <strong>Disable TLS certificate verification</strong> (older UI: "No TLS
+   Verify"). Leave "Match SNI to host" and "Use HTTP/2 to origin"
+   <strong>off</strong>.
+ Cloudflare's edge still terminates the <em>public</em> TLS; this is only the
+ internal hop.</li>
+</ul>
+<p><p align="center">
+   <img src="images/screenshots/cloudflare-tunnel-route.svg" alt="Cloudflare Tunnel route: subdomain *, service https://traefik:8081, Disable TLS certificate verification ON" style="max-width: 100%; width: 820px;">
+ </p></p>
+</li>
+<li>
+<p><strong>No manual DNS step</strong> - saving the route creates its own proxied
+     CNAME. If it errors with <em>"a record with that host already exists"</em>,
+     an old A/CNAME is in the way: <strong>DNS → Records</strong>, delete the record at
+     that exact name (anything that isn't the tunnel's own
+     <code>&lt;uuid&gt;.cfargotunnel.com</code> CNAME), then save the route again.</p>
+</li>
+<li>Once <code>TUNNEL_TOKEN</code> is in <code>stack/.env</code>, apply it to the running
+     stack: <code>(cd stack &amp;&amp; docker compose up -d)</code> (recreates the changed container - <code>vulcan update</code>
+     pulls <em>new images</em>, which is not what you want here). Then
+     <code>(cd stack &amp;&amp; docker compose logs cloudflared)</code> should
+     show <code>Registered tunnel connection</code>.</li>
+</ul>
+<p>Traefik's <code>80</code>/<code>443</code> ports stay published either way - this adds a
+  second, port-forward-free path to the same Traefik, it doesn't replace
+  the direct one.</p>
+<p>Both can be enabled together - Tailscale for your own admin access
+(Homepage, Traefik's dashboard, anything you'd rather keep off the public
+internet entirely), Traefik+domain for the one or two services (Jellyfin,
+Seerr) you actually want reachable by other people.</p>
+<p><strong>Gluetun and Tailscale can also run side by side.</strong> Gluetun is
+container-scoped - only qBittorrent routes its traffic out through the
+VPN - while Tailscale runs on the host for inbound access. The common
+split: Gluetun for download privacy, Tailscale for reaching the
+management UIs, Jellyfin/Seerr public via the tunnel. When Pi-hole or
+AdGuard Home is also in the stack, Vulcan sets <code>TS_ACCEPT_DNS=false</code> so
+Tailscale doesn't take the host resolver away from them.</p>
+<h2 id="changing-settings-after-install">Changing settings after install<a class="headerlink" href="#changing-settings-after-install" title="Permanent link">&para;</a></h2>
+<p><code>vulcan build</code> is re-run-safe and keeps your <code>stack/.env</code>. To change the
+domain, add/remove services, add Authelia users, etc.:</p>
+<div class="highlight"><pre><span></span><code>vulcan build --non-interactive --yes --domain newdomain.com   # (+ any other flags)
+(cd stack &amp;&amp; docker compose up -d)
+</code></pre></div>
+<p>The <code>build</code> step only rewrites <code>stack/</code> - the <strong><code>docker compose up -d</code></strong>
+is what recreates containers with the new labels/config. A <code>--domain</code>
+change also regenerates <code>stack/config/authelia/configuration.yml</code>; if
+that file ended up root-owned (Authelia's image runs as its own root),
+<code>build</code> warns and you fix it with
+<code>sudo chown -R $(id -u):$(id -g) stack/config/authelia</code> then re-run.
+After a domain change, also update the Cloudflare route's subdomain/domain
+(above) and restart <code>crowdsec</code> + <code>traefik</code> + <code>authelia</code> so their plugins
+reconnect.</p>
+<h3 id="keep-your-own-changes-in-stackdocker-composeoverrideyml">Keep your own changes in <code>stack/docker-compose.override.yml</code><a class="headerlink" href="#keep-your-own-changes-in-stackdocker-composeoverrideyml" title="Permanent link">&para;</a></h3>
+<p><code>vulcan build</code> rewrites <code>stack/docker-compose.yml</code> from the template every
+time, so <strong>anything you edit in that file by hand is lost on the next
+build</strong>. Put local changes - an extra service, a different image tag, a
+higher CPU limit, extra labels - in <code>stack/docker-compose.override.yml</code>
+instead. Vulcan never writes that file, <code>vulcan backup</code> archives it, and
+Compose merges it on top of the generated file automatically:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># stack/docker-compose.override.yml - only what differs from the generated file</span>
+<span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">jellyfin</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="s">"12.0"</span><span class="w">   </span><span class="c1"># more transcoding headroom than the tier default</span>
+</code></pre></div>
+<p>Compose only auto-loads the override when you <strong>don't</strong> pass <code>-f</code>, so run
+your own compose commands from inside <code>stack/</code>:</p>
+<div class="highlight"><pre><span></span><code>(cd stack &amp;&amp; docker compose up -d)
+</code></pre></div>
+<p>(A bare <code>docker compose -f stack/docker-compose.yml ...</code> silently skips the
+override.) Vulcan's own commands - <code>start</code>, <code>update</code>, <code>restore</code>, <code>pull</code>, the
+menu's per-service restart - and the start command <code>build</code> prints all add
+<code>-f stack/docker-compose.override.yml</code> automatically when the file exists.
+Merge rules worth knowing: <code>labels</code> and
+<code>environment</code> entries are merged key by key, but a <code>command</code> list is
+<strong>replaced</strong> wholesale - override a command by copying the whole list.</p>
+<p>To see what a rebuild would actually change before applying it, compare the
+merged config before and after:</p>
+<div class="highlight"><pre><span></span><code>cd stack &amp;&amp; docker compose config &gt; /tmp/before.yml
+cd .. &amp;&amp; vulcan build --non-interactive --yes &amp;&amp; cd stack
+docker compose config | diff /tmp/before.yml -    # empty = nothing changes
+docker compose up -d --dry-run                    # which containers would restart
+</code></pre></div>
+<p><strong>Homepage / Dashy tiles keep the old domain.</strong> <code>stack/config/homepage/services.yaml</code>
+(and Dashy's config) are seeded once and never overwritten - by design, so
+your edits survive. On a domain change they still point at the old
+hostnames. Delete them and rebuild to re-seed:</p>
+<p><div class="highlight"><pre><span></span><code>rm stack/config/homepage/services.yaml stack/config/dashy/*.yml
+vulcan build --non-interactive --yes
+(cd stack &amp;&amp; docker compose up -d homepage dashy)
+</code></pre></div>
+(If <code>rm</code> is permission-denied, do it from a container:
+<code>docker run --rm -v "$PWD/stack:/s" alpine rm -f /s/config/homepage/services.yaml</code>.)</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.action.edit", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
