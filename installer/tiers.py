@@ -62,6 +62,7 @@ _LIGHT_SERVICES = [
     ServiceDefinition("portainer", "Portainer", optional=True, category="Utilities"),
     ServiceDefinition("adguardhome", "AdGuard Home", optional=True, category="Infrastructure"),
     ServiceDefinition("guacamole", "Guacamole (remote desktop gateway)", optional=True, category="Infrastructure"),
+    ServiceDefinition("atlas", "Atlas (network map + ops assistant)", optional=True, category="Monitoring"),
 ]
 
 _MEDIUM_SERVICES = _LIGHT_SERVICES + [

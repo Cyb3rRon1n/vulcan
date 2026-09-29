@@ -611,3 +611,16 @@ def detect_system(disk_path: str = "/") -> SystemInfo:
         **detect_docker(),
         **detect_os()
     )
+
+
+def detect_docker_group_gid() -> int | None:
+    """
+    The gid of the host's docker group - a container that reads the Docker
+    socket (Atlas's network map) runs as PUID and needs this in group_add,
+    the same way /dev/dri passthrough needs the render group.
+    """
+
+    try:
+        return grp.getgrnam("docker").gr_gid
+    except KeyError:
+        return None

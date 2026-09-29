@@ -577,6 +577,102 @@ services:
           memory: "{{ limits.decluttarr.memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'atlas' in enabled %}
+  # Atlas: network map (/map), inventory/history, `atlas chat` ops assistant.
+  # Reads the Docker socket to see containers - root-equivalent access, so it
+  # runs as PUID with only the docker group added, and is admin-only behind Authelia.
+  atlas:
+    image: ghcr.io/cyb3rron1n/atlas:latest
+    container_name: atlas
+    user: "${PUID}:${PGID}"
+{% if docker_gid %}
+    group_add:
+      - "{{ docker_gid }}"
+{% endif %}
+    environment:
+      - TZ=${TZ}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}
+      - ATLAS_MODEL=${ATLAS_MODEL:-qwen3:8b}
+    volumes:
+      - ./config/atlas/atlas.yaml:/data/atlas.yaml:ro
+      - ./config/atlas/inventory:/data/inventory
+      - ./config/atlas/reports:/data/reports
+      - ./config/atlas/logs:/data/logs
+      - ./config/atlas/notes:/notes:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "{{ ports['atlas'] }}:8420"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.atlas.rule=Host(`atlas.{{ domain }}`)"
+      - "traefik.http.routers.atlas.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.atlas.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.atlas.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.atlas.loadbalancer.server.port=8420"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.atlas.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # A plain Python web server - needs no capabilities.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.atlas.cpus }}"
+          memory: "{{ limits.atlas.memory }}"
+    restart: unless-stopped
+  # Keeps the map and the Homepage tile current: the same image re-running
+  # discover / proxmox scan / map every ATLAS_REFRESH_MINUTES (default 30).
+  atlas-refresh:
+    image: ghcr.io/cyb3rron1n/atlas:latest
+    container_name: atlas-refresh
+    user: "${PUID}:${PGID}"
+{% if docker_gid %}
+    group_add:
+      - "{{ docker_gid }}"
+{% endif %}
+    environment:
+      - TZ=${TZ}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}
+      - ATLAS_MODEL=${ATLAS_MODEL:-qwen3:8b}
+      - ATLAS_REFRESH_MINUTES=${ATLAS_REFRESH_MINUTES:-30}
+    volumes:
+      - ./config/atlas/atlas.yaml:/data/atlas.yaml:ro
+      - ./config/atlas/inventory:/data/inventory
+      - ./config/atlas/reports:/data/reports
+      - ./config/atlas/logs:/data/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - sh
+      - -c
+      - |
+        while :; do
+          atlas discover >/dev/null 2>&1
+          atlas proxmox scan >/dev/null 2>&1
+          atlas map >/dev/null 2>&1 && echo "$$(date -u +%FT%TZ) map refreshed"
+          sleep "$${ATLAS_REFRESH_MINUTES}m"
+        done
+    healthcheck:
+      disable: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.atlas.cpus }}"
+          memory: "{{ limits.atlas.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'maintainerr' in enabled %}
   maintainerr:
     image: ghcr.io/maintainerr/maintainerr:latest

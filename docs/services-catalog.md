@@ -66,6 +66,7 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Glances | Light | optional | Lightweight system monitor; powers per-metric dashboard widgets (CPU/RAM/disk I/O/temp/processes). |
 | Tracearr | Medium | optional | Stream analytics for your media server — sessions, bandwidth, watch history. |
 | Uptime Kuma | Medium | optional | Uptime monitoring + status pages for every service in the stack. |
+| Atlas | Light | optional | Network map of every host and container (`/map`, live Homepage tile) plus `atlas chat`, an ops assistant that checks live state and your own notes. Chat needs an Ollama server. |
 | ntfy | Light | optional | Self-hosted push notifications — a simple webhook target for Watchtower, Uptime Kuma, backup scripts, or anything else that can POST a message. |
 
 ## Security
