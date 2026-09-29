@@ -3695,7 +3695,7 @@ def test_render_authelia_configuration_uses_domain_for_session_cookie():
     assert parsed["access_control"]["default_policy"] == "one_factor"
     # RBAC: traefik is in ADMIN_ONLY_SERVICES, so a rule is generated
     rules = parsed["access_control"].get("rules", [])
-    traefik_rules = [r for r in rules if "traefik." in r.get("domain", "")]
+    traefik_rules = [r for r in rules if r.get("subject") and "traefik." in r["domain"]]
     assert len(traefik_rules) == 1
     assert traefik_rules[0]["subject"] == ["group:admin"]
     assert "jwt_secret" not in parsed.get("identity_validation", {}).get("reset_password", {})
@@ -3843,19 +3843,26 @@ def test_render_authelia_configuration_rbac_rules_for_admin_only_services():
     parsed = yaml.safe_load(output)
 
     rules = parsed["access_control"].get("rules", [])
-    rule_domains = {r["domain"] for r in rules}
+    allow, deny = rules[:-1], rules[-1]
+    allow_domains = {r["domain"] for r in allow}
 
-    # Admin-only services should have deny rules
+    # Admin-only services: an admin-group allow rule each...
     for svc in ("radarr", "sonarr", "prowlarr", "traefik"):
-        assert f"{svc}.media.example.com" in rule_domains
-
-    # Media services should NOT have rules (fall through to default_policy)
-    for svc in ("jellyfin", "seerr"):
-        assert f"{svc}.media.example.com" not in rule_domains
-
-    # All rules should require admin group
-    for rule in rules:
+        assert f"{svc}.media.example.com" in allow_domains
+    for rule in allow:
+        assert rule["policy"] == "one_factor"
         assert rule["subject"] == ["group:admin"]
+
+    # ...then one trailing deny for the same domains, so a logged-in non-admin
+    # doesn't fall through to default_policy (rules match top-down)
+    assert deny["policy"] == "deny"
+    assert "subject" not in deny
+    assert set(deny["domain"]) == allow_domains
+
+    # Media services have no rules at all (default_policy applies)
+    for svc in ("jellyfin", "seerr"):
+        assert f"{svc}.media.example.com" not in allow_domains
+        assert f"{svc}.media.example.com" not in deny["domain"]
 
 
 def test_render_authelia_configuration_no_rules_without_domain():
