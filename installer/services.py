@@ -18,6 +18,7 @@ RESOURCE_PROFILES: dict[str, str] = {
     "recyclarr": "light",
     "decluttarr": "light",
     "maintainerr": "light",
+    "atlas": "light",
     "seerr": "light",
     "bazarr": "light",
     "flaresolverr": "light",

@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **slskd** (Soulseek music client) — searchable from Lidarr via the `Lidarr.Plugin.Slskd` plugin (needs Lidarr on the `nightly` tag), or standalone. Pre-seeded `slskd.yml` with a generated web password + Lidarr-plugin API key.
 - **Guacamole** (optional) — browser-based RDP/VNC/SSH gateway: web app, guacd, its own Postgres (runs as PUID so `vulcan backup` captures your connections) on a private internal network, and a one-shot schema writer; admin-only behind Authelia, generated DB password kept across rebuilds.
 - Homepage tiles open the right sub-path (`/guacamole/`, Threadfin's `/web/`), and qBittorrent's tile uses its domain route behind Gluetun.
-- 47 known services.
+- **Atlas** (optional, Monitoring) — a network map of every machine and container (`/map`), inventory/history, and `atlas chat`, an ops assistant that answers from live state and your own notes (brain: any Ollama server, e.g. a GPU box on the LAN). Pulls the published `ghcr.io/cyb3rron1n/atlas` image; `atlas-refresh` keeps the map current; the Homepage tile shows live counts; admin-only behind Authelia. Seeds `config/atlas/atlas.yaml` once.
+- 48 known services.
 
 ### Fixed
 - **Intel GPU false positive on servers.** Detection matched "intel" and "vga" anywhere in `lspci`, so a Xeon board (Intel chipset + ASPEED BMC video, no transcoding hardware) was treated as an Intel GPU — passing a useless `/dev/dri` to Jellyfin and skipping its no-GPU CPU scaling. Now the VGA/3D/display line itself must be Intel.

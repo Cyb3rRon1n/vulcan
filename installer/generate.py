@@ -10,6 +10,7 @@ split Atlas keeps between config/writer.py and the atlas init command.
 import json
 import os
 import secrets
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as dt_timezone
@@ -19,7 +20,7 @@ import yaml
 from jinja2 import Environment, FileSystemLoader
 
 from installer.auth import generate_authelia_secrets
-from installer.detect import detect_host_ip, detect_render_group_gid
+from installer.detect import detect_docker_group_gid, detect_host_ip, detect_render_group_gid
 from installer.services import resource_limits_for
 from installer.tiers import ALL_SERVICES, TIERS, TierDefinition
 
@@ -119,7 +120,7 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
     "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy",
-    "pihole", "guacamole",
+    "pihole", "guacamole", "atlas",
 })
 
 # Services that require admin-group membership when Authelia RBAC is active.
@@ -140,6 +141,8 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "mylar3", "lazylibrarian", "slskd",
     # A remote-desktop gateway into the LAN - admin only, never the media group.
     "guacamole",
+    # Sees every container/host and can propose restarts - admin only.
+    "atlas",
 })
 
 # Homepage tile groups - grouping/ordering is presentation-specific and
@@ -151,7 +154,7 @@ _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
-    "Monitoring": ["uptime-kuma", "tracearr", "netdata", "glances", "ntfy"],
+    "Monitoring": ["atlas", "uptime-kuma", "tracearr", "netdata", "glances", "ntfy"],
     "Security": ["authelia", "vaultwarden"],
     "Infrastructure": ["traefik", "filebrowser", "portainer", "adguardhome", "pihole", "guacamole"],
 }
@@ -192,6 +195,7 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "homepage": 3000,
     "authelia": 9091,
     "maintainerr": 6246,
+    "atlas": 8420,
     "metube": 8081,
     "downtify": 8000,
     "vaultwarden": 8222,
@@ -250,6 +254,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
+    "atlas": "Network map of every host and container, ops assistant",
     "metube": "Download videos from YouTube, Facebook, and hundreds of other sites straight into your library",
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
@@ -620,7 +625,8 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         cloudflare_dns=config.cloudflare_dns,
         cloudflare_email=config.cloudflare_email,
         tunnel_entrypoints=",tunnel" if "cloudflared" in enabled else "",
-        ports=resolve_ports(config)
+        ports=resolve_ports(config),
+        docker_gid=detect_docker_group_gid() if "atlas" in enabled else None
     )
 
 
@@ -642,7 +648,10 @@ def render_env(
     pihole_webpassword: str | None = None,
     jellyfin_api_key: str = "",
     backup_offsite_target: str = "",
-    backup_offsite_ssh_key: str = ""
+    backup_offsite_ssh_key: str = "",
+    atlas_ollama_host: str = "",
+    atlas_model: str = "qwen3:8b",
+    atlas_refresh_minutes: str = "30"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -699,11 +708,94 @@ def render_env(
         pihole_webpassword=pihole_webpassword or secrets.token_hex(16),
         jellyfin_api_key=jellyfin_api_key,
         backup_offsite_target=backup_offsite_target,
-        backup_offsite_ssh_key=backup_offsite_ssh_key
+        backup_offsite_ssh_key=backup_offsite_ssh_key,
+        atlas_enabled="atlas" in enabled,
+        atlas_ollama_host=atlas_ollama_host,
+        atlas_model=atlas_model,
+        atlas_refresh_minutes=atlas_refresh_minutes
     )
 
 
-_HREF_PATHS = {"guacamole": "/guacamole/", "threadfin": "/web/"}
+_ATLAS_NOTES_README = """\
+# Notes for Atlas
+
+Atlas searches everything in this folder (Markdown, text, scripts) and attaches the
+best-matching parts to every `atlas chat` question - so it answers from how *your*
+setup works, not generic advice.
+
+Good things to put here:
+
+- `HOSTS.md` - your machines, IPs and what runs where (add it to
+  `knowledge.pinned_paths` in atlas.yaml so every question sees it).
+- `incidents/` - one short file per problem you've solved: symptom, cause, how
+  you found it, the fix. Files under `incidents/` rank first.
+- Runbooks, restore steps, the scripts you run by hand.
+"""
+
+
+def render_atlas_config(config: GenerationConfig) -> str:
+    """
+    Seeded once into config/atlas/atlas.yaml, never overwritten. ${VAR}
+    references are expanded by Atlas from the container environment
+    (compose passes them in from .env), so no secret lands in this file.
+    """
+
+    enabled = enabled_service_keys(config)
+    jellyfin = "true" if "jellyfin" in enabled else "false"
+
+    return f"""\
+# Atlas - network map, inventory and `atlas chat`. Seeded by vulcan once;
+# edit freely, a regenerate won't overwrite it. Docs: github.com/Cyb3rRon1n/atlas
+name: {socket.gethostname() or "vulcan"}
+
+intelligence:
+  provider: ollama
+  model: "${{ATLAS_MODEL:-qwen3:8b}}"
+  ollama_host: "${{ATLAS_OLLAMA_HOST:-http://ollama:11434}}"   # set ATLAS_OLLAMA_HOST in .env
+
+jellyfin:                      # playback diagnosis in chat (key from .env JELLYFIN_API_KEY)
+  enabled: {jellyfin}
+  url: http://jellyfin:8096
+  api_key: "${{JELLYFIN_API_KEY}}"
+
+knowledge:
+  notes_paths: [/notes]        # = stack/config/atlas/notes
+  pinned_paths: []             # e.g. [/notes/HOSTS.md]
+  auto_context: 3
+
+proxmox:                       # a Proxmox host: create an API token, then enable
+  enabled: false
+  host: ""
+  user: atlas@pve
+  token_name: atlas
+  token_value: ""
+  verify_ssl: false
+
+map:
+  hosts: []                    # other machines to show on the map, e.g.
+  #  - {{name: nas, address: 192.168.1.10, role: NAS, ports: [22, 5000]}}
+"""
+
+
+_HREF_PATHS = {"guacamole": "/guacamole/", "threadfin": "/web/", "atlas": "/map"}
+
+# dashboard-icons has no entry for these - fall back to Material Design Icons.
+_HOMEPAGE_ICONS = {"atlas": "mdi-radar"}
+
+# Live widgets vulcan can wire with no API key to fill in.
+_HOMEPAGE_WIDGETS = {
+    # Atlas's own read-only summary of its latest network map.
+    "atlas": {
+        "type": "customapi",
+        "url": "http://atlas:8420/api/summary",
+        "refreshInterval": 60000,
+        "mappings": [
+            {"field": "status", "label": "Status"},
+            {"field": "containers_running", "label": "Containers up"},
+            {"field": "hosts_up", "label": "Hosts up"},
+        ],
+    },
+}
 
 
 def _service_href(key: str, config: GenerationConfig, host_ip: str | None) -> str | None:
@@ -782,13 +874,16 @@ def render_homepage_services(config: GenerationConfig, host_ip: str | None) -> s
             if href is None:
                 continue
 
-            items.append({
-                display_names[key]: {
-                    "href": href,
-                    "icon": f"{key}.png",
-                    "description": _HOMEPAGE_DESCRIPTIONS[key]
-                }
-            })
+            tile = {
+                "href": href,
+                "icon": _HOMEPAGE_ICONS.get(key, f"{key}.png"),
+                "description": _HOMEPAGE_DESCRIPTIONS[key]
+            }
+
+            if key in _HOMEPAGE_WIDGETS:
+                tile["widget"] = _HOMEPAGE_WIDGETS[key]
+
+            items.append({display_names[key]: tile})
 
         if items:
             groups.append({group_name: items})
@@ -1468,7 +1563,10 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         # User-filled, optional - must survive a rebuild (unknown .env keys are dropped).
         jellyfin_api_key=_preserved_vpn_value(output_dir, "JELLYFIN_API_KEY", ""),
         backup_offsite_target=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_TARGET", ""),
-        backup_offsite_ssh_key=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_SSH_KEY", "")
+        backup_offsite_ssh_key=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_SSH_KEY", ""),
+        atlas_ollama_host=_preserved_vpn_value(output_dir, "ATLAS_OLLAMA_HOST", ""),
+        atlas_model=_preserved_vpn_value(output_dir, "ATLAS_MODEL", "qwen3:8b"),
+        atlas_refresh_minutes=_preserved_vpn_value(output_dir, "ATLAS_REFRESH_MINUTES", "30")
     )
 
     compose_path.write_text(render_compose(config, host_ip))
@@ -1748,6 +1846,30 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                 f"to all services. {len(config.auth_users)} additional user(s) restricted to "
                 "Jellyfin and Seerr only. Add more users by re-running with --auth-users "
                 "or by editing stack/config/authelia/users_database.yml directly."
+            )
+
+    if "atlas" in enabled_service_keys(config):
+
+        atlas_dir = output_dir / "config" / "atlas"
+
+        # Bind-mount targets must exist before `compose up`, or Docker creates
+        # them root-owned and Atlas (running as PUID) can't write its database.
+        for sub in ("inventory", "reports", "logs", "notes"):
+            (atlas_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        atlas_yaml = atlas_dir / "atlas.yaml"
+
+        if not atlas_yaml.exists():
+
+            atlas_yaml.write_text(render_atlas_config(config))
+
+            (atlas_dir / "notes" / "README.md").write_text(_ATLAS_NOTES_README)
+
+            warnings.append(
+                "Atlas was pre-seeded at stack/config/atlas/atlas.yaml - its map "
+                "and Homepage tile work right away. For `atlas chat`, set "
+                "ATLAS_OLLAMA_HOST in .env; add your other machines under map.hosts "
+                "and your own notes under config/atlas/notes/. Vulcan won't overwrite it."
             )
 
     if "netdata" in enabled_service_keys(config):

@@ -1583,6 +1583,9 @@ ZERO_CAP_SERVICES = {
     "recyclarr", "decluttarr", "maintainerr",
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
+    # ghcr.io/cyb3rron1n/atlas - plain Python, run as PUID + docker group
+    # (verified live on cyberpac under cap_drop: ALL): web view + refresh loop.
+    "atlas", "atlas-refresh",
     # gotson/komga:latest - Java app run as `user: PUID:PGID`, so no
     # s6-overlay root->PUID drop and no ownership fixup. Verified live
     # (cyberpac) under cap_drop: ALL, zero cap_add: starts, migrates its
@@ -1668,7 +1671,7 @@ SPECIAL_CAP_SERVICES = {
 
 # Containers rendered alongside a service key rather than being one: pihole's resolver,
 # Guacamole's schema writer / database / protocol proxy.
-HELPER_CONTAINERS = {"unbound", "guac-initdb", "guac-postgres", "guacd"}
+HELPER_CONTAINERS = {"unbound", "guac-initdb", "guac-postgres", "guacd", "atlas-refresh"}
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
 
@@ -4236,3 +4239,83 @@ def test_traefik_template_routes_match_web_facing_services():
     routed.discard("vaultwarden-ws")  # Vaultwarden's secondary websocket router, not a separate service
 
     assert routed == WEB_FACING_SERVICES - {"traefik"}
+
+
+# --- Atlas (network map + ops assistant) ---------------------------------
+
+def test_atlas_renders_web_and_refresh_containers_with_docker_group():
+
+    config = make_config("heavy", custom_services={"atlas", "jellyfin", "traefik", "authelia"}, domain="media.example.com")
+
+    with patch("installer.generate.detect_docker_group_gid", return_value=975):
+        services = yaml.safe_load(render_compose(config))["services"]
+
+    web, refresh = services["atlas"], services["atlas-refresh"]
+    assert web["image"] == refresh["image"] == "ghcr.io/cyb3rron1n/atlas:latest"
+    assert web["group_add"] == refresh["group_add"] == ["975"]
+    assert web["user"] == "${PUID}:${PGID}"
+    assert "/var/run/docker.sock:/var/run/docker.sock" in web["volumes"]
+    assert "./config/atlas/notes:/notes:ro" in web["volumes"]
+    assert "traefik.http.routers.atlas.middlewares=authelia@docker" in web["labels"]
+    assert "atlas map" in refresh["command"][-1] and "ATLAS_REFRESH_MINUTES" in refresh["command"][-1]
+    assert "ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}" in web["environment"]
+
+
+def test_atlas_without_docker_group_renders_no_group_add():
+
+    with patch("installer.generate.detect_docker_group_gid", return_value=None):
+        services = yaml.safe_load(render_compose(make_config("light", custom_services={"atlas"})))["services"]
+
+    assert "group_add" not in services["atlas"]
+
+
+def test_atlas_homepage_tile_opens_map_with_summary_widget():
+
+    config = make_config("heavy", custom_services={"atlas", "homepage", "traefik"}, domain="media.example.com")
+
+    groups = yaml.safe_load(render_homepage_services(config, "192.168.1.5"))
+    tile = next(item["Atlas (network map + ops assistant)"]
+                for group in groups for items in group.values() for item in items
+                if "Atlas (network map + ops assistant)" in item)
+
+    assert tile["href"] == "https://atlas.media.example.com/map"
+    assert tile["icon"] == "mdi-radar"
+    assert tile["widget"]["type"] == "customapi"
+    assert tile["widget"]["url"] == "http://atlas:8420/api/summary"
+
+
+def test_atlas_is_admin_only_behind_authelia():
+
+    config = make_config("heavy", custom_services={"atlas", "authelia", "traefik"}, domain="media.example.com")
+
+    rules = yaml.safe_load(render_authelia_configuration(config, host_ip="192.168.1.5"))["access_control"]["rules"]
+
+    assert any(r.get("domain") == "atlas.media.example.com" and r.get("subject") == ["group:admin"] for r in rules)
+
+
+def test_atlas_config_seeded_once_with_env_references_and_env_keys_preserved(tmp_path):
+
+    config = make_config("light", custom_services={"atlas", "jellyfin"})
+    config.media_path = str(tmp_path / "media-root")
+    stack = tmp_path / "stack"
+
+    write_stack(config, output_dir=stack)
+
+    atlas_yaml = stack / "config" / "atlas" / "atlas.yaml"
+    seeded = atlas_yaml.read_text()
+    parsed = yaml.safe_load(seeded)
+    assert parsed["jellyfin"]["enabled"] is True
+    assert parsed["jellyfin"]["api_key"] == "${JELLYFIN_API_KEY}"
+    assert parsed["intelligence"]["ollama_host"].startswith("${ATLAS_OLLAMA_HOST")
+    for sub in ("inventory", "reports", "logs", "notes"):
+        assert (stack / "config" / "atlas" / sub).is_dir()
+    assert (stack / "config" / "atlas" / "notes" / "README.md").exists()
+
+    env_path = stack / ".env"
+    env_path.write_text(env_path.read_text().replace("ATLAS_OLLAMA_HOST=\n", "ATLAS_OLLAMA_HOST=http://gpu:11434\n"))
+    atlas_yaml.write_text(seeded + "# my edit\n")
+
+    write_stack(config, output_dir=stack)
+
+    assert "ATLAS_OLLAMA_HOST=http://gpu:11434" in env_path.read_text()
+    assert atlas_yaml.read_text().endswith("# my edit\n")
