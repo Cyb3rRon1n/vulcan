@@ -21,6 +21,13 @@ access_control:
       policy: 'one_factor'
       subject: ['group:admin']
 {% endfor %}
+    # Rules match top-down and a subject rule that doesn't match falls through to
+    # default_policy - without this, any logged-in (non-admin) user reaches these.
+    - domain:
+{% for service in admin_only_services %}
+        - '{{ service }}.{{ domain }}'
+{% endfor %}
+      policy: 'deny'
 {% endif %}
 
 session:
