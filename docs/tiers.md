@@ -14,7 +14,7 @@ All tiers share the same directory layout and volume naming, so re-running the i
 
 ## Custom mode
 
-Pick exactly which services to include, from all 47 known services regardless of tier, pre-checked based on what your hardware qualifies for:
+Pick exactly which services to include, from all 48 known services regardless of tier, pre-checked based on what your hardware qualifies for:
 
 ```bash
 ./install --plain --tier medium --services jellyfin,radarr,homepage,watchtower --non-interactive --yes --media-path /mnt/media

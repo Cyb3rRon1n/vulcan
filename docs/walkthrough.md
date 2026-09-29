@@ -566,6 +566,13 @@ above are actually running.
   that account first** - create your own admin, then delete `guacadmin`.
   Then add connections (RDP/VNC/SSH).
   [Details](integrations.md#remote-desktop-gateway-guacamole)
+- **Atlas** (network map + ops assistant): nothing to do for the map - open
+  its Homepage tile (or `/map`) and every container on this box is already
+  there, refreshed every 30 minutes. Add your other machines under `map.hosts`
+  in `stack/config/atlas/atlas.yaml`. For `atlas chat` (in a terminal:
+  `docker exec -it atlas atlas chat`) set `ATLAS_OLLAMA_HOST` in `.env` to an
+  Ollama server, then `docker compose up -d atlas atlas-refresh`.
+  [Details](integrations.md#network-map-and-ops-assistant-atlas)
 - **Tracearr** (stream stats), **ntfy** (push notifications) and
   **Glances** (host stats) need no setup beyond their first-visit account,
   where they have one - see [Optional Integrations](integrations.md).
