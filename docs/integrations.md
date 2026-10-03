@@ -225,17 +225,21 @@ A web UI for the containers themselves — start/stop/restart, read logs, exec i
 [Atlas](https://github.com/Cyb3rRon1n/atlas) is a small companion that knows how your stack fits together:
 
 - **Network map** (`/map`, and the Homepage tile with live counts): this box's containers grouped by Docker network with their public hostnames and health, your Proxmox guests, and any other machines you list - green/red at a glance, plus what Atlas is allowed to act on.
-- **`atlas chat`** - ask "why is X broken?" and it checks live state first: container status and logs (including *when* an error started), host health and reboots, reachability of any host/port, Jellyfin playback (direct play vs remux vs transcode, plugins, play history), Proxmox guests.
+- **Device inventory and triage** (Triage / Devices / Coverage tabs): `atlas-scan` finds every device on the LAN (a TCP-poke of every address, then `/proc/net/arp` for its MAC), so new or unrecognized devices show up to triage and known devices get tracked history. You can edit, merge or split a device entry from the web UI.
+- **`atlas chat`** - ask "why is X broken?" and it checks live state first: container status and logs (including *when* an error started), host health and reboots, reachability of any host/port, Jellyfin playback (direct play vs remux vs transcode, plugins, play history), Proxmox guests. An "Approve" action can restart or stop a container on your say-so.
 - **Your notes** - anything in `stack/config/atlas/notes/` (runbooks, a `HOSTS.md`, an `incidents/` folder of solved problems) is searched and attached to every question, so answers follow *your* setup.
-- **Safe** - it never changes anything on its own: restarts/stops/resizes are only proposed, each step confirmed in the terminal. The web view is read-only.
+- **Safe** - it never changes anything on its own: restarts/stops/resizes and device edits are only proposed, each step confirmed (in the terminal, or "Approve" in chat). The web UI's write endpoints (device edit/merge/split, chat Approve) are guarded only by a same-origin check, not real auth - see the port note below.
+- **Signal alerts** (`notify.signal` in `config/atlas/atlas.yaml`) - point it at a [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) (`atlas-scan` uses host networking, so `http://127.0.0.1:8080` reaches one running on this box) and it messages you about new devices or important devices going quiet.
 
-Tick **atlas** in the service picker. Vulcan pulls `ghcr.io/cyb3rron1n/atlas`, runs `atlas` (web, port 8420 / `atlas.<domain>`, admin-only behind Authelia) and `atlas-refresh` (re-maps every `ATLAS_REFRESH_MINUTES`, default 30), and seeds `config/atlas/atlas.yaml` once. Secrets stay in `.env` - the seeded file references `${JELLYFIN_API_KEY}` and `${ATLAS_OLLAMA_HOST}`.
+Tick **atlas** in the service picker. Vulcan pulls `ghcr.io/cyb3rron1n/atlas`, runs `atlas` (web, port 8420 / `atlas.<domain>`, admin-only behind Authelia) and `atlas-scan` (`network_mode: host` - LAN discovery, then `atlas discover`/`atlas proxmox scan`/`atlas map`, every `ATLAS_SCAN_MINUTES`, default 15), and seeds `config/atlas/atlas.yaml` once. Secrets stay in `.env` - the seeded file references `${JELLYFIN_API_KEY}` and `${ATLAS_OLLAMA_HOST}`.
+
+**Without a domain, put your own auth proxy in front.** Atlas's device-edit and chat-approve endpoints have no real auth of their own, only a same-origin check - with Traefik and a domain set, `atlas`'s port is published on `127.0.0.1` only, so Traefik + Authelia is the only way in. Without a domain, it's published on the LAN port instead, and that port is the only way in - don't expose it beyond a trusted LAN without something in front of it.
 
 **Chat needs an Ollama server** (`ATLAS_OLLAMA_HOST=http://<gpu-box>:11434` in `.env`). `qwen3:8b` handles tool use well on an 8GB GPU. Give Ollama a 16k context (`OLLAMA_CONTEXT_LENGTH=16384`, plus `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0` to keep it in VRAM) - at the 4k default, tool results get cut off and answers go wrong.
 
 **Proxmox:** create an API token (Datacenter → Permissions → API Tokens; a role with `VM.Audit, VM.PowerMgmt, VM.Config.CPU, VM.Config.Memory, Sys.Audit, Datastore.Audit`, privilege separation off) and fill the `proxmox:` block.
 
-Atlas reads the Docker socket to see containers - root-equivalent access, so it runs as PUID with only the docker group added, drops all capabilities, and is admin-only.
+Atlas reads the Docker socket to see containers - root-equivalent access, so it runs as PUID with only the docker group added, drops all capabilities, and is admin-only. `atlas-scan` additionally runs with `network_mode: host` (needed to see LAN MAC addresses) but still adds no capabilities.
 
 ## Remote desktop gateway (Guacamole)
 
