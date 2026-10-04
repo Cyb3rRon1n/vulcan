@@ -1584,8 +1584,8 @@ ZERO_CAP_SERVICES = {
     "seerr", "flaresolverr", "traefik", "cloudflared",
     "dashy", "watchtower",
     # ghcr.io/cyb3rron1n/atlas - plain Python, run as PUID + docker group
-    # (verified live on cyberpac under cap_drop: ALL): web view + refresh loop.
-    "atlas", "atlas-refresh",
+    # (verified live on cyberpac under cap_drop: ALL): web view + scan loop.
+    "atlas", "atlas-scan",
     # gotson/komga:latest - Java app run as `user: PUID:PGID`, so no
     # s6-overlay root->PUID drop and no ownership fixup. Verified live
     # (cyberpac) under cap_drop: ALL, zero cap_add: starts, migrates its
@@ -1671,7 +1671,7 @@ SPECIAL_CAP_SERVICES = {
 
 # Containers rendered alongside a service key rather than being one: pihole's resolver,
 # Guacamole's schema writer / database / protocol proxy.
-HELPER_CONTAINERS = {"unbound", "guac-initdb", "guac-postgres", "guacd", "atlas-refresh"}
+HELPER_CONTAINERS = {"unbound", "guac-initdb", "guac-postgres", "guacd", "atlas-scan"}
 
 ALL_CAPPED_SERVICES = FIVE_CAP_SERVICES | ZERO_CAP_SERVICES | set(SPECIAL_CAP_SERVICES)
 
@@ -4243,21 +4243,25 @@ def test_traefik_template_routes_match_web_facing_services():
 
 # --- Atlas (network map + ops assistant) ---------------------------------
 
-def test_atlas_renders_web_and_refresh_containers_with_docker_group():
+def test_atlas_renders_web_and_scan_containers_with_docker_group():
 
     config = make_config("heavy", custom_services={"atlas", "jellyfin", "traefik", "authelia"}, domain="media.example.com")
 
     with patch("installer.generate.detect_docker_group_gid", return_value=975):
         services = yaml.safe_load(render_compose(config))["services"]
 
-    web, refresh = services["atlas"], services["atlas-refresh"]
-    assert web["image"] == refresh["image"] == "ghcr.io/cyb3rron1n/atlas:latest"
-    assert web["group_add"] == refresh["group_add"] == ["975"]
+    web, scan = services["atlas"], services["atlas-scan"]
+    assert web["image"] == scan["image"] == "ghcr.io/cyb3rron1n/atlas:latest"
+    assert web["group_add"] == scan["group_add"] == ["975"]
     assert web["user"] == "${PUID}:${PGID}"
     assert "/var/run/docker.sock:/var/run/docker.sock" in web["volumes"]
     assert "./config/atlas/notes:/notes:ro" in web["volumes"]
     assert "traefik.http.routers.atlas.middlewares=authelia@docker" in web["labels"]
-    assert "atlas map" in refresh["command"][-1] and "ATLAS_REFRESH_MINUTES" in refresh["command"][-1]
+    assert scan["network_mode"] == "host"
+    assert "networks" not in scan
+    command = scan["command"][-1]
+    assert "atlas scan" in command
+    assert "atlas map" in command and "ATLAS_SCAN_MINUTES" in command
     assert "ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}" in web["environment"]
 
 
@@ -4267,6 +4271,22 @@ def test_atlas_without_docker_group_renders_no_group_add():
         services = yaml.safe_load(render_compose(make_config("light", custom_services={"atlas"})))["services"]
 
     assert "group_add" not in services["atlas"]
+
+
+def test_atlas_port_is_localhost_only_with_traefik_and_domain():
+
+    config = make_config("heavy", custom_services={"atlas", "traefik"}, domain="media.example.com")
+
+    services = yaml.safe_load(render_compose(config))["services"]
+
+    assert services["atlas"]["ports"] == ["127.0.0.1:8420:8420"]
+
+
+def test_atlas_port_is_lan_published_without_traefik_domain():
+
+    services = yaml.safe_load(render_compose(make_config("light", custom_services={"atlas"})))["services"]
+
+    assert services["atlas"]["ports"] == ["8420:8420"]
 
 
 def test_atlas_homepage_tile_opens_map_with_summary_widget():
@@ -4282,6 +4302,12 @@ def test_atlas_homepage_tile_opens_map_with_summary_widget():
     assert tile["icon"] == "mdi-radar"
     assert tile["widget"]["type"] == "customapi"
     assert tile["widget"]["url"] == "http://atlas:8420/api/summary"
+    assert tile["widget"]["mappings"] == [
+        {"field": "to_triage", "label": "To triage"},
+        {"field": "devices_quiet", "label": "Quiet"},
+        {"field": "hosts_up", "label": "Hosts up"},
+        {"field": "containers_running", "label": "Containers"},
+    ]
 
 
 def test_atlas_is_admin_only_behind_authelia():
@@ -4319,3 +4345,51 @@ def test_atlas_config_seeded_once_with_env_references_and_env_keys_preserved(tmp
 
     assert "ATLAS_OLLAMA_HOST=http://gpu:11434" in env_path.read_text()
     assert atlas_yaml.read_text().endswith("# my edit\n")
+
+
+def test_atlas_config_seeded_with_scan_and_notify_sections(tmp_path):
+
+    config = make_config("light", custom_services={"atlas"})
+    config.media_path = str(tmp_path / "media-root")
+    stack = tmp_path / "stack"
+
+    write_stack(config, output_dir=stack)
+
+    parsed = yaml.safe_load((stack / "config" / "atlas" / "atlas.yaml").read_text())
+
+    assert parsed["scan"]["enabled"] is True
+    assert parsed["scan"]["subnets"] == []
+    assert parsed["notify"]["signal"]["url"] == ""
+    assert parsed["notify"]["signal"]["number"] == ""
+    assert parsed["notify"]["signal"]["recipients"] == []
+
+
+def test_write_stack_migrates_atlas_refresh_minutes_to_scan_minutes(tmp_path):
+
+    media_path = tmp_path / "media-root"
+    output_dir = tmp_path / "stack"
+    output_dir.mkdir()
+
+    (output_dir / ".env").write_text(
+        "MEDIA_PATH=/old/path\n"
+        "PUID=1000\n"
+        "PGID=1000\n"
+        "TZ=UTC\n"
+        "ATLAS_REFRESH_MINUTES=45\n"
+    )
+
+    config = GenerationConfig(
+        tier=TIERS["light"],
+        media_path=str(media_path),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        custom_services={"atlas"}
+    )
+
+    write_stack(config, output_dir=output_dir)
+
+    env_content = (output_dir / ".env").read_text()
+
+    assert "ATLAS_SCAN_MINUTES=45" in env_content
+    assert "ATLAS_REFRESH_MINUTES" not in env_content
