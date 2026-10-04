@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+  <rect width="900" height="560" rx="12" fill="#0d1117"/>
+  <path d="M0,12 a12,12 0 0 1 12,-12 h876 a12,12 0 0 1 12,12 v34 h-900 z" fill="#161b22"/>
+  <line x1="0" y1="46" x2="900" y2="46" stroke="#30363d" stroke-width="1"/>
+  <circle cx="26" cy="23" r="7" fill="#e0645a" opacity="0.85"/>
+  <circle cx="48" cy="23" r="7" fill="#e0b04a" opacity="0.85"/>
+  <circle cx="70" cy="23" r="7" fill="#5fb87a" opacity="0.85"/>
+  <rect x="330" y="14" width="240" height="18" rx="9" fill="#0d1117"/>
+  <text x="450" y="27" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#8b949e">vault.home.arpa</text>
+
+  <rect x="0" y="46" width="900" height="514" fill="#f4f5f7"/>
+
+  <rect x="300" y="110" width="300" height="340" rx="8" fill="#ffffff" stroke="#dfe2e6" stroke-width="1"/>
+  <text x="450" y="150" text-anchor="middle" font-family="system-ui, Arial, sans-serif" font-size="20" font-weight="700" fill="#22252a">Create account</text>
+
+  <text x="326" y="188" font-family="system-ui, Arial, sans-serif" font-size="12" fill="#6b7280">Email address</text>
+  <rect x="326" y="196" width="248" height="34" rx="4" fill="#f4f5f7" stroke="#d5d8dc" stroke-width="1"/>
+
+  <text x="326" y="250" font-family="system-ui, Arial, sans-serif" font-size="12" fill="#6b7280">Master password</text>
+  <rect x="326" y="258" width="248" height="34" rx="4" fill="#f4f5f7" stroke="#d5d8dc" stroke-width="1"/>
+
+  <text x="326" y="312" font-family="system-ui, Arial, sans-serif" font-size="12" fill="#6b7280">Confirm master password</text>
+  <rect x="326" y="320" width="248" height="34" rx="4" fill="#f4f5f7" stroke="#d5d8dc" stroke-width="1"/>
+
+  <rect x="326" y="382" width="248" height="38" rx="4" fill="#e8833a"/>
+  <text x="450" y="406" text-anchor="middle" font-family="system-ui, Arial, sans-serif" font-size="14" font-weight="600" fill="#ffffff">Create account &amp; save your login here</text>
+
+  <text x="450" y="535" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, not a literal capture - Vaultwarden's real UI will differ</text>
+</svg>

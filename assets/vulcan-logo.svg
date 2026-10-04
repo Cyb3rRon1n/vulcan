@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Transparent background -->
+  <!-- Outer circle -->
+  <circle cx="64" cy="64" r="58" fill="none" stroke="#00d4aa" stroke-width="4"/>
+  <!-- Inner circle cutout -->
+  <circle cx="64" cy="64" r="42" fill="#1a1a1a"/>
+  <!-- Forge hammer/anvil shape - simplified -->
+  <path d="M64 20 L40 60 L80 60 Z M64 90 L40 60 L80 60 Z" fill="#ff6b6b"/>
+  <!-- Central element - media server motif -->
+  <polygon points="64 50 54 70 74 70" fill="#fff"/>
+  <!-- VULCAN text inside -->
+  <text x="64" y="105" font-family="Georgia, serif" font-size="11" font-weight="bold" letter-spacing="2" fill="#00d4aa" text-anchor="middle">VULCAN</text>
+  <!-- Tier references below -->
+  <text x="64" y="118" font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="middle">L M H</text>
+</svg>
