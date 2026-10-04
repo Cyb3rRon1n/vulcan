@@ -254,7 +254,7 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "authelia": "Login protecting every routed service",
     "traefik": "Reverse proxy routing and dashboard",
     "maintainerr": "Automatically cleans up unwatched or unwanted media",
-    "atlas": "Network map of every host and container, ops assistant",
+    "atlas": "Network map, device triage and ops assistant",
     "metube": "Download videos from YouTube, Facebook, and hundreds of other sites straight into your library",
     "downtify": "Download Spotify tracks/playlists straight into your library",
     "netdata": "Real-time CPU, RAM, disk, network, and temperature monitoring",
@@ -651,7 +651,7 @@ def render_env(
     backup_offsite_ssh_key: str = "",
     atlas_ollama_host: str = "",
     atlas_model: str = "qwen3:8b",
-    atlas_refresh_minutes: str = "30"
+    atlas_scan_minutes: str = "15"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -712,7 +712,7 @@ def render_env(
         atlas_enabled="atlas" in enabled,
         atlas_ollama_host=atlas_ollama_host,
         atlas_model=atlas_model,
-        atlas_refresh_minutes=atlas_refresh_minutes
+        atlas_scan_minutes=atlas_scan_minutes
     )
 
 
@@ -774,6 +774,16 @@ proxmox:                       # a Proxmox host: create an API token, then enabl
 map:
   hosts: []                    # other machines to show on the map, e.g.
   #  - {{name: nas, address: 192.168.1.10, role: NAS, ports: [22, 5000]}}
+
+scan:                          # LAN discovery by the atlas-scan container (every ATLAS_SCAN_MINUTES)
+  enabled: true
+  subnets: []                  # empty = the host's LAN; e.g. [192.168.1.0/24]
+
+notify:                        # Signal alerts for new devices / important devices going quiet
+  signal:
+    url: ""                    # signal-cli-rest-api, e.g. http://127.0.0.1:8080 (atlas-scan uses host networking)
+    number: ""
+    recipients: []
 """
 
 
@@ -790,9 +800,10 @@ _HOMEPAGE_WIDGETS = {
         "url": "http://atlas:8420/api/summary",
         "refreshInterval": 60000,
         "mappings": [
-            {"field": "status", "label": "Status"},
-            {"field": "containers_running", "label": "Containers up"},
+            {"field": "to_triage", "label": "To triage"},
+            {"field": "devices_quiet", "label": "Quiet"},
             {"field": "hosts_up", "label": "Hosts up"},
+            {"field": "containers_running", "label": "Containers"},
         ],
     },
 }
@@ -1566,7 +1577,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         backup_offsite_ssh_key=_preserved_vpn_value(output_dir, "BACKUP_OFFSITE_SSH_KEY", ""),
         atlas_ollama_host=_preserved_vpn_value(output_dir, "ATLAS_OLLAMA_HOST", ""),
         atlas_model=_preserved_vpn_value(output_dir, "ATLAS_MODEL", "qwen3:8b"),
-        atlas_refresh_minutes=_preserved_vpn_value(output_dir, "ATLAS_REFRESH_MINUTES", "30")
+        # Old field name, kept for anyone regenerating on top of a pre-rename .env.
+        atlas_scan_minutes=_preserved_vpn_value(
+            output_dir, "ATLAS_SCAN_MINUTES",
+            _preserved_vpn_value(output_dir, "ATLAS_REFRESH_MINUTES", "15")
+        )
     )
 
     compose_path.write_text(render_compose(config, host_ip))

@@ -578,9 +578,10 @@ services:
     restart: unless-stopped
 {% endif %}
 {% if 'atlas' in enabled %}
-  # Atlas: network map (/map), inventory/history, `atlas chat` ops assistant.
-  # Reads the Docker socket to see containers - root-equivalent access, so it
-  # runs as PUID with only the docker group added, and is admin-only behind Authelia.
+  # Atlas: network map (/map), device triage, inventory/history, `atlas chat`
+  # ops assistant. Reads the Docker socket to see containers - root-equivalent
+  # access, so it runs as PUID with only the docker group added, and is
+  # admin-only behind Authelia.
   atlas:
     image: ghcr.io/cyb3rron1n/atlas:latest
     container_name: atlas
@@ -601,8 +602,17 @@ services:
       - ./config/atlas/logs:/data/logs
       - ./config/atlas/notes:/notes:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    # atlas web has device-edit (merge/split) and action-approve (restart/stop containers)
+    # endpoints guarded only by a same-origin check - with a domain set it's reachable only
+    # through Traefik + Authelia below; without one, this LAN port is the only way in, so
+    # put your own auth proxy in front of it.
+{% if 'traefik' in enabled and domain %}
+    ports:
+      - "127.0.0.1:{{ ports['atlas'] }}:8420"
+{% else %}
     ports:
       - "{{ ports['atlas'] }}:8420"
+{% endif %}
 {% if 'traefik' in enabled and domain %}
     labels:
       - "traefik.enable=true"
@@ -628,11 +638,16 @@ services:
           cpus: "{{ limits.atlas.cpus }}"
           memory: "{{ limits.atlas.memory }}"
     restart: unless-stopped
-  # Keeps the map and the Homepage tile current: the same image re-running
-  # discover / proxmox scan / map every ATLAS_REFRESH_MINUTES (default 30).
-  atlas-refresh:
+  # Finds every device on the LAN and keeps the map and the Homepage tile
+  # current: the same image re-running scan / discover / proxmox scan / map
+  # every ATLAS_SCAN_MINUTES (default 15). Host networking lets it read the
+  # LAN's MAC addresses (a TCP-poke of every address, then /proc/net/arp) -
+  # that needs no added capabilities. Shares the atlas inventory DB (same
+  # bind mounts as the web container above).
+  atlas-scan:
     image: ghcr.io/cyb3rron1n/atlas:latest
-    container_name: atlas-refresh
+    container_name: atlas-scan
+    network_mode: host
     user: "${PUID}:${PGID}"
 {% if docker_gid %}
     group_add:
@@ -643,7 +658,7 @@ services:
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
       - ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}
       - ATLAS_MODEL=${ATLAS_MODEL:-qwen3:8b}
-      - ATLAS_REFRESH_MINUTES=${ATLAS_REFRESH_MINUTES:-30}
+      - ATLAS_SCAN_MINUTES=${ATLAS_SCAN_MINUTES:-15}
     volumes:
       - ./config/atlas/atlas.yaml:/data/atlas.yaml:ro
       - ./config/atlas/inventory:/data/inventory
@@ -655,10 +670,11 @@ services:
       - -c
       - |
         while :; do
+          atlas scan
           atlas discover >/dev/null 2>&1
           atlas proxmox scan >/dev/null 2>&1
           atlas map >/dev/null 2>&1 && echo "$$(date -u +%FT%TZ) map refreshed"
-          sleep "$${ATLAS_REFRESH_MINUTES}m"
+          sleep "$${ATLAS_SCAN_MINUTES}m"
         done
     healthcheck:
       disable: true
