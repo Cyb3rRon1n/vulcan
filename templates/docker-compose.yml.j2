@@ -505,6 +505,20 @@ services:
       - "traefik.http.routers.vaultwarden.middlewares=crowdsec@docker"
       - "traefik.http.routers.vaultwarden-ws.middlewares=crowdsec@docker"
 {% endif %}
+{% if 'authelia' in enabled %}
+{# The admin panel is a browser page, not something the apps call, so it
+   CAN sit behind Authelia - with only ADMIN_TOKEN guarding it, a public
+   (tunnel) install exposes /admin to the whole internet. #}
+      - "traefik.http.routers.vaultwarden-admin.rule=Host(`vaultwarden.{{ domain }}`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.vaultwarden-admin.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.vaultwarden-admin.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.vaultwarden-admin.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.routers.vaultwarden-admin.priority=100"
+      - "traefik.http.routers.vaultwarden-admin.service=vaultwarden"
+      - "traefik.http.routers.vaultwarden-admin.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), 'authelia@docker'] | select | join(',') }}"
+{% endif %}
 {% endif %}
     # vaultwarden runs as root and writes its sqlite DB + rsa_key.pem
     # into the bind-mounted /data. Under cap_drop: ALL a root process

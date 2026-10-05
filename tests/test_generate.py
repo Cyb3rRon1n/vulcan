@@ -654,6 +654,27 @@ def test_vaultwarden_router_names_its_service_explicitly():
     assert "traefik.http.routers.vaultwarden.service=vaultwarden" in block
 
 
+
+def test_vaultwarden_admin_panel_sits_behind_authelia():
+    # /admin is only guarded by ADMIN_TOKEN otherwise, and a tunnel
+    # install exposes it publicly; the apps never call it, so SSO is fine.
+    output = render_compose(make_config(
+        "heavy", custom_services={"vaultwarden", "traefik", "authelia", "crowdsec", "recyclarr"}, domain="media.example.com"
+    ))
+    block = _service_block(output, "vaultwarden", "recyclarr")
+    assert "routers.vaultwarden-admin.rule=Host(`vaultwarden.media.example.com`) && PathPrefix(`/admin`)" in block
+    assert "routers.vaultwarden-admin.middlewares=crowdsec@docker,authelia@docker" in block
+    assert "routers.vaultwarden-admin.service=vaultwarden" in block
+    # the main router (used by the apps) stays off Authelia
+    assert 'routers.vaultwarden.middlewares=crowdsec@docker"' in block
+
+
+def test_vaultwarden_admin_router_absent_without_authelia():
+    output = render_compose(make_config(
+        "heavy", custom_services={"vaultwarden", "traefik", "recyclarr"}, domain="media.example.com"
+    ))
+    assert "vaultwarden-admin" not in _service_block(output, "vaultwarden", "recyclarr")
+
 def test_render_compose_omits_crowdsec_when_disabled():
 
     output = render_compose(make_config("heavy", enabled_optional={"traefik"}, domain="media.example.com"))
@@ -4237,6 +4258,7 @@ def test_traefik_template_routes_match_web_facing_services():
     routed = set(re.findall(r"traefik\.http\.routers\.([\w-]+)\.rule=Host", template_text))
     routed.discard("dashboard")  # Traefik's own router, not a per-service key
     routed.discard("vaultwarden-ws")  # Vaultwarden's secondary websocket router, not a separate service
+    routed.discard("vaultwarden-admin")  # Vaultwarden /admin behind Authelia, same service
 
     assert routed == WEB_FACING_SERVICES - {"traefik"}
 
