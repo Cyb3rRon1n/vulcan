@@ -46,6 +46,23 @@ WALKTHROUGH_URL = "https://github.com/Cyb3rRon1n/vulcan/blob/main/docs/walkthrou
 # config.yaml, which genuinely has per-install values to fill in.
 _CROWDSEC_ACQUIS = "filenames:\n  - /var/log/traefik/access.log\nlabels:\n  type: traefik\n"
 
+# Jellyfin clients (Roku especially) load a whole row of posters at once, and every item with
+# no Primary image answers 404 - one screen is 10+ 404s in a second, which is exactly what
+# crowdsecurity/http-probing bans. Measured live: a new user was banned 6s before pressing
+# play. Narrow on purpose: only the jellyfin router, only GETs, only Jellyfin's library API
+# paths (case-insensitive - clients send /Items and /shows alike). Login is a POST and stays
+# covered; scanner GETs like /.env or /wp-admin on the Jellyfin host still ban.
+_CROWDSEC_JELLYFIN_WHITELIST = """name: local/jellyfin-browsing-whitelist
+description: "Don't ban people for browsing Jellyfin"
+whitelist:
+  reason: "Jellyfin library browsing"
+  expression:
+    - >-
+      evt.Parsed.traefik_router_name == 'jellyfin@docker'
+      && evt.Parsed.verb == 'GET'
+      && any(['/items/', '/shows/', '/users/', '/videos/', '/audio/', '/persons/', '/artists/'], { lower(evt.Meta.http_path) startsWith # })
+"""
+
 # netdata's go.d docker collector polls the Docker API every second and, measured on a live
 # 45-container host, kept dockerd+containerd at ~6 cores around the clock (6.3 -> 0.2 with it
 # off). Per-container CPU/RAM/net charts don't need it - those come from cgroups. Seeded once;
@@ -1912,6 +1929,16 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
             acquis_path.parent.mkdir(parents=True, exist_ok=True)
             acquis_path.write_text(_CROWDSEC_ACQUIS)
+
+        whitelist_path = (
+            output_dir / "config" / "crowdsec" / "etc" / "parsers" / "s02-enrich"
+            / "jellyfin-browsing-whitelist.yaml"
+        )
+
+        if "jellyfin" in enabled_service_keys(config) and not whitelist_path.exists():
+
+            whitelist_path.parent.mkdir(parents=True, exist_ok=True)
+            whitelist_path.write_text(_CROWDSEC_JELLYFIN_WHITELIST)
 
         routed = "traefik" in enabled_service_keys(config) and config.domain
 
