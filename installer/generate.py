@@ -63,6 +63,34 @@ whitelist:
       && any(['/items/', '/shows/', '/users/', '/videos/', '/audio/', '/persons/', '/artists/'], { lower(evt.Meta.http_path) startsWith # })
 """
 
+# Ban-loop fix. Once someone is banned, the Traefik bouncer answers every request with 403 itself
+# (no backend involved, so Traefik logs the server URL as "-"). Their open Jellyfin app or dashboard
+# tab keeps polling, those 403s feed http-probing, and each new alert re-bans them for another 4h -
+# measured live: a 4h ban became indefinite (192 bouncer 403s, three fresh alerts). Ignoring only
+# 403s no backend produced can't hide an attack: the request never reached anything, and the
+# sender is already banned.
+_CROWDSEC_BOUNCER_403_WHITELIST = """name: local/bouncer-403-whitelist
+description: "Don't extend a ban with the bouncer's own 403s"
+whitelist:
+  reason: "403 from the CrowdSec bouncer, not a backend"
+  expression:
+    - evt.Meta.http_status == '403' && evt.Parsed.traefik_server_url == '-'
+"""
+
+# Browsing Seerr fires dozens of /api/v1/tv|movie|request calls per page, some answered 403/404
+# (a request that isn't yours, a title TMDB lacks) - trips http-crawl-non_statics and http-probing.
+# Only the seerr router's catalog/request reads; /api/v1/auth/* (login) still bans.
+_CROWDSEC_SEERR_WHITELIST = r"""name: local/seerr-browsing-whitelist
+description: "Don't ban people for browsing Jellyseerr"
+whitelist:
+  reason: "Jellyseerr catalog browsing"
+  expression:
+    - >-
+      evt.Parsed.traefik_router_name == 'seerr@docker'
+      && evt.Parsed.verb == 'GET'
+      && evt.Meta.http_path matches '^/api/v1/(tv|movie|person|collection|request|search|discover|media|genres|keyword|network|studio)(/|\\?|$)'
+"""
+
 # netdata's go.d docker collector polls the Docker API every second and, measured on a live
 # 45-container host, kept dockerd+containerd at ~6 cores around the clock (6.3 -> 0.2 with it
 # off). Per-container CPU/RAM/net charts don't need it - those come from cgroups. Seeded once;
@@ -1930,15 +1958,27 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             acquis_path.parent.mkdir(parents=True, exist_ok=True)
             acquis_path.write_text(_CROWDSEC_ACQUIS)
 
-        whitelist_path = (
-            output_dir / "config" / "crowdsec" / "etc" / "parsers" / "s02-enrich"
-            / "jellyfin-browsing-whitelist.yaml"
-        )
+        # Each written once and never overwritten, like acquis.yaml - a hand-tuned whitelist survives
+        # a regen. Only for services that are actually enabled.
+        enrich_dir = output_dir / "config" / "crowdsec" / "etc" / "parsers" / "s02-enrich"
+        whitelists = {
+            "bouncer-403-whitelist.yaml": (_CROWDSEC_BOUNCER_403_WHITELIST, True),
+            "jellyfin-browsing-whitelist.yaml": (
+                _CROWDSEC_JELLYFIN_WHITELIST, "jellyfin" in enabled_service_keys(config)
+            ),
+            "seerr-browsing-whitelist.yaml": (
+                _CROWDSEC_SEERR_WHITELIST, "seerr" in enabled_service_keys(config)
+            ),
+        }
 
-        if "jellyfin" in enabled_service_keys(config) and not whitelist_path.exists():
+        for name, (content, wanted) in whitelists.items():
 
-            whitelist_path.parent.mkdir(parents=True, exist_ok=True)
-            whitelist_path.write_text(_CROWDSEC_JELLYFIN_WHITELIST)
+            path = enrich_dir / name
+
+            if wanted and not path.exists():
+
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
 
         routed = "traefik" in enabled_service_keys(config) and config.domain
 
