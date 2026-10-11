@@ -9,10 +9,13 @@ so it's tracked from then on, the same as anything downloaded normally.
 
 ## The three commands
 
-### `vulcan media scan <path> [--plan FILE]`
+### `vulcan media scan <path> [--plan FILE] [--media-path PATH] [--offline]`
 
 Read-only. Walks `<path>` for video files and writes a plan — a JSON file you
-can review or hand-edit — plus an on-screen summary.
+can review or hand-edit — plus an on-screen summary. `--media-path` overrides
+the library root (defaults to the running stack's own); `--offline` skips
+asking Sonarr/Radarr and uses only the built-in name parser, even if the
+stack is up.
 
 ```
 $ vulcan media scan /mnt/old-drive
@@ -42,7 +45,12 @@ Nothing on `<path>` is ever touched by `scan`. For each file it works out:
 - **the language rule** — `ok` if any audio track is English, or if the
   original-language audio is present together with an English subtitle
   (embedded or a sidecar `.srt`/`.ass`/etc.); otherwise `breaks`. An extra dub
-  track never counts against a file that's already fine.
+  track never counts against a file that's already fine. An untagged
+  (`und`) audio track and an unknown original language (no Sonarr/Radarr
+  lookup to confirm it against) both report as `ok` with a note instead of
+  a false `breaks` — there's nothing to contradict the rule, so the benefit
+  of the doubt goes to the file, not an alarm you'd have to double-check by
+  hand.
 - **direct play** — `universal` (plays on anything: H.264 8-bit, AAC/AC3/EAC3
   audio, text subtitles) or **"may convert"**, naming the reason (HEVC,
   10-bit, DTS/TrueHD audio, PGS/VobSub subtitles). This is reported only —
@@ -58,7 +66,7 @@ Nothing on `<path>` is ever touched by `scan`. For each file it works out:
 Only `import` rows are imported by default. Edit the plan JSON by hand if you
 want to flip a `review` row to `import`, or an `import` row to `skip`.
 
-### `vulcan media import <plan> [--move] [--verify quick|full] [--include-review]`
+### `vulcan media import <plan> [--move] [--verify quick|full] [--include-review] [--offline]`
 
 ```
 $ vulcan media import stack/media-plans/20261011-174812.json
@@ -85,6 +93,9 @@ pass `--include-review`). What "import" means:
 - If Sonarr/Radarr are reachable, imported titles are registered automatically
   (added with your usual quality profile, then rescanned in place — no second
   copy). If they're not, the import still finishes; see below.
+- `--offline` skips registering with Sonarr/Radarr even if they're reachable
+  — the import is queued for `vulcan media register` instead, same as if the
+  stack were actually down.
 
 ### `vulcan media register`
 
