@@ -141,6 +141,16 @@ class ArrClients:
         registered, pending, groups = [], [], {}
         for row in rows:
             ident = row["identity"]
+            kind = ident.get("kind")
+            # A row identified while the stack was offline (pending-registration)
+            # carries no tvdb_id/tmdb_id yet - there was nothing to confirm
+            # against back then. Now that an Arr is up, try the same lookup
+            # scan() uses, so it isn't stuck pending forever.
+            if kind == "episode" and not ident.get("tvdb_id") and self.sonarr and ident.get("title"):
+                ident = row["identity"] = {**ident, **(self.confirm(ident, Path(row.get("source", row["destination"])).name) or {})}
+            elif kind == "movie" and not ident.get("tmdb_id") and self.radarr and ident.get("title"):
+                ident = row["identity"] = {**ident, **(self.confirm(ident, Path(row.get("source", row["destination"])).name) or {})}
+
             if ident.get("kind") == "episode" and ident.get("tvdb_id") and self.sonarr:
                 groups.setdefault(("series", ident["tvdb_id"]), []).append(row)
             elif ident.get("kind") == "movie" and ident.get("tmdb_id") and self.radarr:

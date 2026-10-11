@@ -87,6 +87,43 @@ def test_register_adds_series_rescans_and_verifies(tmp_path):
     assert ("POST", "/command", {"name": "RescanSeries", "seriesId": 9}) in sonarr.calls
 
 
+def test_register_confirms_rows_identified_while_offline(tmp_path):
+    """
+    A row imported while the stack was offline was identified by the
+    built-in parser only - no tmdb_id. Once an Arr is reachable again,
+    register() must confirm it (the same lookup scan() uses) instead of
+    leaving it pending forever.
+    """
+    dest = tmp_path / "media/movies/Alien (1979)/Alien (1979).mkv"
+    MOVIE = {"id": 55, "title": "Alien", "year": 1979, "tmdbId": 348, "originalLanguage": {"name": "English"}}
+    added = {}
+
+    def add(path, body):
+        added.update(body)
+        return {"id": 9}
+
+    radarr = FakeArr({
+        "GET /parse": {},
+        "GET /movie/lookup/tmdb": MOVIE,
+        "GET /movie/lookup": [dict(MOVIE, id=None)],
+        "GET /movie?tmdbId": [],
+        "GET /qualityprofile": [{"id": 4}],
+        "GET /moviefile": [{"path": "/data/media/movies/Alien (1979)/Alien (1979).mkv"}],
+        "GET /movie": [],
+        "GET /rootfolder": [{"path": "/data/media/movies"}],
+        "POST /movie": add,
+        "POST /command": {"id": 1},
+        "GET /command/1": {"status": "completed"},
+    })
+    c = ArrClients(None, radarr, tmp_path, sleep=lambda s: None)
+    row = {"source": "/drive/Alien (1979).mkv",
+           "identity": {"kind": "movie", "title": "Alien", "year": 1979, "confidence": "high"},
+           "destination": str(dest)}
+    result = c.register([row])
+    assert result["registered"] == [row] and result["pending"] == []
+    assert row["identity"]["tmdb_id"] == 348
+
+
 def test_register_keeps_unpicked_and_unidentified_rows_pending(tmp_path):
     sonarr = FakeArr({"GET /series?tvdbId": [{"id": 3}], "POST /command": {"id": 1},
                       "GET /command/1": {"status": "completed"}, "GET /episodefile": []})
