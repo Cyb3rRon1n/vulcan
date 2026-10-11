@@ -83,7 +83,7 @@ class ArrClients:
                          + urllib.parse.quote(term)) or []
             hit = found[0] if found else None
             exact = bool(hit) and _norm(hit.get("title")) == _norm(identity["title"])
-        if not hit:
+        if not hit or not exact:
             return out
 
         out.update(title=hit["title"], year=hit.get("year") or out.get("year"),

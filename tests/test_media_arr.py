@@ -37,7 +37,7 @@ def test_confirm_lookup_only_raises_confidence_on_matching_name(tmp_path):
     low = {"kind": "episode", "title": "Spy x Family", "year": None, "anime": False, "confidence": "low"}
     assert c.confirm(low, "02.mkv")["confidence"] == "high"
     other = dict(low, title="Something Else")
-    assert c.confirm(other, "02.mkv")["confidence"] == "low"
+    assert c.confirm(other, "02.mkv") == other
 
 
 def test_confirm_survives_unreachable_arr(tmp_path):
