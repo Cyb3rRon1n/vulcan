@@ -27,6 +27,8 @@ CASES = [
     ("Blade Runner 2049 (2017).mkv", dict(kind="movie", title="Blade Runner 2049", year=2017)),
     ("tv/Some Show/Season 2/02.mkv", dict(kind="episode", title="Some Show", season=2, episodes=[2], confidence="low")),
     ("movies/Alien (1979)/movie.mkv", dict(kind="movie", title="Alien", year=1979, confidence="low")),
+    ("Show.2019.S01E01.1080p.mkv", dict(kind="episode", title="Show", year=2019, season=1, episodes=[1], confidence="high")),
+    ("Show (2019) - S01E01.mkv", dict(kind="episode", title="Show", year=2019, season=1, episodes=[1])),
     ("random_clip.mkv", dict(kind="unknown", confidence="unknown")),
 ]
 

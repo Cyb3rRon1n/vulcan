@@ -13,20 +13,21 @@ _SE = re.compile(r"(?<![a-z0-9])s(\d{1,2})[ ._-]?e(\d{1,3})((?:[ ._-]?-?[ ._-]?e
 _NX = re.compile(r"(?<![0-9])(\d{1,2})x(\d{2,3})(?![0-9])")
 _ABS = re.compile(r" - (\d{1,4})(?:v\d)?(?= |\[|\(|$)")
 _YEAR = re.compile(r"(?:^|[ .(\[_-])((?:19|20)\d{2})(?=$|[ .)\]_-])")
-_TRAILING_YEAR = re.compile(r"\s*\(((?:19|20)\d{2})\)\s*-?\s*$")
+_TRAILING_YEAR = re.compile(r"\(?((?:19|20)\d{2})\)?\s*-?\s*$")
 _BRACKETS = re.compile(r"\[[^\]]*\]|\{[^}]*\}")
 _SEASON_DIR = re.compile(r"(?:season[ ._]?|s)(\d{1,2})", re.I)
 
 
-def _clean(text):
+def _clean(text, strip_year=True):
     """Title text before an anchor -> (title or None, year or None)."""
 
     s = _BRACKETS.sub(" ", text)
     s = re.sub(r"[._]", " ", s)
     year = None
-    m = _TRAILING_YEAR.search(s)
-    if m and m.start() > 0:
-        year, s = int(m.group(1)), s[:m.start()]
+    if strip_year:
+        m = _TRAILING_YEAR.search(s)
+        if m and m.start() > 0:
+            year, s = int(m.group(1)), s[:m.start()]
     s = re.sub(r"\s+", " ", s).strip(" -")
     return (s or None), year
 
@@ -78,7 +79,7 @@ def parse_name(path):
     years = [x for x in _YEAR.finditer(stem) if x.start() > 0]
     if years:
         m = years[-1]
-        title, _ = _clean(stem[:m.start()])          # start of the whole match drops the "(" / "." too
+        title, _ = _clean(stem[:m.start()], strip_year=False)          # start of the whole match drops the "(" / "." too
         if title:
             return _identity("movie", title, int(m.group(1)), confidence="high")
 
