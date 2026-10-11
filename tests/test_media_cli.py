@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -59,3 +58,43 @@ def test_import_offline_queues_imported_rows_for_registration(tmp_path):
 def test_register_without_reachable_arrs_exits_1(tmp_path):
     result = runner.invoke(app, ["media", "register"])
     assert result.exit_code == 1 and "Sonarr/Radarr" in result.output
+
+
+class RaisingProber:
+    def __init__(self, *a, **k): pass
+    def __enter__(self): raise OSError("docker missing")
+    def __exit__(self, *a): return False
+
+
+def test_scan_exits_when_probe_tool_unavailable(tmp_path):
+    with patch("installer.cli.MediaProber", RaisingProber):
+        result = runner.invoke(app, ["media", "scan", str(tmp_path), "--media-path", str(tmp_path / "lib"),
+                                     "--offline"])
+    assert result.exit_code == 1
+    assert "ffprobe" in result.output.lower() or "docker" in result.output.lower()
+
+
+def test_import_registers_backlog_before_new_imports(tmp_path):
+    plan = tmp_path / "p.json"
+    plan.write_text(json.dumps(fake_plan(tmp_path)))
+    imported = [{"destination": "/lib/a.mkv", "identity": {}}]
+    call_order = []
+
+    class FakeClients:
+        def register(self, rows):
+            call_order.append("register")
+            return {"registered": [], "pending": []}
+
+    def fake_register_pending(clients):
+        call_order.append("register_pending")
+        return {"registered": [], "pending": []}
+
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"), \
+         patch("installer.cli.import_plan", return_value={"imported": imported, "failed": [], "skipped": [],
+                                                           "stopped": None}), \
+         patch("installer.cli._media_context", return_value=(tmp_path / "lib", FakeClients())), \
+         patch("installer.cli.register_pending", side_effect=fake_register_pending), \
+         patch("installer.cli.add_pending"):
+        result = runner.invoke(app, ["media", "import", str(plan)])
+    assert result.exit_code == 0, result.output
+    assert call_order == ["register_pending", "register"]

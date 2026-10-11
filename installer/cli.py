@@ -1311,11 +1311,17 @@ def media_import(
     if result["imported"]:
         _, clients = _media_context(Path(plan["media_path"]), offline)
         if clients:
+            # Flush any pre-existing backlog first - registering this run's
+            # imports before the backlog would mean a row that just failed
+            # gets immediately retried (add_pending below) instead of
+            # waiting out its normal backoff.
+            backlog = register_pending(clients)
             reg = clients.register(result["imported"])
             add_pending(reg["pending"])
             console.print(f"Registered {len(reg['registered'])} with Sonarr/Radarr; {len(reg['pending'])} queued "
                           "for `vulcan media register`.")
-            register_pending(clients)
+            if backlog["registered"]:
+                console.print(f"Also registered {len(backlog['registered'])} earlier imports.")
         else:
             add_pending([dict(r, reason="stack offline") for r in result["imported"]])
             console.print("Sonarr/Radarr not reachable - queued for registration. Run `vulcan media register` "
