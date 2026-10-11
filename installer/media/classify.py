@@ -16,9 +16,11 @@ def rule_status(info, sidecars, original_language):
         return "ok", "English audio"
     if not original_language:
         return "ok", "original language unknown - not checked"
-    subs = {s["lang"] for s in info["subs"]} | {s["lang"] for s in sidecars}
     if original_language not in audio:
+        if "und" in audio:
+            return "ok", "audio language untagged - not checked"
         return "breaks", f"no English or original ({original_language}) audio"
+    subs = {s["lang"] for s in info["subs"]} | {s["lang"] for s in sidecars}
     if "eng" not in subs:
         return "breaks", "original audio but no English subtitles"
     return "ok", "original audio + English subtitles"
