@@ -6,6 +6,7 @@ overwritten; --move deletes a source only after its copy verified.
 """
 
 import hashlib
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -51,39 +52,56 @@ def import_plan(plan, *, move=False, verify="quick", include_review=False, save=
             continue
         src, dest = Path(row["source"]), Path(row["destination"])
 
-        if dest.exists():
-            row["result"] = "skip:conflict"
-            result["skipped"].append(row)
-        elif not src.exists():
-            row["result"] = "failed: source missing"
-            result["failed"].append(row)
-        elif _free(dest.parent) < row["size"]:
-            result["stopped"] = f"destination full before {src.name}"
-            break
-        else:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            partial = dest.with_name(dest.name + ".vulcan-partial")
-            copied = run(["rsync", "--partial", "--append-verify", "--preallocate", str(src), str(partial)],
-                         capture_output=True, text=True)
-            if copied.returncode != 0:
-                row["result"] = f"failed: rsync exit {copied.returncode}: {(copied.stderr or '').strip()[:120]}"
-                result["failed"].append(row)
-            elif not verify_copy(src, partial, verify):
-                partial.unlink(missing_ok=True)
-                row["result"] = "failed: copy did not verify"
+        try:
+            if dest.exists():
+                row["result"] = "skip:conflict"
+                result["skipped"].append(row)
+            elif not src.exists():
+                row["result"] = "failed: source missing"
                 result["failed"].append(row)
             else:
-                partial.rename(dest)
-                for sidecar in row.get("sidecars", []):
-                    target = dest.parent / Path(sidecar).name
-                    if Path(sidecar).exists() and not target.exists():
-                        shutil.copy2(sidecar, target)
-                if move:
-                    src.unlink()
-                    for sidecar in row.get("sidecars", []):
-                        Path(sidecar).unlink(missing_ok=True)
-                row["done"], row["result"] = True, "imported"
-                result["imported"].append(row)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                partial = dest.with_name(dest.name + ".vulcan-partial")
+                space_needed = row["size"] - (partial.stat().st_size if partial.exists() else 0)
+                if _free(dest.parent) < space_needed:
+                    result["stopped"] = f"destination full before {src.name}"
+                    break
+
+                copied = run(["rsync", "--partial", "--append-verify", "--preallocate", str(src), str(partial)],
+                             capture_output=True, text=True)
+                if copied.returncode != 0:
+                    # Keep partial for resumability on next run via --append-verify
+                    row["result"] = f"failed: rsync exit {copied.returncode}: {(copied.stderr or '').strip()[:120]}"
+                    result["failed"].append(row)
+                elif not verify_copy(src, partial, verify):
+                    partial.unlink(missing_ok=True)
+                    row["result"] = "failed: copy did not verify"
+                    result["failed"].append(row)
+                else:
+                    # Atomic no-overwrite placement: hard link then remove partial
+                    try:
+                        os.link(str(partial), str(dest))
+                    except FileExistsError:
+                        partial.unlink(missing_ok=True)
+                        row["result"] = "skip:conflict"
+                        result["skipped"].append(row)
+                    else:
+                        partial.unlink()
+                        copied_sidecars = []
+                        for sidecar in row.get("sidecars", []):
+                            target = dest.parent / Path(sidecar).name
+                            if Path(sidecar).exists() and not target.exists():
+                                shutil.copy2(sidecar, target)
+                                copied_sidecars.append(sidecar)
+                        if move:
+                            src.unlink()
+                            for sidecar in copied_sidecars:
+                                Path(sidecar).unlink(missing_ok=True)
+                        row["done"], row["result"] = True, "imported"
+                        result["imported"].append(row)
+        except OSError as error:
+            row["result"] = f"failed: {error}"
+            result["failed"].append(row)
 
         if save:
             save(plan)
