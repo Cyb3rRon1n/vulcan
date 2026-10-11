@@ -1037,3 +1037,48 @@ print(' '.join(s.key for s in ALL_SERVICES))
         [ "$items" -ge 3 ]
     done
 }
+
+@test "media_flow scans the chosen folder, then imports the same plan" {
+
+    fake_vulcan() { echo "VULCAN $*"; }
+    export -f fake_vulcan
+    whiptail() {
+        case "$*" in
+            *--inputbox*) echo -n "/mnt/old drive" >&3 ;;
+        esac
+        return 0
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; media_flow <<< \$'\n\n'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VULCAN media scan /mnt/old drive --plan stack/media-plans/menu-latest.json"* ]]
+    [[ "$output" == *"VULCAN media import stack/media-plans/menu-latest.json"* ]]
+}
+
+@test "media_flow does nothing when the folder prompt is cancelled" {
+
+    fake_vulcan() { echo "VULCAN $*"; }
+    export -f fake_vulcan
+    whiptail() { return 1; }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; media_flow"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"VULCAN media"* ]]
+}
+
+@test "media_flow does not import when the scan fails" {
+
+    fake_vulcan() { echo "VULCAN $*"; [ "$2" = "scan" ] && return 1; return 0; }
+    export -f fake_vulcan
+    whiptail() { case "$*" in *--inputbox*) echo -n "/mnt/old" >&3 ;; esac; return 0; }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; media_flow <<< \$'\n\n'"
+
+    [[ "$output" == *"VULCAN media scan"* ]]
+    [[ "$output" != *"VULCAN media import"* ]]
+}

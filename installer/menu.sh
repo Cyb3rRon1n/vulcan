@@ -220,6 +220,28 @@ confirm_and_run() {
     return "$status"
 }
 
+# --- Media assistant -----------------------------------------------------
+#
+# Front end for `vulcan media scan` / `vulcan media import` - the engine
+# (installer/media/) does everything; this only asks for the folder and
+# confirms each step. One fixed plan path so scan and import always agree.
+media_flow() {
+    local source plan="stack/media-plans/menu-latest.json"
+
+    source=$(whiptail --backtitle "$BACKTITLE" --title "Media assistant" \
+        --inputbox "Folder or drive with your existing movies and shows.\n\nIt is only read - nothing on it is changed." \
+        "$DLG_ROWS" "$DLG_COLS" "" 3>&1 1>&2 2>&3) || return 0
+    [ -n "$source" ] || return 0
+
+    confirm_and_run "Scan media" \
+        "Scan $source and write an import plan?\n\nNothing is copied yet - you'll see a summary first." \
+        "$VULCAN_BIN" media scan "$source" --plan "$plan" || return 0
+
+    confirm_and_run "Import media" \
+        "Copy the planned files into your library and register them with Sonarr/Radarr?\n\nThe source stays untouched. Duplicates, files already in the library and unrecognised files are skipped." \
+        "$VULCAN_BIN" media import "$plan" || return 0
+}
+
 # --- Main Menu -------------------------------------------------------
 #
 # Every item is always shown, DockSTARTer-style, rather than hidden or
@@ -330,6 +352,7 @@ main_menu() {
             "install"     "Install → Complete, Guided, Storage" \
             "configure"   "Configure → Services, Storage" \
             "stack"       "Stack → Start, Status, Update, Pull, Backup, Restore" \
+            "media"       "Media → Scan & import existing movies and shows" \
             "system"      "System → Update, Uninstall" \
             "exit"        "Exit" \
             3>&1 1>&2 2>&3) || { clear; return 0; }
@@ -338,6 +361,7 @@ main_menu() {
             install)    menu_install ;;
             configure)  menu_configure ;;
             stack)      menu_stack ;;
+            media)      media_flow ;;
             system)     menu_system ;;
             exit)       clear; return 0 ;;
         esac
