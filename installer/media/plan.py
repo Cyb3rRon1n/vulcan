@@ -71,7 +71,7 @@ def scan(source, media_path, prober, arr=None, free_bytes=None):
     for f in files:
         identity = parse_name(str(f))
         if arr:
-            identity = arr.confirm(identity, f.name)
+            identity = {**identity, **(arr.confirm(identity, f.name) or {})}
         info = prober.probe(f)
         sidecars = sidecar_subtitles(f)
         original = identity.get("original_language") or ("jpn" if identity.get("anime") else None)
@@ -93,7 +93,7 @@ def scan(source, media_path, prober, arr=None, free_bytes=None):
 
     groups = {}
     for r in rows:
-        if r["identity"]["kind"] != "unknown" and r["probe"] != "failed":
+        if r["identity"]["kind"] != "unknown" and r["probe"] != "failed" and r["action"] in ("import", "review"):
             groups.setdefault(_dup_key(r["identity"]), []).append(r)
     for group in groups.values():
         if len(group) > 1:
