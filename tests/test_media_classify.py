@@ -43,3 +43,16 @@ def test_direct_play_reasons():
 
 def test_direct_play_flags_10bit_h264():
     assert direct_play(info([("eng", "aac")], bit_depth=10)) == (False, ["10-bit video"])
+
+
+def test_untagged_audio_is_ok():
+    assert rule_status(info([("und", "aac")]), [], "jpn")[0] == "ok"
+
+
+def test_untagged_audio_with_dub_is_ok():
+    assert rule_status(info([("ita", "aac"), ("und", "aac")]), [], "jpn")[0] == "ok"
+
+
+def test_foreign_dub_only_still_breaks():
+    # Verify existing behavior: foreign audio without untagged tracks still breaks
+    assert rule_status(info([("ita", "aac")], [("eng", "subrip")]), [], "jpn")[0] == "breaks"
