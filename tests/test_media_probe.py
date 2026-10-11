@@ -42,6 +42,7 @@ def test_sidecar_languages_from_tags_and_text(tmp_path):
     (tmp_path / "Show - S01E01.es.srt").write_text("x")
     (tmp_path / "Show - S01E01.hi.srt").write_text(RUSSIAN)          # .hi that is not English
     (tmp_path / "Show - S01E01.ass").write_text(ENGLISH)             # untagged drama-style sidecar
+    (tmp_path / "Show - S01E010.en.srt").write_text("x")             # different episode, must not match
     (tmp_path / "Other.en.srt").write_text("x")                      # different video
     langs = {Path(s["path"]).name: s["lang"] for s in sidecar_subtitles(video)}
     assert langs == {"Show - S01E01.en.srt": "eng", "Show - S01E01.es.srt": "spa",

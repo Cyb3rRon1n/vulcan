@@ -67,7 +67,7 @@ def sidecar_subtitles(video):
 
     found = []
     for f in siblings:
-        if f.suffix.lower() not in SUB_EXTENSIONS or not f.name.startswith(video.stem):
+        if f.suffix.lower() not in SUB_EXTENSIONS or not f.name.startswith(video.stem + "."):
             continue
         tags = [t.lower() for t in f.name[len(video.stem):-len(f.suffix)].split(".") if t]
         if any(t in _ENGLISH_TAGS for t in tags):
