@@ -1,11 +1,14 @@
+import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from installer import __version__
 from installer.auth import hash_authelia_password
@@ -47,6 +50,12 @@ from installer.generate import (
     resolve_ports,
     write_stack,
 )
+from installer.media.arr import add_pending, connect_arrs, register_pending
+from installer.media.plan import PLANS_DIR, write_plan
+from installer.media.plan import load_plan as load_media_plan
+from installer.media.plan import scan as media_scan_engine
+from installer.media.probe import Prober as MediaProber
+from installer.media.transfer import import_plan
 from installer.userdata import USERDATA_DIR, Jellyfin, export_userdata, restore_userdata
 from installer.post_install import (
     backup_stack,
@@ -128,6 +137,11 @@ userdata_app = typer.Typer(
     help="Export/restore every Jellyfin user's favorites, likes, watched status and resume points."
 )
 app.add_typer(userdata_app, name="userdata")
+
+media_app = typer.Typer(
+    help="Scan a drive or folder of existing movies/shows, import it into the library, register it with Sonarr/Radarr."
+)
+app.add_typer(media_app, name="media")
 
 console = Console()
 
@@ -1192,6 +1206,137 @@ def userdata_restore(
 
     if not apply:
         console.print("Dry run - add --apply to write.")
+
+
+def _media_context(media_path: Path | None, offline: bool):
+    """(media path, ArrClients or None). The stack's saved state supplies both unless overridden."""
+
+    state = load_previous_state(STACK_DIR)
+    if media_path is None and state:
+        media_path = Path(state["media_path"])
+    if media_path is None:
+        console.print("[red]No Vulcan stack found here.[/red] Pass --media-path /path/to/your/media to plan without one.")
+        raise typer.Exit(code=1)
+    clients = None
+    if not offline and state:
+        clients = connect_arrs(STACK_DIR, media_path, resolve_ports(_config_from_previous_state(state)))
+    return media_path, clients
+
+
+def _gb(n: int) -> str:
+    return f"{n / 1e9:.1f} GB"
+
+
+def _print_media_plan(plan: dict) -> None:
+    s = plan["summary"]
+    table = Table(title=f"Media plan - {s['files']} video files")
+    table.add_column("Action")
+    table.add_column("Files", justify="right")
+    for action, count in sorted(s["actions"].items()):
+        table.add_row(action, str(count))
+    console.print(table)
+    console.print(f"To import: {_gb(s['import_bytes'])} - free at destination: {_gb(s['free_bytes'])}")
+    if s["rule_breaks"]:
+        console.print(f"[yellow]! {s['rule_breaks']} files break the language rule (no English audio, and no "
+                      "original audio + English subtitles):[/yellow]")
+        for row in [r for r in plan["rows"] if r.get("rule") == "breaks"][:10]:
+            console.print(f"  - {Path(row['source']).name}: {row['rule_note']}")
+    if s["may_convert"]:
+        console.print(f"{s['may_convert']} files may need converting to play on every device (reported only).")
+    if s["review"]:
+        console.print(f"[yellow]! {s['review']} files need review (not recognised, or couldn't be read):[/yellow]")
+        for row in [r for r in plan["rows"] if r["action"] == "review"][:10]:
+            console.print(f"  - {Path(row['source']).name}")
+
+
+@media_app.command(name="scan")
+def media_scan(
+    source: Path = typer.Argument(..., exists=True, help="Folder or drive to scan (only read, never changed)"),
+    plan_file: Path | None = typer.Option(None, "--plan", help="Where to write the plan (default: stack/media-plans/<time>.json)"),
+    media_path: Path | None = typer.Option(None, "--media-path", help="Library root (default: this stack's media path)"),
+    offline: bool = typer.Option(False, "--offline", help="Don't ask Sonarr/Radarr - built-in name parser only"),
+):
+    """Identify every video under SOURCE and write an import plan. Nothing is copied."""
+
+    media_path, clients = _media_context(media_path, offline)
+    console.print("Sonarr/Radarr: " + ("online - names checked against TVDB/TMDB" if clients
+                                        else "not used - built-in name parser only"))
+    root = source if source.is_dir() else source.parent
+    try:
+        with MediaProber(root, cache_path=PLANS_DIR / ".probe-cache.json") as prober:
+            plan = media_scan_engine(source, media_path, prober, clients)
+    except (OSError, subprocess.CalledProcessError) as error:
+        console.print(f"[red]Couldn't start ffprobe ({error}).[/red] Install ffmpeg on this machine, or make sure "
+                      "Docker is running so the stack's Jellyfin image can be used.")
+        raise typer.Exit(code=1)
+
+    out = plan_file or PLANS_DIR / f"{dt.datetime.now():%Y%m%d-%H%M%S}.json"
+    write_plan(plan, out)
+    _print_media_plan(plan)
+    console.print(f"\nPlan saved: {out}\nReview or edit it, then run: vulcan media import {out}")
+    if not plan["summary"]["fits"]:
+        console.print("[red]The planned import won't fit in the free space at the destination.[/red] "
+                      "Free some space or change some rows' action to \"skip\" in the plan.")
+        raise typer.Exit(code=1)
+
+
+@media_app.command(name="import")
+def media_import(
+    plan_path: Path = typer.Argument(..., exists=True, help="A plan written by `vulcan media scan`"),
+    move: bool = typer.Option(False, "--move", help="Delete each source file after its copy verified"),
+    verify: str = typer.Option("quick", "--verify", help="quick (size + first/last 8 MiB) or full (whole-file hash)"),
+    include_review: bool = typer.Option(False, "--include-review", help="Also import rows marked review"),
+    offline: bool = typer.Option(False, "--offline", help="Don't register with Sonarr/Radarr now - queue it"),
+):
+    """Copy (or move) the plan's files into the library, then register them with Sonarr/Radarr."""
+
+    if verify not in ("quick", "full"):
+        raise typer.BadParameter("--verify must be quick or full")
+    if not shutil.which("rsync"):
+        console.print("[red]rsync is required for imports[/red] (resumable copies). Install it, e.g. "
+                      "`sudo apt install rsync` / `sudo dnf install rsync`, and re-run.")
+        raise typer.Exit(code=1)
+
+    plan = load_media_plan(plan_path)
+
+    def report(row):
+        console.print(f"  {row.get('result', '?'):<16} {Path(row['source']).name}")
+
+    result = import_plan(plan, move=move, verify=verify, include_review=include_review,
+                         save=lambda p: write_plan(p, plan_path), on_row=report)
+    console.print(f"Imported {len(result['imported'])}, skipped {len(result['skipped'])}, failed {len(result['failed'])}.")
+    if result["stopped"]:
+        console.print(f"[red]Stopped: {result['stopped']}.[/red] Free space and re-run - finished files are kept.")
+
+    if result["imported"]:
+        _, clients = _media_context(Path(plan["media_path"]), offline)
+        if clients:
+            reg = clients.register(result["imported"])
+            add_pending(reg["pending"])
+            console.print(f"Registered {len(reg['registered'])} with Sonarr/Radarr; {len(reg['pending'])} queued "
+                          "for `vulcan media register`.")
+            register_pending(clients)
+        else:
+            add_pending([dict(r, reason="stack offline") for r in result["imported"]])
+            console.print("Sonarr/Radarr not reachable - queued for registration. Run `vulcan media register` "
+                          "once the stack is online.", soft_wrap=True)
+
+    if result["failed"] or result["stopped"]:
+        raise typer.Exit(code=1)
+
+
+@media_app.command(name="register")
+def media_register():
+    """Register files imported while offline (or not picked up yet) with Sonarr/Radarr."""
+
+    _, clients = _media_context(None, False) if load_previous_state(STACK_DIR) else (None, None)
+    if not clients:
+        console.print("[red]Sonarr/Radarr aren't reachable[/red] - start the stack and re-run.")
+        raise typer.Exit(code=1)
+    result = register_pending(clients)
+    console.print(f"Registered {len(result['registered'])}; {len(result['pending'])} still pending.")
+    for row in result["pending"][:10]:
+        console.print(f"  - {Path(row['destination']).name}: {row['reason']}")
 
 
 @plan_app.command(name="export")
