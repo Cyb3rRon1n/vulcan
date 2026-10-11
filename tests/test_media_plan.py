@@ -97,3 +97,38 @@ def test_plan_round_trip(tmp_path):
     p = tmp_path / "plans" / "a.json"
     write_plan({"version": 1, "rows": []}, p)
     assert load_plan(p) == {"version": 1, "rows": []}
+
+
+def test_scan_arr_confirm_returns_partial_dict(tmp_path):
+    src = tmp_path / "drive"
+    make(src, "spy.x.family.s01e11.mkv")
+
+    class PartialArr:
+        def roots(self):
+            return {"tv": tmp_path / "arr-tv", "movies": tmp_path / "arr-movies"}
+
+        def confirm(self, identity, filename):
+            return {"title": "SPY x FAMILY", "year": 2022}
+
+    plan = scan(src, tmp_path / "lib", FakeProber({"spy.x.family.s01e11.mkv": media(audio=("jpn",))}),
+                arr=PartialArr(), free_bytes=10**9)
+    row = plan["rows"][0]
+    assert row["identity"]["title"] == "SPY x FAMILY"
+    assert row["identity"]["year"] == 2022
+    assert row["destination"] is not None
+    assert "arr-tv/SPY x FAMILY (2022)/Season 01/" in row["destination"]
+
+
+def test_scan_skip_conflict_not_best_for_duplicates(tmp_path):
+    src, lib = tmp_path / "drive", tmp_path / "lib"
+    make(src, "Show.S01E01.mkv", size=20)
+    make(src, "Show.S01E01.720p.mkv", size=10)
+    make(lib, "media/tv/Show/Season 01/Show.S01E01.mkv")
+    prober = FakeProber({
+        "Show.S01E01.mkv": media(height=1080),
+        "Show.S01E01.720p.mkv": media(height=720),
+    })
+    plan = scan(src, lib, prober, free_bytes=10**9)
+    by = {Path(r["source"]).name: r for r in plan["rows"]}
+    assert by["Show.S01E01.mkv"]["action"] == "skip:conflict"
+    assert by["Show.S01E01.720p.mkv"]["action"] == "import"
