@@ -130,6 +130,7 @@ Most are also in the Main Menu; `userdata` and `plan` are CLI-only:
 | `sudo vulcan update-self` | Updates this Vulcan checkout — plain fast-forward `git pull` |
 | `vulcan plan export [file]` | Writes the current stack's shape (tier, services, settings — no credentials) to a shareable JSON file |
 | `vulcan build --from-plan <file>` | Builds a new stack from an exported plan, on this machine or another — every other flag still overrides the plan's value for that field |
+| `vulcan media scan <path>` / `media import <plan>` / `media register` | Scans an existing drive of movies/shows, copies what's new into the library (never overwrites, resumable), and registers it with Sonarr/Radarr — see [Media Assistant guide](docs/guides/media-assistant.md) |
 
 Airgap/offline: `--offline` skips the Docker install attempt; `vulcan export`/`import` move a stack's images to a machine never online at all, and `vulcan export-bundle`/`install-bundle` (or `./install --bundle FILE`) carry Vulcan's own Python deps for a zero-network first boot.
 

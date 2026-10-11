@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- **Media assistant** (`vulcan media scan` / `media import` / `media register`, plus a whiptail "Media" Main Menu entry) — scans an existing drive of movies/shows, identifies each file (built-in parser, confirmed against Sonarr/Radarr's TVDB/TMDB lookup when online), flags language-rule breaks and files that may need converting to play everywhere, skips duplicates and anything already in the library, then copies (or moves, after verifying) into place and registers with Sonarr/Radarr. Resumable, never overwrites, queues registration if the stack is offline. See [docs/guides/media-assistant.md](docs/guides/media-assistant.md).
 - **`vulcan userdata export` / `restore`** — rebuild-proof snapshots of every Jellyfin user's favorites, 👍/👎, watched status and resume points (keyed by TMDb/TVDb/IMDb ids), plus Seerr requests; restore is a dry run unless `--apply`. Needs `JELLYFIN_API_KEY` in `stack/.env`.
 - **Off-box backups** — set `BACKUP_OFFSITE_TARGET` (rsync over SSH) and `vulcan backup` also copies `backups/` + `exports/userdata/` there; a failed copy exits 2 without touching the local backup.
 - **Byparr** (optional) — maintained, Firefox-based drop-in FlareSolverr replacement; Suwayomi prefers it automatically. Runs fully hardened (verified solving a real Cloudflare challenge under `cap_drop: ALL`).
