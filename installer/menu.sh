@@ -226,7 +226,8 @@ confirm_and_run() {
 # (installer/media/) does everything; this only asks for the folder and
 # confirms each step. One fixed plan path so scan and import always agree.
 media_flow() {
-    local source plan="stack/media-plans/menu-latest.json"
+    local source plan="stack/media-plans/menu-latest.json" import_desc="The source stays untouched."
+    local -a import_args=("$plan")
 
     source=$(whiptail --backtitle "$BACKTITLE" --title "Media assistant" \
         --inputbox "Folder or drive with your existing movies and shows.\n\nIt is only read - nothing on it is changed." \
@@ -237,9 +238,16 @@ media_flow() {
         "Scan $source and write an import plan?\n\nNothing is copied yet - you'll see a summary first." \
         "$VULCAN_BIN" media scan "$source" --plan "$plan" || return 0
 
+    if whiptail --backtitle "$BACKTITLE" --title "Media assistant" \
+        --yesno "Delete the originals after each verified copy? (No = copy and keep the originals)" \
+        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
+        import_args+=(--move)
+        import_desc="The source is deleted file by file, only after each copy is verified."
+    fi
+
     confirm_and_run "Import media" \
-        "Copy the planned files into your library and register them with Sonarr/Radarr?\n\nThe source stays untouched. Duplicates, files already in the library and unrecognised files are skipped." \
-        "$VULCAN_BIN" media import "$plan" || return 0
+        "Copy the planned files into your library and register them with Sonarr/Radarr?\n\n$import_desc Duplicates, files already in the library and unrecognised files are skipped." \
+        "$VULCAN_BIN" media import "${import_args[@]}" || return 0
 }
 
 # --- Main Menu -------------------------------------------------------

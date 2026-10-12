@@ -74,6 +74,73 @@ def test_scan_exits_when_probe_tool_unavailable(tmp_path):
     assert "ffprobe" in result.output.lower() or "docker" in result.output.lower()
 
 
+def test_import_flushes_backlog_even_when_nothing_new_to_import(tmp_path):
+    plan = tmp_path / "p.json"
+    plan.write_text(json.dumps(fake_plan(tmp_path)))
+    call_order = []
+
+    class FakeClients:
+        def register(self, rows):
+            call_order.append("register")
+            return {"registered": [], "pending": []}
+
+    def fake_register_pending(clients):
+        call_order.append("register_pending")
+        return {"registered": [], "pending": []}
+
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"), \
+         patch("installer.cli.import_plan", return_value={"imported": [], "failed": [], "skipped": [],
+                                                           "stopped": None}), \
+         patch("installer.cli._media_context", return_value=(tmp_path / "lib", FakeClients())), \
+         patch("installer.cli.register_pending", side_effect=fake_register_pending):
+        result = runner.invoke(app, ["media", "import", str(plan)])
+    assert result.exit_code == 0, result.output
+    assert call_order == ["register_pending"]                     # flushed, but nothing new to register
+
+
+def test_import_rejects_malformed_json_plan(tmp_path):
+    plan = tmp_path / "p.json"
+    plan.write_text("not valid json")
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"):
+        result = runner.invoke(app, ["media", "import", str(plan)])
+    assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+    assert "invalid" in result.output.lower() and "Traceback" not in result.output
+
+
+def test_import_rejects_plan_missing_required_keys(tmp_path):
+    plan = tmp_path / "p.json"
+    plan.write_text(json.dumps({"version": 1}))                  # no "rows"
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"):
+        result = runner.invoke(app, ["media", "import", str(plan)])
+    assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+    assert "invalid" in result.output.lower() and "Traceback" not in result.output
+
+
+def test_import_move_refused_when_source_is_inside_stack_media_path(tmp_path):
+    media_path = tmp_path / "lib"
+    plan_dict = fake_plan(tmp_path)
+    plan_dict["source"] = str(media_path / "media" / "tv" / "old-drive")
+    plan_dict["media_path"] = str(media_path)
+    plan = tmp_path / "p.json"
+    plan.write_text(json.dumps(plan_dict))
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"), \
+         patch("installer.cli.import_plan") as mock_import:
+        result = runner.invoke(app, ["media", "import", str(plan), "--move"])
+    assert result.exit_code == 1
+    assert "move" in result.output.lower() and "media path" in result.output.lower()
+    mock_import.assert_not_called()
+
+
+def test_import_move_allowed_when_source_is_outside_stack_media_path(tmp_path):
+    plan = tmp_path / "p.json"
+    plan.write_text(json.dumps(fake_plan(tmp_path)))              # source == tmp_path, media_path == tmp_path/lib
+    with patch("installer.cli.shutil.which", return_value="/usr/bin/rsync"), \
+         patch("installer.cli.import_plan", return_value={"imported": [], "failed": [], "skipped": [],
+                                                           "stopped": None}):
+        result = runner.invoke(app, ["media", "import", str(plan), "--move"])
+    assert result.exit_code == 0, result.output
+
+
 def test_import_registers_backlog_before_new_imports(tmp_path):
     plan = tmp_path / "p.json"
     plan.write_text(json.dumps(fake_plan(tmp_path)))

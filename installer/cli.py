@@ -1297,35 +1297,48 @@ def media_import(
                       "`sudo apt install rsync` / `sudo dnf install rsync`, and re-run.")
         raise typer.Exit(code=1)
 
-    plan = load_media_plan(plan_path)
+    try:
+        plan = load_media_plan(plan_path)
 
-    def report(row):
-        console.print(f"  {row.get('result', '?'):<16} {Path(row['source']).name}")
+        if move and Path(plan["source"]).resolve().is_relative_to(Path(plan["media_path"]).resolve()):
+            console.print("[red]--move refused:[/red] the plan's source folder is inside the stack's media "
+                          "path - moving it could delete files Sonarr/Radarr track or that are still seeding.")
+            raise typer.Exit(code=1)
 
-    result = import_plan(plan, move=move, verify=verify, include_review=include_review,
-                         save=lambda p: write_plan(p, plan_path), on_row=report)
+        def report(row):
+            console.print(f"  {row.get('result', '?'):<16} {Path(row['source']).name}")
+
+        result = import_plan(plan, move=move, verify=verify, include_review=include_review,
+                             save=lambda p: write_plan(p, plan_path), on_row=report)
+    except (ValueError, KeyError) as error:
+        console.print(f"[red]Invalid plan file ({error}).[/red]")
+        raise typer.Exit(code=1)
+
     console.print(f"Imported {len(result['imported'])}, skipped {len(result['skipped'])}, failed {len(result['failed'])}.")
     if result["stopped"]:
         console.print(f"[red]Stopped: {result['stopped']}.[/red] Free space and re-run - finished files are kept.")
 
-    if result["imported"]:
+    if not offline:
         _, clients = _media_context(Path(plan["media_path"]), offline)
-        if clients:
-            # Flush any pre-existing backlog first - registering this run's
-            # imports before the backlog would mean a row that just failed
-            # gets immediately retried (add_pending below) instead of
-            # waiting out its normal backoff.
-            backlog = register_pending(clients)
+    else:
+        clients = None
+    if clients:
+        # Flush any pre-existing backlog first, even if this run imported
+        # nothing new - registering this run's imports before the backlog
+        # would mean a row that just failed gets immediately retried
+        # (add_pending below) instead of waiting out its normal backoff.
+        backlog = register_pending(clients)
+        if backlog["registered"]:
+            console.print(f"Also registered {len(backlog['registered'])} earlier imports.")
+        if result["imported"]:
             reg = clients.register(result["imported"])
             add_pending(reg["pending"])
             console.print(f"Registered {len(reg['registered'])} with Sonarr/Radarr; {len(reg['pending'])} queued "
                           "for `vulcan media register`.")
-            if backlog["registered"]:
-                console.print(f"Also registered {len(backlog['registered'])} earlier imports.")
-        else:
-            add_pending([dict(r, reason="stack offline") for r in result["imported"]])
-            console.print("Sonarr/Radarr not reachable - queued for registration. Run `vulcan media register` "
-                          "once the stack is online.", soft_wrap=True)
+    elif result["imported"]:
+        add_pending([dict(r, reason="stack offline") for r in result["imported"]])
+        console.print("Sonarr/Radarr not reachable - queued for registration. Run `vulcan media register` "
+                      "once the stack is online.", soft_wrap=True)
 
     if result["failed"] or result["stopped"]:
         raise typer.Exit(code=1)
