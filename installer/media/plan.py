@@ -30,16 +30,29 @@ def _safe(name):
     return re.sub(r'[<>:"/\\|?*]', "", name).strip()
 
 
+_YEAR_SUFFIX = re.compile(r"\(\d{4}\)\s*$")
+
+
 def plan_destination(identity, source, roots):
     if identity.get("kind") not in ("movie", "episode") or not identity.get("title"):
         return None
-    folder = _safe(f"{identity['title']} ({identity['year']})" if identity.get("year") else identity["title"])
-    if identity["kind"] == "movie":
-        return roots["movies"] / folder / source.name
-    base = roots["anime"] if identity.get("anime") and "anime" in roots else roots["tv"]
-    if identity.get("season") is not None:
-        return base / folder / f"Season {identity['season']:02d}" / source.name
-    return base / folder / source.name
+    if identity.get("host_path"):
+        base = Path(identity["host_path"])
+    elif identity["kind"] == "movie":
+        base = roots["movies"] / _safe(_titled(identity))
+    else:
+        tv_root = roots["anime"] if identity.get("anime") and "anime" in roots else roots["tv"]
+        base = tv_root / _safe(_titled(identity))
+    if identity["kind"] == "episode" and identity.get("season") is not None:
+        return base / f"Season {identity['season']:02d}" / source.name
+    return base / source.name
+
+
+def _titled(identity):
+    title, year = identity["title"], identity.get("year")
+    if year and not _YEAR_SUFFIX.search(title):
+        return f"{title} ({year})"
+    return title
 
 
 def _dup_key(identity):
@@ -93,10 +106,18 @@ def scan(source, media_path, prober, arr=None, free_bytes=None):
 
     groups = {}
     for r in rows:
-        if r["identity"]["kind"] != "unknown" and r["probe"] != "failed" and r["action"] in ("import", "review"):
+        if r["identity"]["kind"] != "unknown" and r["probe"] != "failed":
             groups.setdefault(_dup_key(r["identity"]), []).append(r)
     for group in groups.values():
-        if len(group) > 1:
+        conflict = next((r for r in group if r["action"] == "skip:conflict"), None)
+        if conflict:
+            # Already in the library: every other identified copy is a
+            # duplicate of that library file, not of whichever source copy
+            # would otherwise rank best.
+            for r in group:
+                if r["action"] in ("import", "review"):
+                    r["action"], r["duplicate_of"] = "skip:duplicate", conflict["destination"]
+        elif len(group) > 1:
             best = max(group, key=_rank)
             for r in group:
                 if r is not best and r["action"] in ("import", "review"):

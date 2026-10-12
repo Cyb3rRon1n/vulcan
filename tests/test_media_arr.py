@@ -40,10 +40,45 @@ def test_confirm_lookup_only_raises_confidence_on_matching_name(tmp_path):
     assert c.confirm(other, "02.mkv") == other
 
 
+def test_confirm_lookup_rejects_wrong_year(tmp_path):
+    """"Doctor Who" (2005) must not be confirmed against the 1963 series of the same name."""
+    sonarr = FakeArr({"GET /parse": {}, "GET /series/lookup": [{"title": "Doctor Who", "year": 1963,
+                                                                 "originalLanguage": {"name": "English"}}]})
+    c = ArrClients(sonarr, None, tmp_path)
+    ident = {"kind": "episode", "title": "Doctor Who", "year": 2005, "anime": False, "confidence": "low"}
+    assert c.confirm(ident, "doctor.who.s01e01.mkv") == ident
+
+
+def test_confirm_lookup_accepts_movie_year_off_by_one(tmp_path):
+    """Radarr/TMDB sometimes lists a movie a year off from a release-date guess; allow +/-1 for movies."""
+    radarr = FakeArr({"GET /parse": {}, "GET /movie/lookup": [{"title": "Heat", "year": 1996,
+                                                                "originalLanguage": {"name": "English"}}]})
+    c = ArrClients(None, radarr, tmp_path)
+    ident = {"kind": "movie", "title": "Heat", "year": 1995, "confidence": "low"}
+    assert c.confirm(ident, "Heat.1995.mkv")["confidence"] == "high"
+
+
+def test_confirm_clears_wrong_offline_anime_guess(tmp_path):
+    """Arr is authoritative on seriesType - an exact hit must be able to clear a wrong offline guess."""
+    sonarr = FakeArr({"GET /parse": {"series": dict(SERIES, seriesType="standard")}})
+    c = ArrClients(sonarr, None, tmp_path)
+    got = c.confirm({"kind": "episode", "title": "spy x family", "year": None, "anime": True,
+                     "confidence": "high"}, "spy.x.family.s01e11.mkv")
+    assert got["anime"] is False
+
+
 def test_confirm_survives_unreachable_arr(tmp_path):
     c = ArrClients(FakeArr({}), FakeArr({}), tmp_path)
     ident = {"kind": "movie", "title": "Heat", "year": 1995, "confidence": "high"}
     assert c.confirm(ident, "Heat.1995.mkv") == ident
+
+
+def test_confirm_carries_arr_container_path_as_host_path(tmp_path):
+    sonarr = FakeArr({"GET /parse": {"series": dict(SERIES, path="/data/media/anime/SPY x FAMILY (2022)")}})
+    c = ArrClients(sonarr, None, tmp_path)
+    got = c.confirm({"kind": "episode", "title": "spy x family", "year": None, "anime": False,
+                     "confidence": "high"}, "spy.x.family.s01e11.mkv")
+    assert got["host_path"] == str(tmp_path / "media/anime/SPY x FAMILY (2022)")
 
 
 def test_paths_map_between_host_and_container(tmp_path):

@@ -83,13 +83,21 @@ class ArrClients:
                          + urllib.parse.quote(term)) or []
             hit = found[0] if found else None
             exact = bool(hit) and _norm(hit.get("title")) == _norm(identity["title"])
+            if exact and identity.get("year") is not None:
+                hit_year = hit.get("year")
+                exact = hit_year is not None and (abs(hit_year - identity["year"]) <= 1 if kind == "movie"
+                                                   else hit_year == identity["year"])
         if not hit or not exact:
             return out
 
         out.update(title=hit["title"], year=hit.get("year") or out.get("year"),
                    original_language=ISO.get((hit.get("originalLanguage") or {}).get("name")))
+        if hit.get("path"):
+            out["host_path"] = str(self.to_host(hit["path"]))
         if kind == "episode":
-            out.update(tvdb_id=hit.get("tvdbId"), anime=out.get("anime") or hit.get("seriesType") == "anime")
+            # Arr is authoritative on seriesType - an exact hit can clear a
+            # wrong offline guess, not just confirm a right one.
+            out.update(tvdb_id=hit.get("tvdbId"), anime=hit.get("seriesType") == "anime")
         else:
             out["tmdb_id"] = hit.get("tmdbId")
         if exact:
