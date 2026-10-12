@@ -87,7 +87,12 @@ pass `--include-review`). What "import" means:
 - `--verify quick` (the default) checks size plus a SHA-256 of the first and
   last 8 MiB; `--verify full` hashes the whole file both sides.
 - `--move` deletes the source only after its copy is verified — never before,
-  and never for a row that failed or was skipped.
+  and never for a row that failed or was skipped. Refused outright if the
+  plan's source folder is inside the stack's own media path — moving it
+  there could delete files Sonarr/Radarr still track or that are seeding.
+- Progress is reported per file, as each one finishes (`imported`,
+  `skip:conflict`, `failed: ...`); there's no live byte-level progress bar
+  yet for the file currently copying.
 - A destination that already exists is never overwritten; it's reported as
   `skip:conflict` instead, even if it appeared after the scan.
 - If Sonarr/Radarr are reachable, imported titles are registered automatically
@@ -119,9 +124,11 @@ get registered without re-copying anything.
 ## The TUI
 
 The whiptail Main Menu has a **Media** entry: pick a folder, see the scan
-summary (counts, free space, language-rule breaks, unknowns), confirm the
-import (copy or move). It's a thin front end over the exact same `vulcan
-media scan`/`import` calls described above — no separate logic.
+summary (counts, free space, language-rule breaks, unknowns), then a yes/no
+"Delete the originals after each verified copy?" (default No — copy and
+keep them; Yes passes `--move` through) before confirming the import. It's a
+thin front end over the exact same `vulcan media scan`/`import` calls
+described above — no separate logic.
 
 ## Safety guarantees
 
