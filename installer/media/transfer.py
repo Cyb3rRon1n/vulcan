@@ -5,6 +5,7 @@ library never holds a half-written file. Existing library files are never
 overwritten; --move deletes a source only after its copy verified.
 """
 
+import errno
 import hashlib
 import os
 import shutil
@@ -12,6 +13,10 @@ import subprocess
 from pathlib import Path
 
 CHUNK = 8 * 1024 * 1024
+
+# Filesystems with no hard-link support (exFAT, FAT, many CIFS/SMB mounts)
+# raise one of these from os.link(); fall back to a plain rename instead.
+_NO_HARDLINK_ERRNOS = {errno.EPERM, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EXDEV, errno.EMLINK}
 
 
 def _digest(path, full):
@@ -48,8 +53,18 @@ def import_plan(plan, *, move=False, verify="quick", include_review=False, save=
     wanted = {"import", "review"} if include_review else {"import"}
 
     for row in plan["rows"]:
-        if row.get("action") not in wanted or row.get("done") or not row.get("destination"):
+        if row.get("action") not in wanted or row.get("done"):
             continue
+
+        if not row.get("destination"):
+            row["result"] = "skip: no destination - set one in the plan"
+            result["skipped"].append(row)
+            if save:
+                save(plan)
+            if on_row:
+                on_row(row)
+            continue
+
         src, dest = Path(row["source"]), Path(row["destination"])
 
         try:
@@ -78,20 +93,13 @@ def import_plan(plan, *, move=False, verify="quick", include_review=False, save=
                     row["result"] = "failed: copy did not verify"
                     result["failed"].append(row)
                 else:
-                    # Atomic no-overwrite placement: hard link then remove partial
-                    try:
-                        os.link(str(partial), str(dest))
-                    except FileExistsError:
+                    def _finish():
                         partial.unlink(missing_ok=True)
-                        row["result"] = "skip:conflict"
-                        result["skipped"].append(row)
-                    else:
-                        partial.unlink()
                         copied_sidecars = []
                         for sidecar in row.get("sidecars", []):
                             target = dest.parent / Path(sidecar).name
                             if Path(sidecar).exists() and not target.exists():
-                                shutil.copy2(sidecar, target)
+                                shutil.copyfile(sidecar, target)
                                 copied_sidecars.append(sidecar)
                         if move:
                             src.unlink()
@@ -99,6 +107,33 @@ def import_plan(plan, *, move=False, verify="quick", include_review=False, save=
                                 Path(sidecar).unlink(missing_ok=True)
                         row["done"], row["result"] = True, "imported"
                         result["imported"].append(row)
+
+                    # Atomic no-overwrite placement: hard link then remove
+                    # partial, falling back to a rename on filesystems with
+                    # no hard links (exFAT/FAT/CIFS).
+                    try:
+                        os.link(str(partial), str(dest))
+                    except FileExistsError:
+                        partial.unlink(missing_ok=True)
+                        row["result"] = "skip:conflict"
+                        result["skipped"].append(row)
+                    except OSError as error:
+                        if error.errno not in _NO_HARDLINK_ERRNOS:
+                            raise
+                        # ponytail: exists-check then rename is a tiny race
+                        # (another import could create dest in between) -
+                        # acceptable since it only runs where hard links
+                        # aren't available; worst case is a spurious
+                        # skip:conflict, never an overwrite or lost data.
+                        if dest.exists():
+                            partial.unlink(missing_ok=True)
+                            row["result"] = "skip:conflict"
+                            result["skipped"].append(row)
+                        else:
+                            os.rename(partial, dest)
+                            _finish()
+                    else:
+                        _finish()
         except OSError as error:
             row["result"] = f"failed: {error}"
             result["failed"].append(row)

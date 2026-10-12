@@ -121,8 +121,12 @@ class Prober:
         if self.host:
             cmd = [self.host, *FFPROBE_ARGS, str(path)]
         else:
-            cmd = ["docker", "exec", self.container, CONTAINER_FFPROBE, *FFPROBE_ARGS,
-                   "/in/" + str(path.relative_to(self.root))]
+            try:
+                in_container = path.relative_to(self.root)
+            except ValueError:
+                # A symlink resolving outside root can't be mapped into the container.
+                return None
+            cmd = ["docker", "exec", self.container, CONTAINER_FFPROBE, *FFPROBE_ARGS, "/in/" + str(in_container)]
 
         result = self.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:

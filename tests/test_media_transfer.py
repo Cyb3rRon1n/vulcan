@@ -1,3 +1,5 @@
+import errno
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -111,6 +113,55 @@ def test_move_preserves_preexisting_sidecar_at_destination(tmp_path):
     assert sub.exists()  # source sidecar not deleted (target already existed)
 
 
+def test_link_fallback_renames_into_place_when_hard_links_unsupported(tmp_path, monkeypatch):
+    """exFAT/FAT/CIFS don't support hard links - os.link raising EPERM (or similarly) must fall
+    back to a plain rename instead of failing the row."""
+    src, sub, dest = setup(tmp_path)
+    real_link = os.link
+
+    def no_hardlinks(a, b):
+        raise OSError(errno.EPERM, "operation not permitted")
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    plan = {"rows": [row(src, dest, sidecars=[sub])]}
+    result = import_plan(plan, run=fake_rsync)
+    assert dest.read_bytes() == b"video-bytes" and plan["rows"][0]["result"] == "imported"
+    assert result["imported"] and not list(dest.parent.glob("*.vulcan-partial"))
+    monkeypatch.setattr(os, "link", real_link)
+
+
+def test_link_fallback_skips_conflict_when_dest_exists(tmp_path, monkeypatch):
+    """Without hard links, the fallback's own exists-check must still refuse to clobber a
+    destination that appeared between the copy and placement (another import, a race)."""
+    src, _, dest = setup(tmp_path)
+
+    def no_hardlinks(a, b):
+        raise OSError(errno.EPERM, "operation not permitted")
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+
+    def race_rsync(cmd, **kw):
+        shutil.copyfile(cmd[-2], cmd[-1])
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"other writer")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    plan = {"rows": [row(src, dest)]}
+    result = import_plan(plan, run=race_rsync)
+    assert dest.read_bytes() == b"other writer" and plan["rows"][0]["result"] == "skip:conflict"
+    assert result["skipped"] and not list(dest.parent.glob("*.vulcan-partial"))
+
+
+def test_import_reports_missing_destination_instead_of_silently_skipping(tmp_path):
+    src, _, _ = setup(tmp_path)
+    bad_row = {"source": str(src), "size": src.stat().st_size, "sidecars": [], "destination": None,
+               "action": "import"}
+    plan = {"rows": [bad_row]}
+    result = import_plan(plan, run=fake_rsync)
+    assert bad_row["result"] == "skip: no destination - set one in the plan"
+    assert result["skipped"] == [bad_row] and not result["imported"] and not result["failed"]
+
+
 def test_dest_created_during_copy_results_in_skip_conflict(tmp_path):
     """Dest created between copy and placement: result skip:conflict, no partial left, source kept."""
     src, _, dest = setup(tmp_path)
@@ -124,14 +175,14 @@ def test_dest_created_during_copy_results_in_skip_conflict(tmp_path):
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     plan = {"rows": [row(src, dest)]}
-    result = import_plan(plan, move=True, run=race_rsync)
+    import_plan(plan, move=True, run=race_rsync)
     assert dest.exists() and dest.read_bytes() == b"other writer"  # other writer's data
     assert src.exists()  # source kept (not deleted)
     assert plan["rows"][0]["result"] == "skip:conflict"
     assert not list(dest.parent.glob("*.vulcan-partial"))  # partial cleaned up
 
 
-def test_resume_with_partial_accounts_for_partial_size(tmp_path):
+def test_resume_with_partial_accounts_for_partial_size(tmp_path, monkeypatch):
     """Pre-existing partial of size N-1; free space check should account for it."""
     src, _, dest = setup(tmp_path)
     dest.parent.mkdir(parents=True)
@@ -139,45 +190,61 @@ def test_resume_with_partial_accounts_for_partial_size(tmp_path):
     partial.write_bytes(b"x" * (len(b"video-bytes") - 1))  # partial is 10 bytes, src is 11 bytes
 
     import installer.media.transfer
-    original_free = installer.media.transfer._free
-    def mock_free(path):
-        # Only 5 bytes free, but with partial we need 11 - 10 = 1 byte, should fit
-        return 5
-    installer.media.transfer._free = mock_free
 
-    try:
-        plan = {"rows": [row(src, dest)]}
-        result = import_plan(plan, run=fake_rsync)
-        assert result["imported"]  # should succeed (5 free + 10 partial > 11 needed)
-    finally:
-        installer.media.transfer._free = original_free
+    # Only 5 bytes free, but with the partial already there we need 11 - 10 = 1 byte, so it fits.
+    monkeypatch.setattr(installer.media.transfer, "_free", lambda path: 5)
+
+    plan = {"rows": [row(src, dest)]}
+    result = import_plan(plan, run=fake_rsync)
+    assert result["imported"]  # should succeed (5 free + 10 partial > 11 needed)
 
 
-def test_oserror_during_sidecar_copy_fails_row_but_continues(tmp_path):
+def test_oserror_during_sidecar_copy_fails_row_but_continues(tmp_path, monkeypatch):
     """OSError during sidecar copy: that row fails, next row in plan still imports."""
     src1, sub1, dest1 = setup(tmp_path, data=b"video1")
     src2, _, dest2 = setup(tmp_path / "second", data=b"video2")
 
-    import shutil as shutil_orig
-    import installer.media.transfer
-
+    original_copyfile = shutil.copyfile
     call_count = [0]
-    original_copy2 = shutil_orig.copy2
 
-    def failing_copy2(src, dst):
+    def failing_copyfile(src, dst):
         call_count[0] += 1
         if call_count[0] == 1:  # fail on first sidecar copy
             raise OSError("Sidecar copy failed")
-        return original_copy2(src, dst)
+        return original_copyfile(src, dst)
 
-    shutil_orig.copy2 = failing_copy2
+    monkeypatch.setattr(shutil, "copyfile", failing_copyfile)
 
-    try:
-        plan = {"rows": [row(src1, dest1, sidecars=[sub1]), row(src2, dest2)]}
-        result = import_plan(plan, run=fake_rsync)
-        # First row should fail (OSError during sidecar copy)
-        assert len(result["failed"]) == 1 and "Sidecar copy failed" in plan["rows"][0]["result"]
-        # Second row should still import
-        assert len(result["imported"]) == 1 and dest2.exists()
-    finally:
-        shutil_orig.copy2 = original_copy2
+    plan = {"rows": [row(src1, dest1, sidecars=[sub1]), row(src2, dest2)]}
+    result = import_plan(plan, run=fake_rsync)
+    # First row should fail (OSError during sidecar copy)
+    assert len(result["failed"]) == 1 and "Sidecar copy failed" in plan["rows"][0]["result"]
+    # Second row should still import
+    assert len(result["imported"]) == 1 and dest2.exists()
+
+
+def test_scan_write_load_import_round_trip(tmp_path):
+    """End-to-end: scan a real drive, save the plan, reload it, import it - no mocking of the
+    plan/transfer boundary itself, just the two things that would otherwise need real tools."""
+    from installer.media.plan import load_plan, scan, write_plan
+
+    class FakeProber:
+        def probe(self, path):
+            return {"width": 1920, "height": 1080, "vcodec": "h264", "bit_depth": 8, "duration": 1.0,
+                    "audio": [{"lang": "eng", "codec": "aac"}], "subs": []}
+
+    src = tmp_path / "drive" / "Heat.1995.mkv"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(b"video-bytes")
+    lib = tmp_path / "lib"
+
+    plan = scan(src.parent, lib, FakeProber(), free_bytes=10**9)
+    plan_path = tmp_path / "plans" / "scan.json"
+    write_plan(plan, plan_path)
+
+    reloaded = load_plan(plan_path)
+    result = import_plan(reloaded, run=fake_rsync, save=lambda p: write_plan(p, plan_path))
+
+    dest = lib / "media" / "movies" / "Heat (1995)" / "Heat.1995.mkv"
+    assert result["imported"] and dest.read_bytes() == b"video-bytes"
+    assert load_plan(plan_path)["rows"][0]["done"] is True
