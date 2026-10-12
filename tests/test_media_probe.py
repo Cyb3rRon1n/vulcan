@@ -92,6 +92,21 @@ def test_prober_uses_one_jellyfin_container_without_host_ffprobe(tmp_path):
     assert calls[2][:3] == ["docker", "rm", "-f"]
 
 
+def test_prober_returns_none_for_symlink_resolving_outside_root(tmp_path):
+    """Docker mode maps a path inside root to the container; a symlink that resolves outside
+    root can't be mapped (relative_to raises ValueError) - that's a probe failure, not a crash."""
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "elsewhere.mkv"
+    outside.write_bytes(b"x")
+    link = root / "a.mkv"
+    link.symlink_to(outside)
+
+    run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(FF), stderr="")
+    with Prober(root, run=run, host_ffprobe="") as p:
+        assert p.probe(link) is None
+
+
 def test_prober_returns_none_on_ffprobe_failure(tmp_path):
     video = tmp_path / "a.mkv"
     video.write_bytes(b"x")
