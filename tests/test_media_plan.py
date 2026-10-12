@@ -35,6 +35,24 @@ def test_plan_destination_layout(tmp_path):
     assert plan_destination(dict(mv, title='AC/DC: "Live"'), Path("/x/m.mkv"), roots).parent.name == "ACDC Live (1995)"
 
 
+def test_plan_destination_does_not_double_the_year_suffix(tmp_path):
+    roots = library_roots(tmp_path)
+    mv = {"kind": "movie", "title": "Heat (1995)", "year": 1995}
+    assert plan_destination(mv, Path("/x/m.mkv"), roots) == tmp_path / "media/movies/Heat (1995)/m.mkv"
+
+
+def test_plan_destination_uses_arr_host_path_when_present(tmp_path):
+    roots = library_roots(tmp_path)
+    series_folder = tmp_path / "arr-tv" / "Reborn Rich (2022)"
+    ep = {"kind": "episode", "title": "Reborn Rich", "year": 2022, "season": 1, "episodes": [1],
+          "host_path": str(series_folder)}
+    assert plan_destination(ep, Path("/x/e.mkv"), roots) == series_folder / "Season 01" / "e.mkv"
+
+    movie_folder = tmp_path / "arr-movies" / "Heat (1995)"
+    mv = {"kind": "movie", "title": "Heat", "year": 1995, "host_path": str(movie_folder)}
+    assert plan_destination(mv, Path("/x/m.mkv"), roots) == movie_folder / "m.mkv"
+
+
 def test_scan_actions_duplicates_conflicts_and_summary(tmp_path):
     src, lib = tmp_path / "drive", tmp_path / "lib"
     make(src, "Heat (1995) 720p.mkv")
@@ -120,6 +138,9 @@ def test_scan_arr_confirm_returns_partial_dict(tmp_path):
 
 
 def test_scan_skip_conflict_not_best_for_duplicates(tmp_path):
+    """A conflict row (already in the library) beats ranking: every other row
+    in its group is a duplicate of the library file, not of whichever
+    source copy ranks best."""
     src, lib = tmp_path / "drive", tmp_path / "lib"
     make(src, "Show.S01E01.mkv", size=20)
     make(src, "Show.S01E01.720p.mkv", size=10)
@@ -131,4 +152,21 @@ def test_scan_skip_conflict_not_best_for_duplicates(tmp_path):
     plan = scan(src, lib, prober, free_bytes=10**9)
     by = {Path(r["source"]).name: r for r in plan["rows"]}
     assert by["Show.S01E01.mkv"]["action"] == "skip:conflict"
-    assert by["Show.S01E01.720p.mkv"]["action"] == "import"
+    assert by["Show.S01E01.720p.mkv"]["action"] == "skip:duplicate"
+    assert by["Show.S01E01.720p.mkv"]["duplicate_of"] == by["Show.S01E01.mkv"]["destination"]
+
+
+def test_scan_import_marked_duplicate_of_library_conflict(tmp_path):
+    src, lib = tmp_path / "drive", tmp_path / "lib"
+    make(src, "Heat.1995.1080p.mkv", size=20)                 # same name as library file -> conflict
+    make(src, "Heat (1995) 720p.mkv", size=10)                 # different name -> would import
+    make(lib, "media/movies/Heat (1995)/Heat.1995.1080p.mkv")
+    prober = FakeProber({
+        "Heat.1995.1080p.mkv": media(height=1080),
+        "Heat (1995) 720p.mkv": media(height=720),
+    })
+    plan = scan(src, lib, prober, free_bytes=10**9)
+    by = {Path(r["source"]).name: r for r in plan["rows"]}
+    assert by["Heat.1995.1080p.mkv"]["action"] == "skip:conflict"
+    assert by["Heat (1995) 720p.mkv"]["action"] == "skip:duplicate"
+    assert by["Heat (1995) 720p.mkv"]["duplicate_of"] == by["Heat.1995.1080p.mkv"]["destination"]
