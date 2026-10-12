@@ -1082,3 +1082,42 @@ print(' '.join(s.key for s in ALL_SERVICES))
     [[ "$output" == *"VULCAN media scan"* ]]
     [[ "$output" != *"VULCAN media import"* ]]
 }
+
+@test "media_flow appends --move when the user asks to delete originals" {
+
+    fake_vulcan() { echo "VULCAN $*"; }
+    export -f fake_vulcan
+    whiptail() {
+        case "$*" in
+            *--inputbox*) echo -n "/mnt/old drive" >&3; return 0 ;;
+            *"Delete the originals"*) return 0 ;;   # yesno: yes
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; media_flow <<< \$'\n\n'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VULCAN media import stack/media-plans/menu-latest.json --move"* ]]
+}
+
+@test "media_flow copies and keeps originals when the user declines to delete them" {
+
+    fake_vulcan() { echo "VULCAN $*"; }
+    export -f fake_vulcan
+    whiptail() {
+        case "$*" in
+            *--inputbox*) echo -n "/mnt/old drive" >&3; return 0 ;;
+            *"Delete the originals"*) return 1 ;;   # yesno: no
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "VULCAN_BIN=fake_vulcan; export VULCAN_BIN; source '$MENU_SH'; media_flow <<< \$'\n\n'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VULCAN media import stack/media-plans/menu-latest.json"* ]]
+    [[ "$output" != *"--move"* ]]
+}
