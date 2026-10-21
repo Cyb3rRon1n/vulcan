@@ -557,7 +557,7 @@ above are actually running.
   If *Lines read* stays at 0, CrowdSec is protecting nothing - check that
   `stack/config/traefik/logs/access.log` is being written. `cscli decisions
   list` shows who's currently banned.
-- **Watchtower** updates containers daily **except** the ones an
+- **Watchtower** updates containers every 6 hours **except** the ones an
   unattended restart would hurt (Jellyfin, Authelia, Traefik, Vaultwarden,
   CrowdSec, Cloudflared, Gluetun, Pi-hole/Unbound) - update those with
   `vulcan update` at a quiet moment.
