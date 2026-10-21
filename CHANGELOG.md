@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- **Chaptarr** (optional, Reading) — ebook **and** audiobook PVR in one instance; same `/data` mount as qBittorrent so imports need no path mapping. Admin-only, zero capabilities.
+- **Audiobookshelf** (optional, Reading) — audiobook + ebook server with per-user accounts, progress sync and phone apps; read-only book mounts, own login (no Authelia), zero capabilities. The generator now also creates `media/books/audiobooks`.
+- **Docs: "When something looks broken"** in `docs/maintenance.md` — stale bind mounts after a folder is recreated, one slow indexer stalling every search, Radarr's *Original* language rejecting English dubs, Cloudflare's 100 MB upload cap.
 - **`vulcan userdata export` / `restore`** — rebuild-proof snapshots of every Jellyfin user's favorites, 👍/👎, watched status and resume points (keyed by TMDb/TVDb/IMDb ids), plus Seerr requests; restore is a dry run unless `--apply`. Needs `JELLYFIN_API_KEY` in `stack/.env`.
 - **Off-box backups** — set `BACKUP_OFFSITE_TARGET` (rsync over SSH) and `vulcan backup` also copies `backups/` + `exports/userdata/` there; a failed copy exits 2 without touching the local backup.
 - **Byparr** (optional) — maintained, Firefox-based drop-in FlareSolverr replacement; Suwayomi prefers it automatically. Runs fully hardened (verified solving a real Cloudflare challenge under `cap_drop: ALL`).
@@ -40,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Mylar3 is pre-seeded so it listens on all interfaces (LSIO default binds loopback only, making the published port unreachable).
 - Kavita drops `authelia@docker` (crowdsec only), same as Komga — its own multi-user auth + OPDS feed break a browser forward-auth redirect.
 - FlareSolverr setup note points at Byparr as a drop-in swap for indexers it can't solve (see `docs/integrations.md`).
+
+### Fixed
+- **Suwayomi docs** pointed at the old Keiyoushi `index.min.json`, which now only serves an "Outdated App" placeholder — use `…/repo/repo.json`.
 
 ## v0.2.0 - 2026-08-18
 ### Added

@@ -119,7 +119,8 @@ WEB_FACING_SERVICES: frozenset[str] = frozenset({
     "uptime-kuma", "traefik", "homepage", "metube", "downtify", "vaultwarden",
     "dashy", "filebrowser", "tracearr", "threadfin", "portainer",
     "adguardhome", "glances", "navidrome", "komga", "kavita", "suwayomi",
-    "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "ntfy",
+    "mylar3", "lazylibrarian", "slskd", "calibre-web-automated", "chaptarr",
+    "audiobookshelf", "ntfy",
     "pihole", "guacamole", "atlas",
 })
 
@@ -134,11 +135,11 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
     "bazarr", "lidarr", "readarr", "maintainerr", "traefik",
     "homepage", "dashy", "metube", "downtify", "uptime-kuma",
     "netdata", "vaultwarden", "decluttarr", "recyclarr", "filebrowser",
-    # mylar3 and lazylibrarian are management/PVR tools, not readers -
-    # Komga, Kavita and Suwayomi (the reader UIs users actually browse,
+    # mylar3, lazylibrarian and chaptarr are management/PVR tools, not readers -
+    # Komga, Kavita, Suwayomi and Audiobookshelf (the reader UIs users browse,
     # each with its own login) are not here. slskd is an admin download
     # tool with its own auth, same shape as the *arrs.
-    "mylar3", "lazylibrarian", "slskd",
+    "mylar3", "lazylibrarian", "chaptarr", "slskd",
     # A remote-desktop gateway into the LAN - admin only, never the media group.
     "guacamole",
     # Sees every container/host and can propose restarts - admin only.
@@ -150,7 +151,7 @@ ADMIN_ONLY_SERVICES: frozenset[str] = frozenset({
 # against WEB_FACING_SERVICES above by test_generate.py.
 _HOMEPAGE_GROUPS: dict[str, list[str]] = {
     "Media": ["jellyfin", "seerr", "navidrome"],
-    "Reading": ["komga", "kavita", "suwayomi", "mylar3", "lazylibrarian", "calibre-web-automated"],
+    "Reading": ["audiobookshelf", "komga", "kavita", "suwayomi", "chaptarr", "mylar3", "lazylibrarian", "calibre-web-automated"],
     "Media Management": ["radarr", "sonarr", "lidarr", "readarr", "prowlarr", "bazarr", "maintainerr"],
     "Downloads": ["qbittorrent", "sabnzbd", "slskd", "metube", "downtify"],
     "Live TV": ["threadfin"],
@@ -220,6 +221,8 @@ _HOMEPAGE_PORTS: dict[str, int] = {
     "lazylibrarian": 5299,
     "slskd": 5030,
     "calibre-web-automated": 8084,
+    "chaptarr": 8789,
+    "audiobookshelf": 13378,
     "ntfy": 8095,
     "watchtower": 8080,
     "gluetun": 8888,
@@ -266,6 +269,8 @@ _HOMEPAGE_DESCRIPTIONS: dict[str, str] = {
     "suwayomi": "Self-hosted Tachiyomi/Mihon - browse online manga sources, read in the browser, download chapters to disk as CBZ",
     "mylar3": "Comic/manga PVR - tracks series and auto-downloads new issues through Prowlarr and your torrent client",
     "lazylibrarian": "Ebook and audiobook PVR - tracks authors/series and auto-downloads through Prowlarr; the maintained Readarr alternative",
+    "chaptarr": "Ebook and audiobook PVR in one instance (Readarr fork) - add an author or book and it grabs both formats through Prowlarr; can sync a Hardcover want-to-read shelf",
+    "audiobookshelf": "Audiobook and ebook server with per-user accounts, progress sync, a bookshelf view and phone apps",
     "calibre-web-automated": "Calibre ebook library with auto-ingest, format conversion, and a web reader (often pairs with LazyLibrarian)",
     "slskd": "Soulseek client for music - searchable from Lidarr via the slskd plugin, or browse and download by hand",
     "vaultwarden": "Password manager for every service login this stack creates",
@@ -1639,12 +1644,13 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     (media_path / "media" / "music" / "downtify").mkdir(parents=True, exist_ok=True)
 
     # The reading stack keeps one tree under media/books: comics/ (Mylar3),
-    # manga/ (Suwayomi + hand-added), ebooks/ (LazyLibrarian). Komga reads
-    # all three, Jellyfin's book library sees the lot.
-    if any(k in enabled_service_keys(config) for k in ("komga", "mylar3", "suwayomi", "lazylibrarian", "calibre-web-automated")):
+    # manga/ (Suwayomi + hand-added), ebooks/ (LazyLibrarian/Chaptarr) and
+    # audiobooks/ (LazyLibrarian/Chaptarr -> Audiobookshelf).
+    if any(k in enabled_service_keys(config) for k in ("komga", "mylar3", "suwayomi", "lazylibrarian", "calibre-web-automated", "chaptarr", "audiobookshelf")):
         (media_path / "media" / "books" / "comics").mkdir(parents=True, exist_ok=True)
         (media_path / "media" / "books" / "manga").mkdir(parents=True, exist_ok=True)
         (media_path / "media" / "books" / "ebooks").mkdir(parents=True, exist_ok=True)
+        (media_path / "media" / "books" / "audiobooks").mkdir(parents=True, exist_ok=True)
 
     if "slskd" in enabled_service_keys(config):
         (media_path / "downloads" / "slskd" / "complete").mkdir(parents=True, exist_ok=True)

@@ -22,6 +22,8 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 | Kavita | Light | optional | Manga/comics/ebook reader server — broader format support and a native ebook reader with reading progress. Pick this or Komga (or both). |
 | Suwayomi | Light | optional | Self-hosted Tachiyomi/Mihon — browse online manga sources, read in the browser, download chapters to disk as CBZ (Komga then serves the kept library). |
 | Mylar3 | Light | optional | Comic/manga PVR — the "Sonarr for comics": tracks series and auto-downloads new issues through Prowlarr + your torrent client. |
+| Chaptarr | Standard | optional | Ebook **and** audiobook PVR in one (Readarr fork) — add an author or book, it grabs both formats through Prowlarr and files them for Audiobookshelf. Can follow a Hardcover want-to-read shelf. |
+| Audiobookshelf | Light | optional | Audiobook + ebook server with per-user accounts, progress sync, a bookshelf view and phone apps (official, Absorb, ShelfPlayer). |
 | LazyLibrarian | Light | optional | Ebook/audiobook PVR — tracks authors and series, auto-downloads through Prowlarr + your download client. The maintained Readarr alternative. |
 | Calibre-Web-Automated | Light | optional | Calibre ebook library with auto-ingest and a web reader — drop books in the ingest folder, CWA converts/stores them in the library. Ebook-first, pairs naturally with LazyLibrarian; self-contained Calibre-Web front end. |
 

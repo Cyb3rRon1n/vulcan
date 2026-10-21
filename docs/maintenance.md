@@ -98,3 +98,21 @@ Install Docker ahead of time on a machine with no connection (Vulcan's automatic
 `vulcan export` packages a stack's already-pulled images (run `vulcan pull` first) into a single tarball under `exports/`; `vulcan import` loads that tarball's images on a different machine — one that's never been online at all, unlike `vulcan pull`, which still needs a live connection on the same machine it's run on. Neither needs confirmation, and `import` defaults to the most recent file in `exports/` if you don't pass one, the same convenience `restore` already offers for backups.
 
 `vulcan export-bundle` closes the *other* half of a first boot on a disconnected box: Vulcan's own Python dependencies, which `pip install` would otherwise pull from PyPI. Run it on any machine with a connection (pass `--platform manylinux2014_aarch64` to build for an ARM box from an x86 one — the compiled `psutil`/`rpds-py` wheels are arch-specific, so build for the target arch), carry the tarball to the offline machine, and `vulcan install-bundle` it, or hand it straight to the first-run bootstrap with `./install --bundle FILE` to bring the venv up with zero network. Docker itself still needs to be present — either pre-installed or via the `--offline` manual-install path — since the bundle carries only Vulcan's Python deps, not host packages.
+
+## When something looks broken
+
+Problems hit on a real homelab running this stack, with the fix for each.
+
+**An app suddenly sees an empty folder** (imports fail with "path is not accessible", or a library scan finds nothing) — but the files are on disk. If a host folder that's bind-mounted into a container gets deleted and recreated (say `downloads/` during a cleanup), the running container keeps the *old, deleted* folder and sees it empty. Docker doesn't remount on its own. Recreate every container that mounts it:
+
+```bash
+cd stack && docker compose up -d --force-recreate <service> [<service> ...]
+```
+
+Items an *arr already marked `importBlocked` usually need a manual import after that — they aren't retried automatically.
+
+**Interactive searches time out in Radarr/Sonarr.** Every search waits for the slowest indexer. In Prowlarr → Indexers → (stats), sort by average response time; one at 30–60 s (Internet Archive is a common culprit) stalls every search. Keep it for the app that needs it (it's useful for books) by giving it a Prowlarr **sync profile** with RSS/automatic/interactive search all off — the *arrs keep the entry but never query it — instead of deleting it.
+
+**English-dubbed releases of foreign films never get grabbed.** Radarr quality profiles default to Language → **Original**, which for a Hong Kong or Japanese film means Radarr *rejects* releases it recognises as English. If you want dubs for some films, make a separate profile with Language → **Any**, plus a custom format that scores dub-tagged release names (`eng dub`, `english dubbed`, `US version`, labels like Dimension/Miramax/Dragon Dynasty), set *minimum custom format score* so only those are grabbed, and move just those films onto it. Release names rarely list every audio track — check a download's audio before trusting it (`ffprobe`, or Jellyfin's media info).
+
+**Big phone uploads fail through Cloudflare** (Immich, Audiobookshelf uploads stuck at 1–2 %). Cloudflare's free plan rejects request bodies over 100 MB with a 413 before they reach your server. On home Wi-Fi, point the app at the LAN address (Immich: *Automatic URL switching* — iOS needs Location → *Always* + *Precise* to read the Wi-Fi name), or add a local DNS record so the public hostname resolves to the server's LAN IP at home.

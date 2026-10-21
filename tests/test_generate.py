@@ -1320,6 +1320,55 @@ def test_render_compose_slskd_is_admin_gated_and_zero_cap():
     assert "./config/slskd:/app" in slskd["volumes"]
 
 
+def test_render_compose_chaptarr_is_admin_gated_zero_cap_and_sees_qbittorrent_paths():
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"chaptarr", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+    svc = yaml.safe_load(output)["services"]["chaptarr"]
+
+    assert "authelia@docker" in output.split("routers.chaptarr.middlewares=")[1].splitlines()[0]
+    assert svc["user"] == "${PUID}:${PGID}"
+    assert svc["cap_drop"] == ["ALL"]
+    assert "cap_add" not in svc
+    # Same /data mount as qBittorrent, so download paths match with no remote path mapping.
+    assert "${MEDIA_PATH}:/data" in svc["volumes"]
+    assert svc["ports"] == ["8789:8789"]
+
+
+def test_render_compose_audiobookshelf_has_no_authelia_and_reads_books_readonly():
+    output = render_compose(
+        make_config(
+            "heavy", enabled_optional={"audiobookshelf", "traefik", "crowdsec", "authelia"},
+            domain="media.example.com",
+        )
+    )
+    svc = yaml.safe_load(output)["services"]["audiobookshelf"]
+
+    # Own login; the phone apps (Absorb, ShelfPlayer, the official app) can't pass forward-auth.
+    assert output.split("routers.audiobookshelf.middlewares=")[1].splitlines()[0].strip('"') == "crowdsec@docker"
+    assert svc["user"] == "${PUID}:${PGID}"
+    assert svc["cap_drop"] == ["ALL"]
+    assert "cap_add" not in svc
+    assert "${MEDIA_PATH}/media/books/audiobooks:/audiobooks:ro" in svc["volumes"]
+    assert "${MEDIA_PATH}/media/books/ebooks:/ebooks:ro" in svc["volumes"]
+    assert svc["ports"] == ["13378:13378"]
+
+
+def test_write_stack_creates_audiobooks_dir_for_the_book_stack(tmp_path):
+    config = GenerationConfig(
+        tier=TIERS["light"], media_path=str(tmp_path / "media-root"), puid=1000, pgid=1000,
+        timezone="UTC", enabled_optional={"chaptarr", "audiobookshelf"},
+    )
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    books = tmp_path / "media-root" / "media" / "books"
+    assert (books / "audiobooks").is_dir()
+    assert (books / "ebooks").is_dir()
+
+
 def test_write_stack_seeds_slskd_and_mylar_configs_and_books_subdirs(tmp_path):
 
     config = GenerationConfig(
@@ -1622,6 +1671,14 @@ ZERO_CAP_SERVICES = {
     # (cyberpac) under cap_drop: ALL, zero cap_add: connects to the
     # Soulseek network, scans + serves shares, completes transfers.
     "slskd",
+    # chaptarr/chaptarr:latest - .NET (Readarr fork) run as `user: PUID:PGID`.
+    # Verified live (cyberpac) under cap_drop: ALL, zero cap_add: grabs via
+    # Prowlarr feeds, imports ebooks + audiobooks, notifies Audiobookshelf.
+    "chaptarr",
+    # ghcr.io/advplyr/audiobookshelf:latest - Node app run as `user: PUID:PGID`
+    # on PORT=13378 (no root to bind 80). Verified live (cyberpac) under
+    # cap_drop: ALL, zero cap_add: scans libraries, streams, serves the apps.
+    "audiobookshelf",
     # deluan/navidrome:latest - a single static Go binary, no s6-overlay/
     # root->PUID drop step, nothing to chown (runs as root against its
     # own bind mounts). Verified live: full library scan with zero
