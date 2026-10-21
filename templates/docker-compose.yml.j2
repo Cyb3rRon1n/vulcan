@@ -1472,6 +1472,95 @@ services:
           memory: "{{ limits['calibre-web-automated'].memory }}"
     restart: unless-stopped
 {% endif %}
+{% if 'chaptarr' in enabled %}
+  chaptarr:
+    # Ebook + audiobook PVR in one instance (Readarr fork, Docker-only, beta,
+    # own metadata pipeline). Grabs through Prowlarr feeds and imports into
+    # media/books/{ebooks,audiobooks}, which Audiobookshelf reads. Same /data
+    # mount as qBittorrent, so download paths match with no path mapping -
+    # and it must be read-write: a read-only downloads mount blocks imports.
+    image: chaptarr/chaptarr:latest
+    container_name: chaptarr
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/chaptarr:/config
+      - ${MEDIA_PATH}:/data
+    ports:
+      - "{{ ports['chaptarr'] }}:8789"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chaptarr.rule=Host(`chaptarr.{{ domain }}`)"
+      - "traefik.http.routers.chaptarr.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.chaptarr.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.chaptarr.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.chaptarr.loadbalancer.server.port=8789"
+{% if 'crowdsec' in enabled or 'authelia' in enabled %}
+      - "traefik.http.routers.chaptarr.middlewares={{ [('crowdsec@docker' if 'crowdsec' in enabled else none), ('authelia@docker' if 'authelia' in enabled else none)] | select | join(',') }}"
+{% endif %}
+{% endif %}
+    # .NET app run as PUID:PGID - no s6-overlay drop, no ownership fixup.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.chaptarr.cpus }}"
+          memory: "{{ limits.chaptarr.memory }}"
+    restart: unless-stopped
+{% endif %}
+{% if 'audiobookshelf' in enabled %}
+  audiobookshelf:
+    # Audiobook + ebook reader with per-user accounts, progress sync and
+    # phone apps (official, Absorb, ShelfPlayer...). Reads the book folders
+    # read-only. PORT=13378: run as PUID it can't bind the default port 80.
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - PORT=13378
+    volumes:
+      - ./config/audiobookshelf/config:/config
+      - ./config/audiobookshelf/metadata:/metadata
+      - ${MEDIA_PATH}/media/books/audiobooks:/audiobooks:ro
+      - ${MEDIA_PATH}/media/books/ebooks:/ebooks:ro
+    ports:
+      - "{{ ports['audiobookshelf'] }}:13378"
+{% if 'traefik' in enabled and domain %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.audiobookshelf.rule=Host(`audiobooks.{{ domain }}`)"
+      - "traefik.http.routers.audiobookshelf.entrypoints=websecure{{ tunnel_entrypoints }}"
+      - "traefik.http.routers.audiobookshelf.tls=true"
+{% if cloudflare_dns %}
+      - "traefik.http.routers.audiobookshelf.tls.certresolver=cloudflare"
+{% endif %}
+      - "traefik.http.services.audiobookshelf.loadbalancer.server.port=13378"
+{# No authelia@docker: Audiobookshelf has its own login, and the phone apps
+   can't pass forward-auth - same reasoning as Jellyfin and Kavita. #}
+{% if 'crowdsec' in enabled %}
+      - "traefik.http.routers.audiobookshelf.middlewares=crowdsec@docker"
+{% endif %}
+{% endif %}
+    # Node app run as PUID:PGID - no s6-overlay drop, no ownership fixup.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ limits.audiobookshelf.cpus }}"
+          memory: "{{ limits.audiobookshelf.memory }}"
+    restart: unless-stopped
+{% endif %}
 {% if 'slskd' in enabled %}
   slskd:
     # Soulseek client for music. Lidarr searches and grabs through it via

@@ -47,6 +47,8 @@ RESOURCE_PROFILES: dict[str, str] = {
     "suwayomi": "standard",
     "mylar3": "light",
     "lazylibrarian": "light",
+    "chaptarr": "standard",
+    "audiobookshelf": "light",
     "slskd": "light",
     "calibre-web-automated": "standard",
     "vaultwarden": "light",
