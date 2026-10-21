@@ -2097,11 +2097,14 @@ services:
 {% endif %}
 {% if 'watchtower' in enabled %}
   watchtower:
-    image: containrrr/watchtower:latest
+    # containrrr/watchtower was archived 2025-12; nickfedor/watchtower is the
+    # maintained drop-in fork (same env vars and enable labels).
+    image: nickfedor/watchtower:latest
     container_name: watchtower
     environment:
       - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=86400
+      # Every 6h, so patch releases land the same day.
+      - WATCHTOWER_POLL_INTERVAL=21600
       # Metrics API for Homepage's watchtower widget (last scan: scanned/updated/failed).
       # Only reachable on the stack network - no port is published.
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_API_TOKEN}
@@ -2113,12 +2116,6 @@ services:
       # hits a live SQLite DB mid-use (a real Authelia logout + Jellyfin I/O
       # storm on a live host) - update them by hand with `vulcan update`.
       - TZ=${TZ}
-      # containrrr/watchtower:latest's bundled Docker client defaults to a
-      # stale API version (1.25) instead of negotiating with the real daemon,
-      # which modern Docker Engine (min supported API 1.40+) rejects outright
-      # and then nil-pointer-panics on. Pinning a conservative, broadly
-      # compatible version (Docker 20.10+, released 2020) works around it.
-      - DOCKER_API_VERSION=1.41
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Verified empirically (docker run --cap-drop=ALL against the real
