@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="720" height="250" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="250" fill="#1a1a1a"/>
+  <!-- Vertical accent line -->
+  <line x1="10" y1="20" x2="10" y2="230" stroke="#00d4aa" stroke-width="3"/>
+  <!-- VULCAN text -->
+  <text x="360" y="60" font-family="Georgia, serif" font-size="48" font-weight="300" letter-spacing="12" fill="#e8e8e8" text-anchor="middle">VULCAN</text>
+  <!-- Tagline -->
+  <text x="360" y="100" font-family="Arial, sans-serif" font-size="22" fill="#666" text-anchor="middle">Self-Hosted Media Server</text>
+  <!-- Tier info -->
+  <text x="360" y="140" font-family="Arial, sans-serif" font-size="14" fill="#888" text-anchor="middle">Light · Medium · Heavy</text>
+  <!-- Service count -->
+  <text x="360" y="170" font-family="Arial, sans-serif" font-size="14" fill="#888" text-anchor="middle">17 Services</text>
+</svg>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="720" height="250" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="720" height="250" fill="#0d0d0d"/>
+  
+  <!-- Forge pattern background -->
+  <g fill="#1a1a1a">
+    <line x1="0" y1="0" x2="720" y2="250" stroke="#2a2a2a" stroke-width="1"/>
+    <line x1="360" y1="0" x2="0" y2="250" stroke="#2a2a2a" stroke-width="1"/>
+  </g>
+  
+  <!-- VULCAN text -->
+  <text x="360" y="60" font-family="Georgia, serif" font-size="48" font-weight="300" letter-spacing="8" fill="#e8e8e8" text-anchor="middle">VULCAN</text>
+  
+  <!-- Media Stack tag -->
+  <text x="360" y="100" font-family="Arial, sans-serif" font-size="20" fill="#aaa" text-anchor="middle">Self-Hosted Media Stack</text>
+  
+  <!-- Tier info -->
+  <text x="360" y="140" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">Light · Medium · Heavy Tiers</text>
+  
+  <!-- Service count -->
+  <text x="360" y="160" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">17 Services · GPU Transcoding</text>
+  
+  <!-- Docker containers (stylized) -->
+  <g fill="#ff6b6b" transform="translate(50, 180)">
+    <rect width="40" height="40" rx="5"/>
+    <rect x="60" width="40" height="40" rx="5"/>
+    <rect x="120" width="40" height="40" rx="5"/>
+  </g>
+  
+  <!-- GPU indicator -->
+  <g fill="#00d4aa" transform="translate(200, 190)">
+    <circle cx="4" cy="4" r="2"/>
+    <circle cx="10" cy="4" r="2"/>
+    <circle cx="16" cy="4" r="2"/>
+  </g>
+  
+  <!-- Footer line -->
+  <line x1="50" y1="230" x2="670" y2="230" stroke="#3a3a3a" stroke-width="1"/>
+</svg>

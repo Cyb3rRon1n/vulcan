@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 470" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <rect width="820" height="470" rx="10" fill="#0f1115"/>
+  <rect x="1" y="1" width="818" height="468" rx="9" fill="none" stroke="#2a2f3a"/>
+
+  <text x="28" y="42" fill="#e6e8ec" font-size="18" font-weight="700">Cloudflare Tunnel &#8594; add a route (Published application)</text>
+  <line x1="28" y1="58" x2="792" y2="58" stroke="#2a2f3a"/>
+
+  <!-- Subdomain -->
+  <text x="28" y="92" fill="#9aa3b2" font-size="12" font-weight="600">SUBDOMAIN</text>
+  <rect x="28" y="100" width="200" height="34" rx="6" fill="#181b21" stroke="#3a4150"/>
+  <text x="42" y="122" fill="#f5c542" font-size="14" font-family="ui-monospace,monospace" font-weight="700">*</text>
+  <text x="28" y="150" fill="#6b7280" font-size="11">wildcard &#8212; covers every service (use one per subdomain if rejected)</text>
+
+  <!-- Domain -->
+  <text x="260" y="92" fill="#9aa3b2" font-size="12" font-weight="600">DOMAIN</text>
+  <rect x="260" y="100" width="280" height="34" rx="6" fill="#181b21" stroke="#3a4150"/>
+  <text x="274" y="122" fill="#e6e8ec" font-size="14" font-family="ui-monospace,monospace">yourdomain.com</text>
+
+  <!-- Service -->
+  <text x="28" y="188" fill="#9aa3b2" font-size="12" font-weight="600">SERVICE URL</text>
+  <rect x="28" y="196" width="512" height="34" rx="6" fill="#181b21" stroke="#3a4150"/>
+  <text x="42" y="218" fill="#7ee0a1" font-size="14" font-family="ui-monospace,monospace" font-weight="700">https://traefik:8081</text>
+  <text x="28" y="246" fill="#6b7280" font-size="11">HTTPS &#8212; not http:// (Traefik requires TLS on this entrypoint; http 404s)</text>
+
+  <!-- Additional settings / TLS -->
+  <text x="28" y="286" fill="#9aa3b2" font-size="12" font-weight="600">ADDITIONAL APPLICATION SETTINGS &#8594; TLS</text>
+  <rect x="28" y="298" width="764" height="128" rx="8" fill="#14171d" stroke="#2a2f3a"/>
+
+  <text x="46" y="330" fill="#e6e8ec" font-size="13">Disable TLS certificate verification</text>
+  <rect x="700" y="318" width="44" height="22" rx="11" fill="#2f6f43"/>
+  <circle cx="733" cy="329" r="8" fill="#e6e8ec"/>
+  <text x="46" y="350" fill="#f0913a" font-size="11">ON &#8212; Traefik's cert on :8081 is self-signed</text>
+
+  <text x="46" y="380" fill="#9aa3b2" font-size="13">Match SNI to host</text>
+  <rect x="700" y="368" width="44" height="22" rx="11" fill="#2a2f3a"/>
+  <circle cx="711" cy="379" r="8" fill="#6b7280"/>
+  <text x="46" y="398" fill="#6b7280" font-size="11">off</text>
+
+  <text x="46" y="416" fill="#9aa3b2" font-size="13">Use HTTP/2 to origin</text>
+  <rect x="360" y="404" width="44" height="22" rx="11" fill="#2a2f3a"/>
+  <circle cx="371" cy="415" r="8" fill="#6b7280"/>
+  <text x="418" y="420" fill="#6b7280" font-size="11">off</text>
+
+  <!-- Save -->
+  <rect x="672" y="196" width="120" height="34" rx="6" fill="#2563eb"/>
+  <text x="732" y="218" fill="#fff" font-size="13" font-weight="600" text-anchor="middle">Save route</text>
+</svg>

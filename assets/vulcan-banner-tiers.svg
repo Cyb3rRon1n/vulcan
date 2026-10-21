@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="720" height="250" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="250" fill="#1a1a1a"/>
+  <!-- Color-coded tier bands at top -->
+  <rect x="0" y="0" width="720" height="40" fill="#ff6b6b"/> <!-- Light -->
+  <rect x="0" y="40" width="720" height="40" fill="#ffa502"/> <!-- Medium -->
+  <rect x="0" y="80" width="720" height="40" fill="#4ecdc4"/> <!-- Heavy -->
+  <!-- VULCAN text over the bands -->
+  <text x="360" y="28" font-family="Georgia, serif" font-size="42" font-weight="300" letter-spacing="10" fill="#fff" text-anchor="middle">VULCAN</text>
+  <text x="360" y="70" font-family="Arial, sans-serif" font-size="18" fill="#fff" text-anchor="middle">Media Server Stack</text>
+  <!-- Tier labels -->
+  <text x="150" y="25" font-family="Arial, sans-serif" font-size="12" fill="#fff" text-anchor="middle">LIGHT</text>
+  <text x="360" y="25" font-family="Arial, sans-serif" font-size="12" fill="#fff" text-anchor="middle">MEDIUM</text>
+  <text x="600" y="25" font-family="Arial, sans-serif" font-size="12" fill="#fff" text-anchor="middle">HEAVY</text>
+  <!-- Metrics below -->
+  <text x="360" y="130" font-family="Arial, sans-serif" font-size="22" fill="#e8e8e8" text-anchor="middle">17</text>
+  <text x="300" y="130" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">services</text>
+  <text x="480" y="130" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">•</text>
+  <text x="500" y="130" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">GPU</text>
+  <!-- Supported services mention -->
+  <text x="360" y="180" font-family="Arial, sans-serif" font-size="14" fill="#666" text-anchor="middle">Docker Compose • Self-Hosted</text>
+</svg>

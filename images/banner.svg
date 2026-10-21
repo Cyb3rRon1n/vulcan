@@ -1,0 +1,37 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="300" fill="#14161a"/>
+
+  <!-- rack-shelf texture -->
+  <g stroke="#ffffff" stroke-opacity="0.035" stroke-width="1">
+    <line x1="0" y1="60" x2="1200" y2="60"/>
+    <line x1="0" y1="110" x2="1200" y2="110"/>
+    <line x1="0" y1="190" x2="1200" y2="190"/>
+    <line x1="0" y1="240" x2="1200" y2="240"/>
+  </g>
+
+  <!-- anvil + spark mark -->
+  <g transform="translate(38,34.5) scale(3.5)">
+    <path fill="#c7ced6" d="M10 40 h20 l4 -6 h16 a4 4 0 0 1 4 4 v4 h-44 z"/>
+    <rect fill="#c7ced6" x="24" y="38" width="10" height="14" rx="1.5"/>
+    <rect fill="#c7ced6" x="18" y="50" width="22" height="6" rx="1.5"/>
+    <path fill="#e8833a" d="M29 10 c3 5 6 8 6 13 a6 6 0 0 1 -12 0 c0 -3 2 -5 3 -7 c0.5 2 1.5 2.5 1.5 3.5 c0 -3.5 0.5 -6.5 1.5 -9.5 z"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="280" y="160" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="72" font-weight="700" letter-spacing="6" fill="#f0f2f5">VULCAN</text>
+  <text x="282" y="196" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="22" fill="#9aa1ab">Deploy a self-hosted media homelab, sized to your hardware</text>
+
+  <!-- tier ticks: Light / Medium / Heavy -->
+  <g fill="#e8833a">
+    <rect x="1042" y="242" width="16" height="18" opacity="0.55"/>
+    <rect x="1067" y="232" width="16" height="28" opacity="0.78"/>
+    <rect x="1092" y="222" width="16" height="38" opacity="1"/>
+  </g>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280" text-anchor="middle">
+    <text x="1050" y="274">L</text>
+    <text x="1075" y="274">M</text>
+    <text x="1100" y="274">H</text>
+  </g>
+</svg>
