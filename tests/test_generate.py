@@ -4415,3 +4415,71 @@ def test_write_stack_migrates_atlas_refresh_minutes_to_scan_minutes(tmp_path):
 
     assert "ATLAS_SCAN_MINUTES=45" in env_content
     assert "ATLAS_REFRESH_MINUTES" not in env_content
+
+
+def test_write_stack_seeds_crowdsec_jellyfin_whitelist(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "crowdsec"},
+        domain="media.example.com"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    path = (
+        tmp_path / "stack" / "config" / "crowdsec" / "etc" / "parsers" / "s02-enrich"
+        / "jellyfin-browsing-whitelist.yaml"
+    )
+    parsed = yaml.safe_load(path.read_text())
+    assert parsed["name"] == "local/jellyfin-browsing-whitelist"
+    assert "jellyfin@docker" in parsed["whitelist"]["expression"][0]
+
+    path.write_text("# hand-edited\n")
+    write_stack(config, output_dir=tmp_path / "stack")
+    assert path.read_text() == "# hand-edited\n"
+
+
+def test_write_stack_seeds_bouncer_403_and_seerr_whitelists(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik", "crowdsec"},
+        domain="media.example.com"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    enrich = tmp_path / "stack" / "config" / "crowdsec" / "etc" / "parsers" / "s02-enrich"
+    bouncer = yaml.safe_load((enrich / "bouncer-403-whitelist.yaml").read_text())
+    assert "traefik_server_url == '-'" in bouncer["whitelist"]["expression"][0]
+    seerr = yaml.safe_load((enrich / "seerr-browsing-whitelist.yaml").read_text())
+    assert "seerr@docker" in seerr["whitelist"]["expression"][0]
+    assert "auth" not in seerr["whitelist"]["expression"][0]
+    # expr string literal needs the doubled backslash to reach the regex engine as \?
+    assert "(/|\\\\?|$)" in seerr["whitelist"]["expression"][0]
+
+
+def test_write_stack_skips_crowdsec_whitelists_without_crowdsec(tmp_path):
+
+    config = GenerationConfig(
+        tier=TIERS["heavy"],
+        media_path=str(tmp_path / "media-root"),
+        puid=1000,
+        pgid=1000,
+        timezone="UTC",
+        enabled_optional={"traefik"},
+        domain="media.example.com"
+    )
+
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not (tmp_path / "stack" / "config" / "crowdsec").exists()
