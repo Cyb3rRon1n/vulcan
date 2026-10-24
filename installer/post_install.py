@@ -27,6 +27,7 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 from datetime import datetime
 from datetime import timezone as dt_timezone
 from pathlib import Path
@@ -276,6 +277,10 @@ _BACKUP_EXCLUDE_PREFIXES = (
 )
 
 
+# Seconds a live SQLite snapshot may wait on a locked DB before falling back.
+_SQLITE_SNAPSHOT_TIMEOUT = 30
+
+
 def _snapshot_sqlite_database(live_path: Path, staged_path: Path) -> bool:
     """
     Writes a consistent point-in-time copy of a live SQLite database
@@ -297,8 +302,18 @@ def _snapshot_sqlite_database(live_path: Path, staged_path: Path) -> bool:
         src.execute("PRAGMA busy_timeout = 2000")
         dst = sqlite3.connect(staged_path)
 
+        # busy_timeout alone does not cover Connection.backup(): on SQLITE_BUSY
+        # it sleeps and retries forever (wedged the nightly backup 3 days,
+        # 2026-10-21). The progress callback runs after every step, so raising
+        # there past the deadline aborts the loop.
+        deadline = time.monotonic() + _SQLITE_SNAPSHOT_TIMEOUT
+
+        def _give_up_when_late(status, remaining, total):
+            if time.monotonic() > deadline:
+                raise sqlite3.OperationalError(f"{live_path} stayed locked")
+
         try:
-            src.backup(dst)
+            src.backup(dst, progress=_give_up_when_late)
         finally:
             dst.close()
             src.close()
