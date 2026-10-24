@@ -566,6 +566,25 @@ def test_backup_stack_falls_back_to_plain_copy_on_snapshot_failure(tmp_path):
     assert extracted_db.read_bytes() == original_bytes
 
 
+def test_snapshot_sqlite_database_gives_up_on_exclusive_lock(tmp_path):
+
+    # Regression: Connection.backup() retries SQLITE_BUSY forever regardless of
+    # busy_timeout, which wedged the nightly backup on a Chromium-held DB.
+    from installer.post_install import _snapshot_sqlite_database
+
+    db_path = tmp_path / "held.db"
+    holder = sqlite3.connect(db_path, isolation_level=None)
+    holder.execute("CREATE TABLE t (x)")
+    holder.execute("BEGIN EXCLUSIVE")
+    holder.execute("INSERT INTO t VALUES (1)")
+
+    try:
+        with patch("installer.post_install._SQLITE_SNAPSHOT_TIMEOUT", 0.5):
+            assert _snapshot_sqlite_database(db_path, tmp_path / "out.db") is False
+    finally:
+        holder.close()
+
+
 def test_backup_stack_warns_about_env_secrets(tmp_path):
 
     stack_dir = tmp_path / "stack"
