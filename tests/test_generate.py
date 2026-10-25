@@ -519,6 +519,14 @@ def test_render_compose_filebrowser_exposes_homepage_config_only_when_both_enabl
     assert "homepage-config" not in without
 
 
+def test_render_compose_filebrowser_persists_its_database_dir():
+    # Quantum's DB lives in /home/filebrowser/data; a /config mount left it in the
+    # container, so every watchtower update reset the admin login.
+    output = render_compose(make_config("light", custom_services={"filebrowser"}))
+    assert "./config/filebrowser:/home/filebrowser/data" in output
+    assert "./config/filebrowser:/config" not in output
+
+
 def test_render_compose_qbittorrent_not_routed_when_gluetun_enabled():
 
     output = render_compose(

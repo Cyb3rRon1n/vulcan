@@ -2138,7 +2138,9 @@ services:
     image: gtstef/filebrowser:latest
     container_name: filebrowser
     volumes:
-      - ./config/filebrowser:/config
+      # Filebrowser Quantum keeps its DB + config.yaml in /home/filebrowser/data
+      # (not /config) - mounting anything else loses every login on each update.
+      - ./config/filebrowser:/home/filebrowser/data
       - ${MEDIA_PATH}:/srv
 {% if 'homepage' in enabled %}
       # Homepage is YAML-only with no in-app editor - exposing just its
