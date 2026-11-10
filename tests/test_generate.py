@@ -1653,7 +1653,7 @@ SPECIAL_CAP_SERVICES = {
     # CHOWN: gluetun chowns /tmp/gluetun/forwarded_port - silences an
     # ERROR log line with port forwarding off, and is fatal for the PF
     # service when the (commented-out) PF block in the template is on.
-    "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE", "CHOWN"],
+    "gluetun": ["NET_ADMIN", "NET_RAW", "DAC_OVERRIDE", "CHOWN", "FOWNER"],
     # tailscaled runs as root; under cap_drop: ALL it needs DAC_OVERRIDE
     # to write its state store into the bind-mounted /var/lib/tailscale
     # ("state store is unhealthy", crash-loop) - alongside NET_ADMIN/
