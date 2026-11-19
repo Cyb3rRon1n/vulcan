@@ -164,3 +164,21 @@ def test_doctor_fix_covers_arch_and_atomic():
                         resolve=no_resolve)[1]["fix"]
 
     assert "pacman -S avahi nss-mdns" in fix and "rpm-ostree install avahi nss-mdns" in fix
+
+
+def test_hosts_write_is_followed_by_restorecon_only_when_installed():
+
+    for present in (True, False):
+        calls, run = fake_runner()
+
+        def write(path, content, run):
+            calls.append(["write", path])
+            return {"success": True, "error": None}
+
+        host_setup({"jellyfin"}, "trip", False, DEBIAN, run=run, write=write, exists=lambda p: False,
+                   read_hosts=lambda: "127.0.0.1 localhost\n",
+                   which=lambda name: "/usr/sbin/restorecon" if present else None)
+
+        assert (["restorecon", "/etc/hosts"] in calls) is present
+        if present:
+            assert calls.index(["restorecon", "/etc/hosts"]) == calls.index(["write", "/etc/hosts"]) + 1

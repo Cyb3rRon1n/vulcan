@@ -8,6 +8,7 @@ the only thing that executes, always through run_privileged.
 import ipaddress
 import os
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -133,6 +134,7 @@ def host_setup(
     user_exists: bool | None = None,
     groups: list[str] | None = None,
     read_hosts=_read_hosts,
+    which=shutil.which,
 ) -> list[dict]:
     """Every host-side travel step, in order. Re-run safe: each step is
     idempotent. services/kiosk/write/exists/user_exists/groups are used by
@@ -163,7 +165,13 @@ def host_setup(
         if wanted == current:
             rows.append(_row("/etc/hosts (already current)", {"ok": True, "skipped": True}))
         else:
-            rows.append(_hosts_row(write("/etc/hosts", wanted, run)))
+            result = write("/etc/hosts", wanted, run)
+
+            # SELinux hosts (Fedora): keep the file's label right; skip if absent.
+            if result["success"] and which("restorecon"):
+                result = run(["restorecon", "/etc/hosts"])
+
+            rows.append(_hosts_row(result))
 
     return rows
 
