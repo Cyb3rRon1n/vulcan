@@ -94,3 +94,73 @@ def test_doctor_checks_fail_with_plain_fixes():
     assert "systemctl enable --now avahi-daemon" in checks[0]["fix"]
     assert "trip.local" in checks[1]["name"]
     assert "libnss-mdns" in checks[1]["fix"]
+
+
+def test_host_setup_rejects_a_bad_hostname_before_running_anything():
+
+    calls, run = fake_runner()
+    written = {}
+
+    for bad in ("Bad Name", "-x", "a.b", ""):
+        results = host_setup({"jellyfin"}, bad, False, DEBIAN, run=run, write=fake_write(written), exists=lambda p: False)
+
+        assert results[0]["ok"] is False and "not a valid hostname" in results[0]["error"]
+
+    assert calls == [] and written == {}
+
+
+def _hosts_for(text):
+
+    written = {}
+    calls, run = fake_runner()
+    rows = host_setup({"jellyfin"}, "trip", False, DEBIAN, run=run, write=fake_write(written),
+                      exists=lambda p: False, read_hosts=lambda: text)
+
+    return rows, written
+
+
+def test_hosts_replaces_the_old_127_0_1_1_line_only():
+
+    rows, written = _hosts_for("127.0.0.1 localhost\n127.0.1.1 oldname oldname.lan\n::1 ip6-localhost\n")
+
+    assert written["/etc/hosts"] == "127.0.0.1 localhost\n127.0.1.1 trip\n::1 ip6-localhost\n"
+    assert rows[1]["ok"] is True
+
+
+def test_hosts_adds_the_line_when_missing():
+
+    _, written = _hosts_for("127.0.0.1 localhost\n")
+
+    assert written["/etc/hosts"] == "127.0.0.1 localhost\n127.0.1.1 trip\n"
+
+
+def test_hosts_is_untouched_when_already_correct():
+
+    rows, written = _hosts_for("127.0.0.1 localhost\n127.0.1.1 trip\n")
+
+    assert written == {}
+    assert rows[1]["skipped"] is True
+
+
+def test_atomic_failure_and_unknown_distro_mention_rpm_ostree():
+
+    calls, run = fake_runner(fail_on=["systemctl", "enable", "--now", "avahi-daemon"])
+    atomic = {"os_id": "fedora", "os_is_atomic": True}
+    rows = host_setup({"jellyfin"}, "trip", False, atomic, run=run, write=fake_write({}), exists=lambda p: False)
+
+    assert "rpm-ostree install avahi nss-mdns" in rows[0]["error"] and "reboot" in rows[0]["error"]
+
+    rows = host_setup({"jellyfin"}, "trip", False, {"os_id": "gentoo"}, run=run, write=fake_write({}), exists=lambda p: False)
+
+    assert "rpm-ostree install avahi nss-mdns" in rows[0]["error"]
+
+
+def test_doctor_fix_covers_arch_and_atomic():
+
+    def no_resolve(host, port):
+        raise socket.gaierror("x")
+
+    fix = doctor_checks("trip", run_capture=lambda *a, **k: subprocess.CompletedProcess(a, 0, "active\n", ""),
+                        resolve=no_resolve)[1]["fix"]
+
+    assert "pacman -S avahi nss-mdns" in fix and "rpm-ostree install avahi nss-mdns" in fix

@@ -84,6 +84,39 @@ def avahi_steps(os_id: str | None, os_is_atomic: bool, hostname: str) -> list[li
     return [[*_INSTALL_CMD[family], *AVAHI_PACKAGES[family]], *tail]
 
 
+ATOMIC_HINT = (
+    "on an atomic/immutable host run: sudo rpm-ostree install avahi nss-mdns, reboot, "
+    "then: sudo systemctl enable --now avahi-daemon"
+)
+
+
+def hosts_with_hostname(text: str, hostname: str) -> str:
+    """/etc/hosts content with the 127.0.1.1 line pointing at hostname (added
+    if missing). Every other line is left untouched; re-running is a no-op."""
+
+    lines = text.splitlines()
+    new = f"127.0.1.1 {hostname}"
+
+    for i, line in enumerate(lines):
+
+        if line.split("#")[0].split()[:1] == ["127.0.1.1"]:
+            lines[i] = new
+            break
+    else:
+        lines.append(new)
+
+    return "\n".join(lines) + "\n"
+
+
+def _read_hosts() -> str:
+
+    try:
+        with open("/etc/hosts") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
 def _row(step: str, result: dict) -> dict:
 
     return {"step": step, "ok": result["ok"], "error": result.get("error"), "skipped": result.get("skipped", False)}
@@ -99,19 +132,45 @@ def host_setup(
     exists=os.path.exists,
     user_exists: bool | None = None,
     groups: list[str] | None = None,
+    read_hosts=_read_hosts,
 ) -> list[dict]:
     """Every host-side travel step, in order. Re-run safe: each step is
     idempotent. services/kiosk/write/exists/user_exists/groups are used by
     the timer and kiosk steps."""
 
-    steps = avahi_steps(os_info.get("os_id"), os_info.get("os_is_atomic", False), hostname)
+    if not valid_hostname(hostname):
+        return [_row(f"avahi ({hostname}.local)", {"ok": False, "error": f"'{hostname}' is not a valid hostname (letters, digits, dashes; max 63)"})]
+
+    atomic = os_info.get("os_is_atomic", False)
+    steps = avahi_steps(os_info.get("os_id"), atomic, hostname)
 
     if steps is None:
-        avahi = {"ok": False, "error": "install avahi (avahi-daemon) by hand, then: sudo systemctl enable --now avahi-daemon"}
+        avahi = {"ok": False, "error": f"install avahi (avahi-daemon) by hand, then: sudo systemctl enable --now avahi-daemon. If this host is atomic/immutable: {ATOMIC_HINT}"}
     else:
         avahi = apply_steps(steps, run)
 
-    return [_row(f"avahi ({hostname}.local)", avahi)]
+        if not avahi["ok"] and atomic:
+            avahi["error"] += f" - {ATOMIC_HINT}"
+
+    rows = [_row(f"avahi ({hostname}.local)", avahi)]
+
+    if avahi["ok"]:
+
+        # hostnamectl leaves /etc/hosts on the old name; sudo then warns/stalls.
+        current = read_hosts()
+        wanted = hosts_with_hostname(current, hostname)
+
+        if wanted == current:
+            rows.append(_row("/etc/hosts (already current)", {"ok": True, "skipped": True}))
+        else:
+            rows.append(_hosts_row(write("/etc/hosts", wanted, run)))
+
+    return rows
+
+
+def _hosts_row(result: dict) -> dict:
+
+    return _row("/etc/hosts hostname", {"ok": result["success"], "error": result["error"]})
 
 
 def doctor_checks(hostname: str, run_capture=subprocess.run, resolve=socket.getaddrinfo) -> list[dict]:
@@ -137,6 +196,7 @@ def doctor_checks(hostname: str, run_capture=subprocess.run, resolve=socket.geta
             "name": f"{hostname}.local resolves",
             "ok": resolves,
             "fix": "install mDNS lookups - Debian/Ubuntu: sudo apt install libnss-mdns, Fedora: "
-                   "sudo dnf install nss-mdns - and check the name with: hostnamectl",
+                   "sudo dnf install nss-mdns, Arch: sudo pacman -S avahi nss-mdns, atomic/immutable hosts: "
+                   "sudo rpm-ostree install avahi nss-mdns then reboot - and check the name with: hostnamectl",
         },
     ]
