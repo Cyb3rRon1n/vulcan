@@ -4690,3 +4690,18 @@ def test_config_from_previous_state_defaults_travel_options_for_old_state():
     config = _config_from_previous_state(PREVIOUS_STATE)
 
     assert (config.hostname, config.travel_ip, config.kiosk) == ("vulcan", None, False)
+
+
+def test_urls_shell_prints_dot_local_links_for_travel(tmp_path):
+
+    state = {**PREVIOUS_STATE, "tier": "travel", "enabled_optional": [], "hostname": "trip"}
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.load_previous_state", return_value=state
+    ), patch("installer.cli.detect_host_ip", return_value="192.168.1.50"):
+
+        result = runner.invoke(app, ["urls"])
+
+    assert result.exit_code == 0, result.output
+    assert "http://trip.local:8096" in result.output
+    assert "192.168.1.50" not in result.output

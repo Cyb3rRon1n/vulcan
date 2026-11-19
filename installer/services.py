@@ -114,3 +114,19 @@ def resource_limits_for(
         key: {"cpus": table[profile][0], "memory": table[profile][1]}
         for key, profile in RESOURCE_PROFILES.items()
     }
+
+
+# Travel boxes start offline, so every image they run is a fixed tag that
+# `docker compose up` never has to fetch. Current as of 2026-11-18 - bump
+# these deliberately (pull each one, run the Task 9 checks) in a release.
+TRAVEL_IMAGES: dict[str, str] = {
+    "jellyfin": "lscr.io/linuxserver/jellyfin:12.4ubu2604-ls60",
+    "homepage": "ghcr.io/gethomepage/homepage:v2.8.0",
+    "filebrowser": "gtstef/filebrowser:2.0.2-stable",
+    "sonarr": "lscr.io/linuxserver/sonarr:4.0.20.3014-ls5",
+    "radarr": "lscr.io/linuxserver/radarr:7.0.3.10918-ls328",
+    "prowlarr": "lscr.io/linuxserver/prowlarr:3.0.2.5780-ls169",
+    "qbittorrent": "lscr.io/linuxserver/qbittorrent:5.3.0_v2.1.2-ls487",
+    "gluetun": "qmcgaw/gluetun:v3.41.3",
+    "tailscale": "tailscale/tailscale:v1.104.7",
+}
