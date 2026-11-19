@@ -4504,3 +4504,121 @@ def test_travel_state_round_trips_options(tmp_path):
     assert state["tier"] == "travel"
     assert (state["hostname"], state["travel_ip"], state["kiosk"]) == ("trip", "192.168.8.50", True)
     assert set(state["enabled_optional"]) == {"sonarr", "radarr", "prowlarr", "qbittorrent", "gluetun"}
+
+
+from installer.generate import link_host
+from installer.services import TRAVEL_IMAGES
+from installer.tiers import TRAVEL_HOME_SYNC, TRAVEL_SELF_DOWNLOAD
+
+TRAVEL_ALL = set(TRAVEL_SELF_DOWNLOAD) | set(TRAVEL_HOME_SYNC)
+
+
+def travel_config(enabled_optional=None, custom_services=None, **fields):
+
+    config = make_config("travel", enabled_optional=enabled_optional, custom_services=custom_services)
+
+    for key, value in fields.items():
+        setattr(config, key, value)
+
+    return config
+
+
+def test_travel_compose_core_services_pinned_and_offline_safe():
+
+    services = yaml.safe_load(render_compose(travel_config()))["services"]
+
+    assert set(services) == {"jellyfin", "homepage", "filebrowser"}
+
+    for name, service in services.items():
+        assert service["pull_policy"] == "missing", name
+        assert service["image"] == TRAVEL_IMAGES[name], name
+
+
+def test_travel_compose_every_option_pinned_and_no_watchtower():
+
+    services = yaml.safe_load(render_compose(travel_config(enabled_optional=TRAVEL_ALL)))["services"]
+
+    assert set(services) == {"jellyfin", "homepage", "filebrowser", *TRAVEL_ALL}
+    assert all(service["image"] == TRAVEL_IMAGES[name] for name, service in services.items())
+    assert all(not service["image"].endswith(":latest") for service in services.values())
+
+
+def test_travel_custom_mode_still_drops_home_only_services():
+
+    config = travel_config(custom_services={"jellyfin", "homepage", "watchtower", "traefik"})
+
+    assert enabled_service_keys(config) == {"jellyfin", "homepage"}
+    assert "watchtower" not in yaml.safe_load(render_compose(config))["services"]
+
+
+def test_home_tier_compose_is_not_pinned():
+
+    compose_text = render_compose(make_config("light"))
+
+    assert "pull_policy" not in compose_text
+    assert "image: lscr.io/linuxserver/jellyfin:latest" in compose_text
+
+
+def test_travel_jellyfin_published_url_uses_dot_local():
+
+    services = yaml.safe_load(render_compose(travel_config(hostname="trip")))["services"]
+
+    assert "JELLYFIN_PublishedServerUrl=http://trip.local:8096" in services["jellyfin"]["environment"]
+
+
+def test_home_tier_jellyfin_has_no_published_url():
+
+    services = yaml.safe_load(render_compose(make_config("light")))["services"]
+
+    assert not any(e.startswith("JELLYFIN_PublishedServerUrl") for e in services["jellyfin"]["environment"])
+
+
+def test_link_host_is_dot_local_on_travel_and_detected_ip_elsewhere():
+
+    assert link_host(travel_config(hostname="trip"), "10.0.0.5") == "trip.local"
+    assert link_host(make_config("light"), "10.0.0.5") == "10.0.0.5"
+
+
+def _hrefs(groups_yaml):
+
+    return [tile["href"] for group in yaml.safe_load(groups_yaml)
+            for items in group.values() for item in items for tile in item.values()]
+
+
+def test_travel_homepage_tiles_link_to_dot_local():
+
+    config = travel_config(hostname="trip")
+    hrefs = _hrefs(render_homepage_services(config, link_host(config, "10.0.0.5")))
+
+    assert "http://trip.local:8096" in hrefs
+    assert not any("10.0.0.5" in href for href in hrefs)
+
+
+def test_travel_ip_adds_a_by_ip_group_tab_and_summary_link():
+
+    config = travel_config(hostname="trip", travel_ip="192.168.8.50")
+    host = link_host(config, None)
+    groups = yaml.safe_load(render_homepage_services(config, host))
+    by_ip = next(group["By IP"] for group in groups if "By IP" in group)
+
+    assert {"Jellyfin (by IP)", "FileBrowser (file manager) (by IP)"} == {name for item in by_ip for name in item}
+    assert "http://192.168.8.50:8096" in [tile["href"] for item in by_ip for tile in item.values()]
+    assert yaml.safe_load(render_homepage_settings(config, host))["layout"]["By IP"]["tab"] == "By IP"
+    assert "http://trip.local:8096  (by IP: http://192.168.8.50:8096)" in render_stack_summary(config, host)
+
+
+def test_no_by_ip_group_without_travel_ip():
+
+    config = travel_config(hostname="trip")
+
+    assert not any("By IP" in group for group in yaml.safe_load(render_homepage_services(config, "trip.local")))
+
+
+def test_travel_homepage_allows_dot_local_and_travel_ip_hosts():
+
+    config = travel_config(hostname="trip", travel_ip="192.168.8.50")
+    services = yaml.safe_load(render_compose(config, host_ip=link_host(config, None)))["services"]
+    allowed = next(e for e in services["homepage"]["environment"] if e.startswith("HOMEPAGE_ALLOWED_HOSTS="))
+
+    assert "trip.local:3000" in allowed
+    assert "192.168.8.50:3000" in allowed
