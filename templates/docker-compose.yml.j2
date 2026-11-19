@@ -7,6 +7,11 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+{% if jellyfin_published_url %}
+      # What Jellyfin tells apps its address is - the .local name, never a
+      # build-time IP that the next network won't have.
+      - JELLYFIN_PublishedServerUrl={{ jellyfin_published_url }}
+{% endif %}
     volumes:
       - ./config/jellyfin:/config
       - ${MEDIA_PATH}/media:/data/media:ro

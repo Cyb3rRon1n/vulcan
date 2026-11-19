@@ -41,6 +41,7 @@ from installer.generate import (
     default_timezone,
     enabled_service_keys,
     export_plan,
+    link_host,
     find_next_available_port,
     load_plan,
     _preserved_vpn_value,
@@ -449,7 +450,7 @@ def urls_shell():
 
     config = _config_from_previous_state(previous)
 
-    print(render_stack_summary(config, detect_host_ip()))
+    print(render_stack_summary(config, link_host(config, detect_host_ip())))
 
 
 @app.command()
@@ -524,7 +525,7 @@ def install_summary_shell():
     for warning in previous.get("warnings", []):
         print(f"! {warning}")
 
-    setup_order = render_setup_order(config, detect_host_ip())
+    setup_order = render_setup_order(config, link_host(config, detect_host_ip()))
 
     if setup_order:
         print()
@@ -1015,7 +1016,7 @@ def start():
 
     console.print("[green]Stack is up.[/green]")
 
-    summary = render_stack_summary(config, detect_host_ip())
+    summary = render_stack_summary(config, link_host(config, detect_host_ip()))
 
     if summary:
         console.print(summary)
@@ -3457,12 +3458,12 @@ def _start(
 
     panel.note("[green]Stack is up:[/green]")
 
-    summary = render_stack_summary(config, detect_host_ip())
+    summary = render_stack_summary(config, link_host(config, detect_host_ip()))
 
     if summary:
         panel.note(summary)
 
-    setup_order = render_setup_order(config, detect_host_ip())
+    setup_order = render_setup_order(config, link_host(config, detect_host_ip()))
 
     if setup_order:
         panel.note(f"\n{setup_order}")
@@ -3481,12 +3482,12 @@ def _report_stack_generated(
 
     panel.note("[bold]Stack generated (not started):[/bold]")
 
-    summary = render_stack_summary(config, detect_host_ip())
+    summary = render_stack_summary(config, link_host(config, detect_host_ip()))
 
     if summary:
         panel.note(summary)
 
-    setup_order = render_setup_order(config, detect_host_ip())
+    setup_order = render_setup_order(config, link_host(config, detect_host_ip()))
 
     if setup_order:
         panel.note(f"\n{setup_order}")
