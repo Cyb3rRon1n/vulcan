@@ -4705,3 +4705,106 @@ def test_urls_shell_prints_dot_local_links_for_travel(tmp_path):
     assert result.exit_code == 0, result.output
     assert "http://trip.local:8096" in result.output
     assert "192.168.1.50" not in result.output
+
+
+import installer.cli as cli_module
+
+REAL_TRAVEL_HOST_SETUP = cli_module._travel_host_setup
+TRAVEL_STATE = {**PREVIOUS_STATE, "tier": "travel", "enabled_optional": [], "hostname": "trip", "kiosk": False}
+
+
+@pytest.fixture(autouse=True)
+def _no_real_travel_host_setup():
+    """Travel builds run host steps through sudo (Avahi, timers, kiosk) -
+    never from the test suite."""
+
+    with patch("installer.cli._travel_host_setup", return_value=True) as mock:
+        yield mock
+
+
+def test_build_travel_runs_host_setup(tmp_path, _no_real_travel_host_setup):
+
+    result, _ = _build_travel(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    assert _no_real_travel_host_setup.call_args[0][0].hostname == "vulcan"
+
+
+def test_build_home_tier_skips_host_setup(tmp_path, _no_real_travel_host_setup):
+
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk", return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT):
+
+        result = runner.invoke(app, ["build", "--tier", "light", "--media-path", media_path,
+                                     "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    _no_real_travel_host_setup.assert_not_called()
+
+
+def test_travel_host_setup_reports_each_step():
+
+    config = _config_from_previous_state(TRAVEL_STATE)
+    rows = [{"step": "avahi (trip.local)", "ok": True, "error": None, "skipped": False},
+            {"step": "kiosk (removed)", "ok": True, "error": None, "skipped": True}]
+
+    with patch("installer.cli.host_setup", return_value=rows) as mock_host_setup, patch(
+        "installer.cli.detect_os", return_value={"os_id": "debian"}
+    ):
+        assert REAL_TRAVEL_HOST_SETUP(config) is True
+
+    assert mock_host_setup.call_args[0][1] == "trip"
+
+
+def test_travel_setup_command_needs_a_travel_stack():
+
+    with patch("installer.cli.load_previous_state", return_value=PREVIOUS_STATE):
+        result = runner.invoke(app, ["travel", "setup"])
+
+    assert result.exit_code == 1
+    assert "No Travel stack" in result.output
+
+
+def test_travel_setup_command_exits_1_when_a_step_fails(_no_real_travel_host_setup):
+
+    _no_real_travel_host_setup.return_value = False
+
+    with patch("installer.cli.load_previous_state", return_value=TRAVEL_STATE):
+        result = runner.invoke(app, ["travel", "setup"])
+
+    assert result.exit_code == 1
+
+
+def test_doctor_without_a_stack():
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "No Vulcan stack" in result.output
+
+
+def test_doctor_on_a_home_tier_has_nothing_to_check():
+
+    with patch("installer.cli.load_previous_state", return_value=PREVIOUS_STATE):
+        result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "Nothing to check" in result.output
+
+
+def test_doctor_prints_fixes_and_exits_1_on_failure():
+
+    checks = [{"name": "Avahi (avahi-daemon) running", "ok": True, "fix": ""},
+              {"name": "trip.local resolves", "ok": False, "fix": "sudo apt install libnss-mdns"}]
+
+    with patch("installer.cli.load_previous_state", return_value=TRAVEL_STATE), patch(
+        "installer.cli.doctor_checks", return_value=checks
+    ) as mock_checks:
+        result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "libnss-mdns" in result.output
+    mock_checks.assert_called_once_with("trip")

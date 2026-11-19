@@ -21,6 +21,7 @@ from installer.detect import (
     detect_host_ip,
     detect_media_disk_path,
     detect_media_redundancy,
+    detect_os,
     detect_storage_mount,
     detect_system,
 )
@@ -117,7 +118,7 @@ from installer.tiers import (
     tier_description,
     tier_shortfalls,
 )
-from installer.travel import valid_hostname, valid_ip
+from installer.travel import doctor_checks, host_setup, valid_hostname, valid_ip
 
 
 app = typer.Typer(
@@ -153,6 +154,12 @@ media_app = typer.Typer(
     help="Scan a drive or folder of existing movies/shows, import it into the library, register it with Sonarr/Radarr."
 )
 app.add_typer(media_app, name="media")
+
+travel_app = typer.Typer(
+    help="Travel tier: host setup (Avahi, timers, Kodi kiosk) and sync from your home Vulcan."
+)
+app.add_typer(travel_app, name="travel")
+
 
 console = Console()
 
@@ -2055,6 +2062,11 @@ def run_install(
             on_phase=panel.advance, panel=panel
         )
 
+        # Travel host pieces (Avahi, timers, kiosk) - after the files exist,
+        # before start. Failures warn; `vulcan travel setup` re-applies.
+        if config.tier.name == "travel" and not dry_run:
+            _travel_host_setup(config, panel)
+
         # Phase 6 - Configure: fill in the credentials enabled services
         # need but don't have yet (VPN key, tunnel token, ...). Env vars
         # (set by the menu or exported by the user) + --domain seed the
@@ -3512,6 +3524,72 @@ def _report_stack_generated(
             "Docker tab, then add a Public Hostname pointing at "
             "http://traefik:8081."
         )
+
+
+def _travel_host_setup(config: GenerationConfig, panel: RunPanel | _NoOpPanel | None = None) -> bool:
+    """Host pieces of a travel box, outside Docker and through sudo. A failure
+    warns and never undoes the build - `vulcan travel setup` re-applies,
+    `vulcan doctor` checks."""
+
+    panel = panel if panel is not None else _NoOpPanel(console)
+    results = host_setup(enabled_service_keys(config), config.hostname, config.kiosk, detect_os())
+
+    for step in results:
+
+        if step["skipped"]:
+            continue
+
+        if step["ok"]:
+            panel.note(f"[green]✓[/green] {step['step']}")
+        else:
+            panel.note(f"[yellow]! {step['step']}: {step['error']}[/yellow]")
+
+    ok = all(step["ok"] for step in results)
+
+    if not ok:
+        panel.note("Fix the above, then re-run: vulcan travel setup   (check with: vulcan doctor)")
+
+    return ok
+
+
+@travel_app.command(name="setup")
+def travel_setup():
+    """Apply (or re-apply) this travel box's host pieces from the saved stack: Avahi, timers, kiosk."""
+
+    state = load_previous_state(STACK_DIR)
+
+    if not state or state["tier"] != "travel":
+        console.print("[red]No Travel stack here.[/red] Build one first: vulcan build --tier travel")
+        raise typer.Exit(code=1)
+
+    if not _travel_host_setup(_config_from_previous_state(state)):
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def doctor():
+    """Check the host-side pieces this stack relies on, with a plain fix for each failure."""
+
+    state = load_previous_state(STACK_DIR)
+
+    if state is None:
+        console.print("[red]No Vulcan stack found here.[/red] Run: vulcan build")
+        raise typer.Exit(code=1)
+
+    if state["tier"] != "travel":
+        console.print(f"Nothing to check for the {state['tier']} tier yet.")
+        return
+
+    checks = doctor_checks(state.get("hostname") or "vulcan")
+
+    for check in checks:
+        if check["ok"]:
+            console.print(f"[green]✓[/green] {check['name']}")
+        else:
+            console.print(f"[red]✗[/red] {check['name']}\n    Fix: {check['fix']}")
+
+    if not all(check["ok"] for check in checks):
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
