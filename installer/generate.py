@@ -367,6 +367,12 @@ class GenerationConfig:
     openvpn_user: str | None = None
     openvpn_password: str | None = None
 
+    # Travel tier only (ignored by every other tier).
+    ram_gb: float | None = None
+    hostname: str = "vulcan"
+    travel_ip: str | None = None
+    kiosk: bool = False
+
 
 def resolve_ports(config: GenerationConfig) -> dict[str, int]:
     """
@@ -491,6 +497,9 @@ def save_state(
         "port_overrides": config.port_overrides,
         "homepage_private": config.homepage_private,
         "dashy_private": config.dashy_private,
+        "hostname": config.hostname,
+        "travel_ip": config.travel_ip,
+        "kiosk": config.kiosk,
         # Only ever the *last* generate's warnings, not accumulated
         # across regenerates - `vulcan install-summary` reads this back
         # to show them once, in "Setup Complete", instead of them
@@ -616,7 +625,7 @@ def _limits_for(config: GenerationConfig) -> dict[str, dict[str, str]]:
     88-thread host. Give it a quarter of the host's threads, never below the tier value, capped
     at JELLYFIN_CPU_CAP (12 measured 2.03x on that same file)."""
 
-    limits = resource_limits_for(config.tier.name)
+    limits = resource_limits_for(config.tier.name, config.cpu_count, config.ram_gb)
 
     if config.cpu_count and not config.gpu_vendor and "jellyfin" in limits:
 

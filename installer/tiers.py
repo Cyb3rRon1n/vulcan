@@ -1,6 +1,8 @@
 """
-Deterministic tier scoring: given a SystemInfo, decide which tier
-(Light/Medium/Heavy) this machine qualifies for and why. No subprocess
+Deterministic tier scoring: given a SystemInfo, decide which home tier
+(Light/Medium/Heavy) this machine qualifies for and why. Travel is a
+fourth tier the user picks on purpose - it is never recommended and
+never part of the Light -> Medium -> Heavy ladder. No subprocess
 calls, no privilege concerns, no LLM involvement - pure decision logic
 over numbers detect.py already collected.
 """
@@ -87,10 +89,32 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition("cloudflared", "Cloudflare Tunnel", optional=True, category="Infrastructure"),
 ]
 
+# Travel: its own short list, not cumulative with Light/Medium/Heavy. The
+# core plays offline; each opt-in group switches on as a unit, so the
+# self-download group always brings gluetun with qBittorrent.
+TRAVEL_SELF_DOWNLOAD: tuple[str, ...] = ("sonarr", "radarr", "prowlarr", "qbittorrent", "gluetun")
+TRAVEL_HOME_SYNC: tuple[str, ...] = ("tailscale",)
+
+# Home-only services a travel stack never renders, even from --services.
+TRAVEL_EXCLUDED: frozenset[str] = frozenset({"traefik", "authelia", "crowdsec", "cloudflared", "watchtower"})
+
+_TRAVEL_SERVICES = [
+    ServiceDefinition("jellyfin", "Jellyfin", category="Media Server"),
+    ServiceDefinition("homepage", "Homepage/Homarr dashboard", category="Dashboards"),
+    ServiceDefinition("filebrowser", "FileBrowser (file manager)", category="Utilities"),
+    ServiceDefinition("sonarr", "Sonarr", optional=True, category="Media Management"),
+    ServiceDefinition("radarr", "Radarr", optional=True, category="Media Management"),
+    ServiceDefinition("prowlarr", "Prowlarr", optional=True, category="Media Management"),
+    ServiceDefinition("qbittorrent", "qBittorrent", optional=True, category="Downloaders"),
+    ServiceDefinition("gluetun", "Gluetun (VPN)", optional=True, category="Infrastructure"),
+    ServiceDefinition("tailscale", "Tailscale (private remote access)", optional=True, category="Infrastructure"),
+]
+
 TIERS: dict[str, TierDefinition] = {
     "light": TierDefinition("light", "Light", 2, 4, 100, _LIGHT_SERVICES),
     "medium": TierDefinition("medium", "Medium", 4, 8, 500, _MEDIUM_SERVICES),
     "heavy": TierDefinition("heavy", "Heavy", 6, 16, 1000, _HEAVY_SERVICES),
+    "travel": TierDefinition("travel", "Travel", 2, 4, 64, _TRAVEL_SERVICES),
 }
 
 ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES
@@ -140,7 +164,19 @@ def _shortfalls(cores: int, system_info: SystemInfo, tier: TierDefinition) -> li
     return gaps
 
 
+def tier_shortfalls(system_info: SystemInfo, tier: TierDefinition) -> list[str]:
+    """What this host is short of for `tier`'s minimums - empty when it meets them."""
+
+    cores = system_info.cpu_cores_logical or system_info.cpu_cores_physical or 0
+
+    return _shortfalls(cores, system_info, tier)
+
+
 def _next_tier_up(tier: TierDefinition) -> TierDefinition | None:
+
+    # Travel is chosen, never climbed to - it isn't on the ladder.
+    if tier.name not in _ORDERED_HIGH_TO_LOW:
+        return None
 
     index = _ORDERED_HIGH_TO_LOW.index(tier.name)
 

@@ -647,7 +647,7 @@ def test_tier_invalid_value_rejected():
     result = runner.invoke(app, ["--plain", "--tier", "extreme"])
 
     assert result.exit_code == 1
-    assert "must be 'light', 'medium', or 'heavy'" in result.output
+    assert "must be 'light', 'medium', 'heavy' or 'travel'" in result.output
 
 
 def test_non_interactive_heavy_with_gpu_detected_auto_enables(tmp_path):
@@ -1602,7 +1602,7 @@ def test_invalid_tier_input_reprompts_until_valid(tmp_path, monkeypatch):
         )
 
     assert result.exit_code == 0, result.output
-    assert "Please enter 'light', 'medium', or 'heavy'" in result.output
+    assert "Please enter 'light', 'medium', 'heavy' or 'travel'" in result.output
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "light"
@@ -4577,3 +4577,116 @@ def test_userdata_export_explains_missing_api_key():
 def test_whisper_requires_bazarr():
     assert _check_service_conflicts({"whisper"}) is not None
     assert _check_service_conflicts({"whisper", "bazarr"}) is None
+
+
+from installer.cli import _config_from_previous_state
+
+
+def _build_travel(tmp_path, *extra, info=None):
+
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=info or make_system_info()), patch(
+        "installer.cli.detect_disk", return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write_stack:
+
+        result = runner.invoke(app, [
+            "build", "--tier", "travel", "--media-path", media_path, "--non-interactive", "--yes", *extra
+        ])
+
+    return result, mock_write_stack
+
+
+def test_build_travel_defaults(tmp_path):
+
+    result, mock_write_stack = _build_travel(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "travel"
+    assert (config.hostname, config.travel_ip, config.kiosk) == ("vulcan", None, False)
+    assert config.enabled_optional == set()
+    assert config.ram_gb == 32.0
+
+
+def test_build_travel_with_every_option(tmp_path):
+
+    result, mock_write_stack = _build_travel(
+        tmp_path, "--self-download", "--home-sync", "--kiosk", "--hostname", "trip", "--travel-ip", "192.168.8.50"
+    )
+
+    assert result.exit_code == 0, result.output
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"sonarr", "radarr", "prowlarr", "qbittorrent", "gluetun", "tailscale"}
+    assert (config.hostname, config.travel_ip, config.kiosk) == ("trip", "192.168.8.50", True)
+
+
+def test_build_travel_rerun_keeps_previous_travel_options(tmp_path):
+
+    previous = {**PREVIOUS_STATE, "tier": "travel", "media_path": str(tmp_path / "media"),
+                "enabled_optional": ["tailscale"], "hostname": "trip", "travel_ip": "192.168.8.50", "kiosk": True}
+
+    with patch("installer.cli.load_previous_state", return_value=previous):
+        result, mock_write_stack = _build_travel(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"tailscale"}
+    assert (config.hostname, config.travel_ip, config.kiosk) == ("trip", "192.168.8.50", True)
+
+
+@pytest.mark.parametrize("flags, message", [
+    (["--hostname", "Bad_Name"], "--hostname"),
+    (["--travel-ip", "not-an-ip"], "--travel-ip"),
+    (["--services", "jellyfin,watchtower"], "not part of the travel tier"),
+    (["--domain", "media.example.com"], "not part of the travel tier"),
+])
+def test_build_travel_rejects_bad_input(tmp_path, flags, message):
+
+    result, mock_write_stack = _build_travel(tmp_path, *flags)
+
+    assert result.exit_code == 1
+    assert message in result.output
+    mock_write_stack.assert_not_called()
+
+
+def test_travel_only_flags_rejected_on_home_tiers(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.detect_disk", return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
+    ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT):
+
+        result = runner.invoke(app, [
+            "build", "--tier", "light", "--media-path", media_path, "--non-interactive", "--yes", "--kiosk"
+        ])
+
+    assert result.exit_code == 1
+    assert "only apply to --tier travel" in result.output
+
+
+def test_unknown_tier_message_lists_travel(tmp_path):
+
+    result = runner.invoke(app, [
+        "build", "--tier", "bogus", "--media-path", str(tmp_path), "--non-interactive", "--yes"
+    ])
+
+    assert result.exit_code == 1
+    assert "'travel'" in result.output
+
+
+def test_config_from_previous_state_restores_travel_options():
+
+    config = _config_from_previous_state(
+        {**PREVIOUS_STATE, "tier": "travel", "hostname": "trip", "travel_ip": "192.168.8.50", "kiosk": True}
+    )
+
+    assert (config.tier.name, config.hostname, config.travel_ip, config.kiosk) == ("travel", "trip", "192.168.8.50", True)
+
+
+def test_config_from_previous_state_defaults_travel_options_for_old_state():
+
+    config = _config_from_previous_state(PREVIOUS_STATE)
+
+    assert (config.hostname, config.travel_ip, config.kiosk) == ("vulcan", None, False)
