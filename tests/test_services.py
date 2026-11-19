@@ -110,3 +110,20 @@ def test_resource_limits_for_heavy_tier():
 
     assert limits["prowlarr"] == {"cpus": "1.5", "memory": "1g"}
     assert limits["jellyfin"] == {"cpus": "4.0", "memory": "4g"}
+
+
+def test_resource_limits_for_travel_never_raises_and_falls_back_to_light():
+
+    assert resource_limits_for("travel") == resource_limits_for("light")
+
+
+def test_travel_limits_scale_with_the_host():
+
+    small = resource_limits_for("travel", cpu_count=2, ram_gb=4)
+    big = resource_limits_for("travel", cpu_count=8, ram_gb=16)
+
+    assert small["jellyfin"] == {"cpus": "2.0", "memory": "1638m"}
+    assert big["jellyfin"] == {"cpus": "8.0", "memory": "6553m"}
+    assert small["homepage"] == {"cpus": "0.5", "memory": "256m"}
+    assert big["homepage"] == {"cpus": "2.0", "memory": "983m"}
+    assert big["qbittorrent"] == {"cpus": "4.0", "memory": "1966m"}

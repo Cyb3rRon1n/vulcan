@@ -185,3 +185,40 @@ def test_tier_description_reflects_real_service_membership():
 
         for service in tier.services:
             assert service.display_name in description
+
+
+from installer.tiers import (
+    TRAVEL_EXCLUDED,
+    TRAVEL_HOME_SYNC,
+    TRAVEL_SELF_DOWNLOAD,
+    _next_tier_up,
+    tier_shortfalls,
+)
+
+
+def test_travel_tier_definition():
+
+    travel = TIERS["travel"]
+
+    assert (travel.min_cores, travel.min_ram_gb, travel.min_disk_gb) == (2, 4, 64)
+    assert {s.key for s in travel.services if not s.optional} == {"jellyfin", "homepage", "filebrowser"}
+    assert {s.key for s in travel.services if s.optional} == set(TRAVEL_SELF_DOWNLOAD) | set(TRAVEL_HOME_SYNC)
+    assert not {s.key for s in travel.services} & TRAVEL_EXCLUDED
+
+
+def test_travel_is_never_recommended():
+
+    for cores, ram, disk in [(1, 2, 10), (2, 4, 64), (4, 8, 500), (64, 512, 50000)]:
+        assert recommend_tier(make_system_info(cores, ram, disk)).tier.name != "travel"
+
+
+def test_next_tier_up_skips_travel():
+
+    assert _next_tier_up(TIERS["travel"]) is None
+    assert _next_tier_up(TIERS["light"]).name == "medium"
+
+
+def test_tier_shortfalls_against_travel_minimums():
+
+    assert tier_shortfalls(make_system_info(2, 4, 64), TIERS["travel"]) == []
+    assert len(tier_shortfalls(make_system_info(1, 2, 32), TIERS["travel"])) == 3

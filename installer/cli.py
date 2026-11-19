@@ -106,7 +106,17 @@ from installer.storage import (
     plan_storage_layout,
     plan_storage_teardown,
 )
-from installer.tiers import ALL_SERVICES, TIERS, recommend_tier, tier_description
+from installer.tiers import (
+    ALL_SERVICES,
+    TIERS,
+    TRAVEL_EXCLUDED,
+    TRAVEL_HOME_SYNC,
+    TRAVEL_SELF_DOWNLOAD,
+    recommend_tier,
+    tier_description,
+    tier_shortfalls,
+)
+from installer.travel import valid_hostname, valid_ip
 
 
 app = typer.Typer(
@@ -413,6 +423,9 @@ def _config_from_previous_state(previous: dict) -> GenerationConfig:
         port_overrides=previous.get("port_overrides", {}),
         homepage_private=previous.get("homepage_private", True),
         dashy_private=previous.get("dashy_private", True),
+        hostname=previous.get("hostname") or "vulcan",
+        travel_ip=previous.get("travel_ip"),
+        kiosk=bool(previous.get("kiosk")),
     )
 
 
@@ -1010,7 +1023,7 @@ def start():
 
 @app.command()
 def build(
-    tier: str | None = typer.Option(None, "--tier", help="light, medium, or heavy"),
+    tier: str | None = typer.Option(None, "--tier", help="light, medium, heavy, or travel"),
     media_path: str | None = typer.Option(None, "--media-path"),
     non_interactive: bool = typer.Option(False, "--non-interactive"),
     yes: bool = typer.Option(False, "--yes"),
@@ -1047,6 +1060,20 @@ def build(
         help="Seed tier/services/settings from a file written by `vulcan plan export` "
         "instead of this machine's own saved state - every other flag here still "
         "overrides the plan's value for that one field."
+    ),
+    hostname: str | None = typer.Option(
+        None, "--hostname", help="Travel tier: the box's network name, reached as <name>.local (default vulcan)"
+    ),
+    travel_ip: str | None = typer.Option(
+        None, "--travel-ip", help="Travel tier: a reserved IP for a second 'by IP' link on every tile"
+    ),
+    kiosk: bool | None = typer.Option(None, "--kiosk/--no-kiosk", help="Travel tier: Kodi full-screen on the TV at boot"),
+    self_download: bool | None = typer.Option(
+        None, "--self-download/--no-self-download",
+        help="Travel tier: Sonarr, Radarr, Prowlarr and qBittorrent behind gluetun"
+    ),
+    home_sync: bool | None = typer.Option(
+        None, "--home-sync/--no-home-sync", help="Travel tier: Tailscale + `vulcan travel sync` from your home Vulcan"
     ),
 ):
     """
@@ -1089,6 +1116,11 @@ def build(
         auth_password=auth_password,
         auth_users_raw=auth_users,
         plan_path=from_plan,
+        hostname=hostname,
+        travel_ip=travel_ip,
+        kiosk=kiosk,
+        self_download=self_download,
+        home_sync=home_sync,
     )
 
 
@@ -1677,7 +1709,7 @@ def uninstall(
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    tier: str | None = typer.Option(None, "--tier", help="light, medium, or heavy"),
+    tier: str | None = typer.Option(None, "--tier", help="light, medium, heavy, or travel"),
     media_path: str | None = typer.Option(None, "--media-path"),
     non_interactive: bool = typer.Option(False, "--non-interactive"),
     yes: bool = typer.Option(False, "--yes"),
@@ -1777,6 +1809,20 @@ def main(
         "instead of this machine's own saved state - every other flag here still "
         "overrides the plan's value for that one field."
     ),
+    hostname: str | None = typer.Option(
+        None, "--hostname", help="Travel tier: the box's network name, reached as <name>.local (default vulcan)"
+    ),
+    travel_ip: str | None = typer.Option(
+        None, "--travel-ip", help="Travel tier: a reserved IP for a second 'by IP' link on every tile"
+    ),
+    kiosk: bool | None = typer.Option(None, "--kiosk/--no-kiosk", help="Travel tier: Kodi full-screen on the TV at boot"),
+    self_download: bool | None = typer.Option(
+        None, "--self-download/--no-self-download",
+        help="Travel tier: Sonarr, Radarr, Prowlarr and qBittorrent behind gluetun"
+    ),
+    home_sync: bool | None = typer.Option(
+        None, "--home-sync/--no-home-sync", help="Travel tier: Tailscale + `vulcan travel sync` from your home Vulcan"
+    ),
 ):
     if ctx.invoked_subcommand is not None:
         return
@@ -1824,6 +1870,11 @@ def main(
         auth_users_raw=auth_users,
         dry_run=dry_run,
         plan_path=from_plan,
+        hostname=hostname,
+        travel_ip=travel_ip,
+        kiosk=kiosk,
+        self_download=self_download,
+        home_sync=home_sync,
     )
 
 
@@ -1860,7 +1911,12 @@ def run_install(
     auth_password: str | None = None,
     auth_users_raw: str | None = None,
     dry_run: bool = False,
-    plan_path: str | None = None
+    plan_path: str | None = None,
+    hostname: str | None = None,
+    travel_ip: str | None = None,
+    kiosk: bool | None = None,
+    self_download: bool | None = None,
+    home_sync: bool | None = None
 ):
 
     if non_interactive and not yes:
@@ -1888,8 +1944,8 @@ def run_install(
         )
         raise typer.Exit(code=1)
 
-    if tier is not None and tier not in ("light", "medium", "heavy"):
-        console.print(f"[red]--tier '{tier}' must be 'light', 'medium', or 'heavy'.[/red]")
+    if tier is not None and tier not in TIERS:
+        console.print(f"[red]--tier '{tier}' must be 'light', 'medium', 'heavy' or 'travel'.[/red]")
         raise typer.Exit(code=1)
 
     custom_services_from_flag = None
@@ -1987,7 +2043,9 @@ def run_install(
             dashy_private, pihole, tracearr, threadfin, gpu,
             puid, pgid, timezone, non_interactive, previous,
             custom_services_from_flag, domain, cloudflare_dns,
-            cloudflare_email, auth_username, auth_password, auth_users_raw, panel
+            cloudflare_email, auth_username, auth_password, auth_users_raw, panel,
+            hostname=hostname, travel_ip=travel_ip, kiosk=kiosk,
+            self_download=self_download, home_sync=home_sync
         )
         panel.advance()
 
@@ -2277,7 +2335,12 @@ def _gather_generation_config(
     auth_username: str | None = None,
     auth_password: str | None = None,
     auth_users_raw: str | None = None,
-    panel: RunPanel | _NoOpPanel | None = None
+    panel: RunPanel | _NoOpPanel | None = None,
+    hostname: str | None = None,
+    travel_ip: str | None = None,
+    kiosk: bool | None = None,
+    self_download: bool | None = None,
+    home_sync: bool | None = None
 ) -> GenerationConfig:
 
     panel = panel if panel is not None else _NoOpPanel(console)
@@ -2363,7 +2426,7 @@ def _gather_generation_config(
     # the comment above is about.
     if not non_interactive:
         console.print("\n[bold]Services included in each tier:[/bold]")
-        for tier_name in ("light", "medium", "heavy"):
+        for tier_name in ("light", "medium", "heavy", "travel"):
             tier_obj = TIERS[tier_name]
             core = [s for s in tier_obj.services if not s.optional]
             opt = [s for s in tier_obj.services if s.optional]
@@ -2378,7 +2441,7 @@ def _gather_generation_config(
     )
 
     if not non_interactive:
-        for tier_name in ("light", "medium", "heavy"):
+        for tier_name in ("light", "medium", "heavy", "travel"):
             console.print(f"  {TIERS[tier_name].display_name}: {tier_description(TIERS[tier_name])}")
 
     if tier is not None:
@@ -2393,11 +2456,11 @@ def _gather_generation_config(
 
         default_choice = previous["tier"] if previous else recommendation.tier.name
 
-        chosen_tier_name = typer.prompt("Which tier? (light/medium/heavy)", default=default_choice)
+        chosen_tier_name = typer.prompt("Which tier? (light/medium/heavy/travel)", default=default_choice)
 
-        while chosen_tier_name not in ("light", "medium", "heavy"):
+        while chosen_tier_name not in TIERS:
             chosen_tier_name = typer.prompt(
-                "Please enter 'light', 'medium', or 'heavy'", default=default_choice
+                "Please enter 'light', 'medium', 'heavy' or 'travel'", default=default_choice
             )
 
     chosen_tier = TIERS[chosen_tier_name]
@@ -2625,7 +2688,89 @@ def _gather_generation_config(
     openvpn_user = os.environ.get("OPENVPN_USER")
     openvpn_password = os.environ.get("OPENVPN_PASSWORD")
 
-    if custom_services_selected is None:
+    # Travel is its own shape, not a step on the Light/Medium/Heavy ladder:
+    # two opt-in groups + the kiosk instead of the home-tier toggles below.
+    ask_home_toggles = custom_services_selected is None and chosen_tier_name != "travel"
+    hostname_value, travel_ip_value, kiosk_value = "vulcan", None, False
+
+    if chosen_tier_name == "travel":
+
+        blocked = sorted((custom_services_selected or set()) & TRAVEL_EXCLUDED)
+
+        if domain is not None:
+            blocked.append("--domain")
+
+        if blocked:
+            console.print(f"[red]{', '.join(blocked)}: not part of the travel tier.[/red]")
+            raise typer.Exit(code=1)
+
+        gaps = tier_shortfalls(info, chosen_tier)
+
+        if gaps:
+            panel.note(f"[yellow]! Below the Travel minimum: {', '.join(gaps)}.[/yellow]")
+
+        hostname_value = hostname or (previous.get("hostname") if previous else None) or "vulcan"
+
+        if hostname is None and not non_interactive:
+            hostname_value = typer.prompt(
+                "Name for this box on any network (reached as <name>.local)", default=hostname_value
+            )
+
+        if not valid_hostname(hostname_value):
+            console.print(f"[red]--hostname '{hostname_value}' is not a valid name (a-z, 0-9, dashes).[/red]")
+            raise typer.Exit(code=1)
+
+        travel_ip_value = travel_ip if travel_ip is not None else (previous.get("travel_ip") if previous else None)
+
+        if travel_ip is None and not non_interactive:
+            travel_ip_value = typer.prompt(
+                "Reserved IP for a second 'by IP' link (blank to skip)", default=travel_ip_value or ""
+            ) or None
+
+        if travel_ip_value and not valid_ip(travel_ip_value):
+            console.print(f"[red]--travel-ip '{travel_ip_value}' is not an IP address.[/red]")
+            raise typer.Exit(code=1)
+
+        if custom_services_selected is None:
+
+            previous_optional = set(previous["enabled_optional"]) if previous else set()
+
+            for flag, keys, question in (
+                (self_download, TRAVEL_SELF_DOWNLOAD,
+                 "Self-download: Sonarr, Radarr, Prowlarr and qBittorrent behind a VPN?"),
+                (home_sync, TRAVEL_HOME_SYNC, "Sync new media from your home Vulcan over Tailscale?"),
+            ):
+
+                default = set(keys) <= previous_optional
+
+                if flag is not None:
+                    wanted = flag
+                elif non_interactive:
+                    wanted = default
+                else:
+                    wanted = typer.confirm(question, default=default)
+
+                if wanted:
+                    enabled_optional.update(keys)
+
+        kiosk_default = bool(previous.get("kiosk")) if previous else False
+
+        if kiosk is not None:
+            kiosk_value = kiosk
+        elif non_interactive:
+            kiosk_value = kiosk_default
+        else:
+            kiosk_value = typer.confirm("Kodi kiosk: start Kodi full-screen on the TV at boot?", default=kiosk_default)
+
+    elif any(value is not None for value in (hostname, travel_ip, kiosk, self_download, home_sync)):
+
+        console.print(
+            "[red]These flags only apply to --tier travel: --hostname, --travel-ip, "
+            "--kiosk, --self-download, --home-sync.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    if ask_home_toggles:
 
         console.print("\n[bold]Downloads & Network[/bold]")        # Defaults to True (opt-out, not opt-in) on a fresh install -
         # qBittorrent is present at every tier, and Gluetun is what
@@ -2662,7 +2807,7 @@ def _gather_generation_config(
             # write_stack can put real values / placeholders in .env.
             enabled_optional.add("gluetun")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]Infrastructure[/bold]")
 
@@ -2682,7 +2827,7 @@ def _gather_generation_config(
         if enable_cloudflared:
             enabled_optional.add("cloudflared")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         sabnzbd_default = "sabnzbd" in previous["enabled_optional"] if previous else False
 
@@ -2699,7 +2844,7 @@ def _gather_generation_config(
         if enable_sabnzbd:
             enabled_optional.add("sabnzbd")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]Media Management[/bold]")
 
@@ -2718,7 +2863,7 @@ def _gather_generation_config(
         if enable_recyclarr:
             enabled_optional.add("recyclarr")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]Dashboards[/bold]")
 
@@ -2771,7 +2916,7 @@ def _gather_generation_config(
         else:
             homepage_private_value = homepage_private
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]Downloads[/bold]")
 
@@ -2790,7 +2935,7 @@ def _gather_generation_config(
         if enable_metube:
             enabled_optional.add("metube")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         downtify_default = "downtify" in previous["enabled_optional"] if previous else False
 
@@ -2807,7 +2952,7 @@ def _gather_generation_config(
         if enable_downtify:
             enabled_optional.add("downtify")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]Monitoring[/bold]")
 
@@ -2834,7 +2979,7 @@ def _gather_generation_config(
         if enable_netdata:
             enabled_optional.add("netdata")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         console.print("\n[bold]System[/bold]")
 
@@ -2855,7 +3000,7 @@ def _gather_generation_config(
         if enable_vaultwarden:
             enabled_optional.add("vaultwarden")
 
-    if custom_services_selected is None:
+    if ask_home_toggles:
 
         dashy_default = "dashy" in previous["enabled_optional"] if previous else False
 
@@ -2946,7 +3091,7 @@ def _gather_generation_config(
 
     show_gpu_question = (
         jellyfin_included and info.gpu_vendor and
-        (chosen_tier_name == "heavy" or custom_services_selected is not None)
+        (chosen_tier_name in ("heavy", "travel") or custom_services_selected is not None)
     )
 
     if show_gpu_question:
@@ -3032,7 +3177,11 @@ def _gather_generation_config(
         wireguard_private_key=wireguard_private_key,
         wireguard_addresses=wireguard_addresses,
         openvpn_user=openvpn_user,
-        openvpn_password=openvpn_password
+        openvpn_password=openvpn_password,
+        ram_gb=info.ram_total_gb,
+        hostname=hostname_value,
+        travel_ip=travel_ip_value,
+        kiosk=kiosk_value
     )
 
 
@@ -3181,6 +3330,13 @@ def _build(
     panel.note(f"  Tracearr: {'enabled' if 'tracearr' in config.enabled_optional else 'disabled'}")
     panel.note(f"  Threadfin: {'enabled' if 'threadfin' in config.enabled_optional else 'disabled'}")
     panel.note(f"  GPU passthrough: {config.gpu_vendor or 'disabled'}")
+
+    if config.tier.name == "travel":
+        panel.note(f"  Name on the network: {config.hostname}.local")
+        panel.note(f"  By-IP link: {config.travel_ip or 'none'}")
+        panel.note(f"  Self-download: {'enabled' if 'gluetun' in config.enabled_optional else 'disabled'}")
+        panel.note(f"  Sync from home: {'enabled' if 'tailscale' in config.enabled_optional else 'disabled'}")
+        panel.note(f"  Kodi kiosk: {'enabled' if config.kiosk else 'disabled'}")
 
     if config.custom_services is not None:
         panel.note(f"  Services: {', '.join(sorted(config.custom_services))}")
