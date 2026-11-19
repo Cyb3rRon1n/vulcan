@@ -566,15 +566,15 @@ above are actually running.
   that account first** - create your own admin, then delete `guacadmin`.
   Then add connections (RDP/VNC/SSH).
   [Details](integrations.md#remote-desktop-gateway-guacamole)
-- **Atlas** (network map + ops assistant): nothing to do for the map or device
+- **Lanxang** (network map + ops assistant): nothing to do for the map or device
   inventory - open its Homepage tile (or `/map`) and every container and LAN
   device is already there, refreshed every 15 minutes by `atlas-scan`. Check
   the Triage tab for anything new or unrecognized. Add your other machines
   under `map.hosts`, and a Signal number under `notify.signal` for new/quiet
-  device alerts, in `stack/config/atlas/atlas.yaml`. For `atlas chat` (in a
-  terminal: `docker exec -it atlas atlas chat`) set `ATLAS_OLLAMA_HOST` in
+  device alerts, in `stack/config/atlas/atlas.yaml`. For `lanxang chat` (in a
+  terminal: `docker exec -it atlas lanxang chat`) set `ATLAS_OLLAMA_HOST` in
   `.env` to an Ollama server, then `docker compose up -d atlas atlas-scan`.
-  [Details](integrations.md#network-map-and-ops-assistant-atlas)
+  [Details](integrations.md#network-map-and-ops-assistant-lanxang)
 - **Tracearr** (stream stats), **ntfy** (push notifications) and
   **Glances** (host stats) need no setup beyond their first-visit account,
   where they have one - see [Optional Integrations](integrations.md).

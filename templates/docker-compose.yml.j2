@@ -592,12 +592,12 @@ services:
     restart: unless-stopped
 {% endif %}
 {% if 'atlas' in enabled %}
-  # Atlas: network map (/map), device triage, inventory/history, `atlas chat`
+  # Lanxang (service key stays "atlas"): network map (/map), device triage, inventory/history, `lanxang chat`
   # ops assistant. Reads the Docker socket to see containers - root-equivalent
   # access, so it runs as PUID with only the docker group added, and is
   # admin-only behind Authelia.
   atlas:
-    image: ghcr.io/cyb3rron1n/atlas:latest
+    image: ghcr.io/cyb3rron1n/lanxang:latest
     container_name: atlas
     user: "${PUID}:${PGID}"
 {% if docker_gid %}
@@ -659,7 +659,7 @@ services:
   # that needs no added capabilities. Shares the atlas inventory DB (same
   # bind mounts as the web container above).
   atlas-scan:
-    image: ghcr.io/cyb3rron1n/atlas:latest
+    image: ghcr.io/cyb3rron1n/lanxang:latest
     container_name: atlas-scan
     network_mode: host
     user: "${PUID}:${PGID}"
@@ -684,10 +684,10 @@ services:
       - -c
       - |
         while :; do
-          atlas scan
-          atlas discover >/dev/null 2>&1
-          atlas proxmox scan >/dev/null 2>&1
-          atlas map >/dev/null 2>&1 && echo "$$(date -u +%FT%TZ) map refreshed"
+          lanxang scan
+          lanxang discover >/dev/null 2>&1
+          lanxang proxmox scan >/dev/null 2>&1
+          lanxang map >/dev/null 2>&1 && echo "$$(date -u +%FT%TZ) map refreshed"
           sleep "$${ATLAS_SCAN_MINUTES}m"
         done
     healthcheck:

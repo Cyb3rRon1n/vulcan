@@ -4,7 +4,7 @@ renders templates/docker-compose.yml.j2 and templates/env.j2 into a
 real stack/docker-compose.yml and stack/.env for the user's machine.
 Pure-ish: write_stack() does real file I/O but never prompts or
 confirms - that's the CLI layer's job (Phase 1 slice 5), the same
-split Atlas keeps between config/writer.py and the atlas init command.
+split Lanxang keeps between config/writer.py and the lanxang init command.
 """
 
 import json
@@ -717,10 +717,10 @@ def render_env(
 
 
 _ATLAS_NOTES_README = """\
-# Notes for Atlas
+# Notes for Lanxang
 
-Atlas searches everything in this folder (Markdown, text, scripts) and attaches the
-best-matching parts to every `atlas chat` question - so it answers from how *your*
+Lanxang searches everything in this folder (Markdown, text, scripts) and attaches the
+best-matching parts to every `lanxang chat` question - so it answers from how *your*
 setup works, not generic advice.
 
 Good things to put here:
@@ -736,7 +736,7 @@ Good things to put here:
 def render_atlas_config(config: GenerationConfig) -> str:
     """
     Seeded once into config/atlas/atlas.yaml, never overwritten. ${VAR}
-    references are expanded by Atlas from the container environment
+    references are expanded by Lanxang from the container environment
     (compose passes them in from .env), so no secret lands in this file.
     """
 
@@ -744,8 +744,8 @@ def render_atlas_config(config: GenerationConfig) -> str:
     jellyfin = "true" if "jellyfin" in enabled else "false"
 
     return f"""\
-# Atlas - network map, inventory and `atlas chat`. Seeded by vulcan once;
-# edit freely, a regenerate won't overwrite it. Docs: github.com/Cyb3rRon1n/atlas
+# Lanxang - network map, inventory and `lanxang chat`. Seeded by vulcan once;
+# edit freely, a regenerate won't overwrite it. Docs: github.com/Cyb3rRon1n/lanxang
 name: {socket.gethostname() or "vulcan"}
 
 intelligence:
@@ -794,7 +794,7 @@ _HOMEPAGE_ICONS = {"atlas": "mdi-radar"}
 
 # Live widgets vulcan can wire with no API key to fill in.
 _HOMEPAGE_WIDGETS = {
-    # Atlas's own read-only summary of its latest network map.
+    # Lanxang's own read-only summary of its latest network map.
     "atlas": {
         "type": "customapi",
         "url": "http://atlas:8420/api/summary",
@@ -1868,7 +1868,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         atlas_dir = output_dir / "config" / "atlas"
 
         # Bind-mount targets must exist before `compose up`, or Docker creates
-        # them root-owned and Atlas (running as PUID) can't write its database.
+        # them root-owned and Lanxang (running as PUID) can't write its database.
         for sub in ("inventory", "reports", "logs", "notes"):
             (atlas_dir / sub).mkdir(parents=True, exist_ok=True)
 
@@ -1881,8 +1881,8 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             (atlas_dir / "notes" / "README.md").write_text(_ATLAS_NOTES_README)
 
             warnings.append(
-                "Atlas was pre-seeded at stack/config/atlas/atlas.yaml - its map "
-                "and Homepage tile work right away. For `atlas chat`, set "
+                "Lanxang was pre-seeded at stack/config/atlas/atlas.yaml - its map "
+                "and Homepage tile work right away. For `lanxang chat`, set "
                 "ATLAS_OLLAMA_HOST in .env; add your other machines under map.hosts "
                 "and your own notes under config/atlas/notes/. Vulcan won't overwrite it."
             )

@@ -4271,7 +4271,7 @@ def test_traefik_template_routes_match_web_facing_services():
     assert routed == WEB_FACING_SERVICES - {"traefik"}
 
 
-# --- Atlas (network map + ops assistant) ---------------------------------
+# --- Lanxang (network map + ops assistant) ---------------------------------
 
 def test_atlas_renders_web_and_scan_containers_with_docker_group():
 
@@ -4281,7 +4281,7 @@ def test_atlas_renders_web_and_scan_containers_with_docker_group():
         services = yaml.safe_load(render_compose(config))["services"]
 
     web, scan = services["atlas"], services["atlas-scan"]
-    assert web["image"] == scan["image"] == "ghcr.io/cyb3rron1n/atlas:latest"
+    assert web["image"] == scan["image"] == "ghcr.io/cyb3rron1n/lanxang:latest"
     assert web["group_add"] == scan["group_add"] == ["975"]
     assert web["user"] == "${PUID}:${PGID}"
     assert "/var/run/docker.sock:/var/run/docker.sock" in web["volumes"]
@@ -4290,8 +4290,8 @@ def test_atlas_renders_web_and_scan_containers_with_docker_group():
     assert scan["network_mode"] == "host"
     assert "networks" not in scan
     command = scan["command"][-1]
-    assert "atlas scan" in command
-    assert "atlas map" in command and "ATLAS_SCAN_MINUTES" in command
+    assert "lanxang scan" in command
+    assert "lanxang map" in command and "ATLAS_SCAN_MINUTES" in command
     assert "ATLAS_OLLAMA_HOST=${ATLAS_OLLAMA_HOST:-}" in web["environment"]
 
 
@@ -4324,9 +4324,9 @@ def test_atlas_homepage_tile_opens_map_with_summary_widget():
     config = make_config("heavy", custom_services={"atlas", "homepage", "traefik"}, domain="media.example.com")
 
     groups = yaml.safe_load(render_homepage_services(config, "192.168.1.5"))
-    tile = next(item["Atlas (network map + ops assistant)"]
+    tile = next(item["Lanxang (network map + ops assistant)"]
                 for group in groups for items in group.values() for item in items
-                if "Atlas (network map + ops assistant)" in item)
+                if "Lanxang (network map + ops assistant)" in item)
 
     assert tile["href"] == "https://atlas.media.example.com/map"
     assert tile["icon"] == "mdi-radar"

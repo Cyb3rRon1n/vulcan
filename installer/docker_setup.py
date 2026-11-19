@@ -4,7 +4,7 @@ mutate the base system - package install, systemd service, group
 membership - so they're deliberately just a toolbox: no confirmation
 prompts, no "do everything" orchestrator. The CLI/TUI layer (Phase 1
 slice 5) shows current state and confirms before calling into each
-piece individually, the same split Atlas keeps between pure manager
+piece individually, the same split Lanxang keeps between pure manager
 functions and the CLI layer that gates on typer.confirm().
 
 The atomic/immutable-OS path (rpm-ostree layering, plus
