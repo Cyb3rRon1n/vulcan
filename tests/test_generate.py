@@ -4491,3 +4491,16 @@ def test_write_stack_skips_crowdsec_whitelists_without_crowdsec(tmp_path):
     write_stack(config, output_dir=tmp_path / "stack")
 
     assert not (tmp_path / "stack" / "config" / "crowdsec").exists()
+
+
+def test_travel_state_round_trips_options(tmp_path):
+
+    config = make_config("travel", enabled_optional={"sonarr", "radarr", "prowlarr", "qbittorrent", "gluetun"})
+    config.hostname, config.travel_ip, config.kiosk = "trip", "192.168.8.50", True
+
+    save_state(config, tmp_path)
+    state = load_previous_state(tmp_path)
+
+    assert state["tier"] == "travel"
+    assert (state["hostname"], state["travel_ip"], state["kiosk"]) == ("trip", "192.168.8.50", True)
+    assert set(state["enabled_optional"]) == {"sonarr", "radarr", "prowlarr", "qbittorrent", "gluetun"}

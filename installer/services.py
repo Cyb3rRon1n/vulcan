@@ -64,6 +64,11 @@ RESOURCE_PROFILES: dict[str, str] = {
 }
 
 RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {
+    "travel": {
+        "light": ("0.5", "256m"),
+        "standard": ("1.0", "512m"),
+        "heavy": ("1.5", "1g")
+    },
     "light": {
         "light": ("0.5", "256m"),
         "standard": ("1.0", "512m"),
@@ -82,12 +87,30 @@ RESOURCE_LIMITS: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 
-def resource_limits_for(tier_name: str) -> dict[str, dict[str, str]]:
+def _travel_limits(cores: int, ram_gb: float) -> dict[str, tuple[str, str]]:
+    """A travel box runs little besides Vulcan, so its limits are shares of the
+    real host, never below Light's: light services 1/4 core + 6% RAM, standard
+    1/2 core + 12%, heavy (Jellyfin) every core + 40%."""
+
+    mb = ram_gb * 1024
 
     return {
-        key: {
-            "cpus": RESOURCE_LIMITS[tier_name][profile][0],
-            "memory": RESOURCE_LIMITS[tier_name][profile][1]
-        }
+        "light": (f"{max(0.5, cores * 0.25):.1f}", f"{max(256, int(mb * 0.06))}m"),
+        "standard": (f"{max(1.0, cores * 0.5):.1f}", f"{max(512, int(mb * 0.12))}m"),
+        "heavy": (f"{max(1.5, float(cores)):.1f}", f"{max(1024, int(mb * 0.4))}m"),
+    }
+
+
+def resource_limits_for(
+    tier_name: str, cpu_count: int | None = None, ram_gb: float | None = None
+) -> dict[str, dict[str, str]]:
+
+    table = (
+        _travel_limits(cpu_count, ram_gb) if tier_name == "travel" and cpu_count and ram_gb
+        else RESOURCE_LIMITS[tier_name]
+    )
+
+    return {
+        key: {"cpus": table[profile][0], "memory": table[profile][1]}
         for key, profile in RESOURCE_PROFILES.items()
     }
