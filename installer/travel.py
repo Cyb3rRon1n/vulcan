@@ -98,24 +98,28 @@ def hosts_with_hostname(text: str, hostname: str) -> str:
     lines = text.splitlines()
     new = f"127.0.1.1 {hostname}"
 
+    found = False
+
     for i, line in enumerate(lines):
 
         if line.split("#")[0].split()[:1] == ["127.0.1.1"]:
             lines[i] = new
-            break
-    else:
+            found = True
+
+    if not found:
         lines.append(new)
 
     return "\n".join(lines) + "\n"
 
 
-def _read_hosts() -> str:
+def _read_hosts() -> str | None:
+    """None when /etc/hosts can't be read - never guess its content."""
 
     try:
         with open("/etc/hosts") as handle:
             return handle.read()
     except OSError:
-        return ""
+        return None
 
 
 def _row(step: str, result: dict) -> dict:
@@ -160,16 +164,24 @@ def host_setup(
 
         # hostnamectl leaves /etc/hosts on the old name; sudo then warns/stalls.
         current = read_hosts()
-        wanted = hosts_with_hostname(current, hostname)
+        wanted = hosts_with_hostname(current, hostname) if current is not None else None
 
-        if wanted == current:
+        if current is None:
+            rows.append(_row("/etc/hosts hostname", {
+                "ok": False,
+                "error": f"could not read /etc/hosts - left unchanged; add `127.0.1.1 {hostname}` by hand",
+            }))
+        elif wanted == current:
             rows.append(_row("/etc/hosts (already current)", {"ok": True, "skipped": True}))
         else:
             result = write("/etc/hosts", wanted, run)
 
             # SELinux hosts (Fedora): keep the file's label right; skip if absent.
             if result["success"] and which("restorecon"):
-                result = run(["restorecon", "/etc/hosts"])
+                label = run(["restorecon", "/etc/hosts"])
+
+                if not label["success"]:
+                    result = {"success": False, "error": f"written; restorecon failed: {label['error']}"}
 
             rows.append(_hosts_row(result))
 
