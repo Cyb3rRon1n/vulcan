@@ -1,7 +1,7 @@
 """
 Docker resource-limit sizing for generated stacks. Separate from
 tiers.py on purpose - tiers.py is scoring/display only, this module is
-generation-only (the same split Atlas keeps between targets.py and
+generation-only (the same split Lanxang keeps between targets.py and
 registry.py). Each service declares its own typical footprint once
 (RESOURCE_PROFILES); RESOURCE_LIMITS scales every profile together per
 tier, so adding a tier or a service never means hand-tuning a full
