@@ -749,7 +749,8 @@ def render_env(
     travel_sync_from: str = "",
     travel_sync_path: str = "/mnt/media/media",
     travel_sync_max_gb: str = "200",
-    travel_sync_min_free_gb: str = "20"
+    travel_sync_min_free_gb: str = "20",
+    kiosk_jellyfin_password: str | None = None
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -815,7 +816,9 @@ def render_env(
         travel_sync_from=travel_sync_from,
         travel_sync_path=travel_sync_path,
         travel_sync_max_gb=travel_sync_max_gb,
-        travel_sync_min_free_gb=travel_sync_min_free_gb
+        travel_sync_min_free_gb=travel_sync_min_free_gb,
+        kiosk=config.tier.name == "travel",
+        kiosk_jellyfin_password=kiosk_jellyfin_password or secrets.token_urlsafe(18)
     )
 
 
@@ -1720,7 +1723,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         travel_sync_from=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_FROM", ""),
         travel_sync_path=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_PATH", "/mnt/media/media"),
         travel_sync_max_gb=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_MAX_GB", "200"),
-        travel_sync_min_free_gb=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_MIN_FREE_GB", "20")
+        travel_sync_min_free_gb=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_MIN_FREE_GB", "20"),
+        # The kiosk's Jellyfin user was created with it - keep it.
+        kiosk_jellyfin_password=(
+            _preserved_vpn_value(output_dir, "KIOSK_JELLYFIN_PASSWORD", "") or None
+        )
     )
 
     compose_path.write_text(render_compose(config, host_ip))

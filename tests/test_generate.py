@@ -4653,3 +4653,22 @@ def test_travel_env_has_sync_settings_only_with_home_sync():
     assert "TRAVEL_SYNC_MAX_GB=200" in render_env(travel_config(enabled_optional={"tailscale"}))
     assert "TRAVEL_SYNC_FROM" not in render_env(travel_config())
     assert "TRAVEL_SYNC_FROM" not in render_env(make_config("heavy", enabled_optional={"tailscale"}))
+
+
+def test_travel_env_always_has_a_kiosk_password_home_tiers_never():
+
+    assert re.search(r"^KIOSK_JELLYFIN_PASSWORD=\S{20,}$", render_env(travel_config(kiosk=True)), re.M)
+    assert "KIOSK_JELLYFIN_PASSWORD=" in render_env(travel_config())
+    assert "KIOSK_JELLYFIN_PASSWORD" not in render_env(make_config("heavy"))
+
+
+def test_kiosk_password_survives_kiosk_off_and_on(tmp_path):
+
+    stack = tmp_path / "stack"
+    values = []
+
+    for kiosk in (True, False, True):
+        write_stack(travel_config(kiosk=kiosk, media_path=str(tmp_path / "media")), output_dir=stack)
+        values.append(re.search(r"^KIOSK_JELLYFIN_PASSWORD=(\S+)$", (stack / ".env").read_text(), re.M).group(1))
+
+    assert values[0] == values[1] == values[2]
