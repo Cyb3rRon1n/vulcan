@@ -4653,3 +4653,9 @@ def test_travel_env_has_sync_settings_only_with_home_sync():
     assert "TRAVEL_SYNC_MAX_GB=200" in render_env(travel_config(enabled_optional={"tailscale"}))
     assert "TRAVEL_SYNC_FROM" not in render_env(travel_config())
     assert "TRAVEL_SYNC_FROM" not in render_env(make_config("heavy", enabled_optional={"tailscale"}))
+
+
+def test_travel_env_has_a_kiosk_password_only_with_the_kiosk():
+
+    assert re.search(r"^KIOSK_JELLYFIN_PASSWORD=\S{20,}$", render_env(travel_config(kiosk=True)), re.M)
+    assert "KIOSK_JELLYFIN_PASSWORD" not in render_env(travel_config())

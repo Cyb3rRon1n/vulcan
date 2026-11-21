@@ -124,7 +124,9 @@ from installer.travel import (
     SYNC_UNIT,
     doctor_checks,
     host_setup,
+    install_kodi_addon,
     install_timer,
+    kiosk_jellyfin_login,
     remove_timer,
     sync_from_home,
     valid_hostname,
@@ -2794,6 +2796,10 @@ def _gather_generation_config(
         else:
             kiosk_value = typer.confirm("Kodi kiosk: start Kodi full-screen on the TV at boot?", default=kiosk_default)
 
+        if kiosk_value and info.os_is_atomic:
+            console.print("[red]Kodi kiosk isn't supported on atomic/immutable systems.[/red] Re-run with --no-kiosk.")
+            raise typer.Exit(code=1)
+
     elif any(value is not None for value in (hostname, travel_ip, kiosk, self_download, home_sync)):
 
         console.print(
@@ -3565,10 +3571,43 @@ def _travel_host_setup(config: GenerationConfig, panel: RunPanel | _NoOpPanel | 
 
     ok = all(step["ok"] for step in results)
 
+    if any(step["step"] == "kiosk" and step["ok"] for step in results):
+        ok = _kiosk_addon(config, panel) and ok
+
     if not ok:
         panel.note("Fix the above, then re-run: vulcan travel setup   (check with: vulcan doctor)")
 
     return ok
+
+
+def _kiosk_addon(config: GenerationConfig, panel: RunPanel | _NoOpPanel) -> bool:
+    """Kodi's Jellyfin add-on + its saved login. The login needs a running
+    Jellyfin and an API key, so a first build places the add-on only and says
+    how to finish."""
+
+    port = resolve_ports(config)["jellyfin"]
+    key = _preserved_vpn_value(STACK_DIR, "JELLYFIN_API_KEY", "")
+    password = _preserved_vpn_value(STACK_DIR, "KIOSK_JELLYFIN_PASSWORD", "")
+    login = None
+
+    if key and password:
+        try:
+            login = kiosk_jellyfin_login(f"http://localhost:{port}", key, password)
+        except (OSError, ValueError, KeyError) as error:
+            panel.note(f"[yellow]! Kodi login: Jellyfin didn't answer ({error}) - start the stack, then re-run "
+                       "vulcan travel setup[/yellow]")
+    else:
+        panel.note("Kodi login: finish Jellyfin's first-run wizard, add JELLYFIN_API_KEY to stack/.env "
+                   "(Dashboard > API Keys), then run: vulcan travel setup")
+
+    result = install_kodi_addon(login, port)
+
+    if result["ok"]:
+        panel.note("[green]✓[/green] Kodi Jellyfin add-on" + (" (signed in)" if login else ""))
+    else:
+        panel.note(f"[yellow]! Kodi Jellyfin add-on: {result['error']}[/yellow]")
+
+    return result["ok"]
 
 
 @travel_app.command(name="setup")

@@ -4885,3 +4885,29 @@ def test_travel_sync_install_timer_needs_a_home_host():
     assert result.exit_code == 1
     assert "TRAVEL_SYNC_FROM" in result.output
     mock_install.assert_not_called()
+
+
+def test_build_travel_refuses_kiosk_on_atomic_os(tmp_path):
+
+    result, mock_write_stack = _build_travel(tmp_path, "--kiosk", info=make_system_info(os_is_atomic=True))
+
+    assert result.exit_code == 1
+    assert "atomic" in result.output
+    mock_write_stack.assert_not_called()
+
+
+def test_travel_host_setup_wires_the_kodi_addon_after_the_kiosk_step():
+
+    config = _config_from_previous_state({**TRAVEL_STATE, "kiosk": True})
+    rows = [{"step": "kiosk", "ok": True, "error": None, "skipped": False}]
+
+    with patch("installer.cli.host_setup", return_value=rows), patch(
+        "installer.cli.detect_os", return_value={"os_id": "debian"}
+    ), patch("installer.cli._preserved_vpn_value", side_effect=lambda d, k, default: {"JELLYFIN_API_KEY": "key", "KIOSK_JELLYFIN_PASSWORD": "pw"}.get(k, default)), patch(
+        "installer.cli.kiosk_jellyfin_login", return_value={"server_id": "s", "server_name": "n", "user_id": "u", "token": "t"}
+    ) as mock_login, patch("installer.cli.install_kodi_addon", return_value={"ok": True, "error": None}) as mock_addon:
+
+        assert REAL_TRAVEL_HOST_SETUP(config) is True
+
+    mock_login.assert_called_once_with("http://localhost:8096", "key", "pw")
+    assert mock_addon.call_args[0][1] == 8096

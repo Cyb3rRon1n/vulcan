@@ -6,18 +6,24 @@ the only thing that executes, always through run_privileged.
 """
 
 import getpass
+import grp
 import ipaddress
+import json
 import os
+import pwd
 import re
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 from installer.deps import _INSTALL_CMD, _family_for
 from installer.shell import run_privileged
+from installer.userdata import Jellyfin
 
 _HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 
@@ -35,6 +41,18 @@ SYNC_UNIT = "vulcan-travel-sync"
 SYNC_INBOX = Path("downloads") / "from-home"
 SYNC_LEDGER = Path("stack") / "travel-sync-ledger.txt"
 SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10"
+KIOSK_UNIT = "vulcan-kiosk"
+KIOSK_USER = "vulcan-kiosk"
+KIOSK_HOME = "/var/lib/vulcan-kiosk"
+KIOSK_JELLYFIN_USER = "kiosk"
+# cec-utils: `cec-client -l` shows whether a CEC adapter is there at all.
+KIOSK_PACKAGES = ["kodi", "cec-utils"]
+# dialout: USB-CEC adapters (most x86 HDMI ports have no CEC of their own).
+KIOSK_GROUPS = ("video", "render", "input", "audio", "dialout")
+JELLYFIN_KODI_ZIPS = (
+    "https://kodi.jellyfin.org/repository.jellyfin.kodi.zip",
+    "https://kodi.jellyfin.org/py3/plugin.video.jellyfin/plugin.video.jellyfin-2.2.0%2Bpy3.zip",
+)
 
 
 def valid_hostname(name: str) -> bool:
@@ -192,6 +210,182 @@ def remove_timer(name: str, run=run_privileged, exists=os.path.exists) -> dict:
     ], run)
 
 
+def kiosk_unit() -> str:
+    """Kodi full-screen on tty1 at boot. Conflicts= stops the login prompt
+    there; remove_kiosk() starts it again."""
+
+    return (
+        "[Unit]\nDescription=Vulcan kiosk (Kodi full-screen on the TV)\n"
+        "After=network-online.target docker.service systemd-user-sessions.service\n"
+        "Wants=network-online.target\nConflicts=getty@tty1.service\n\n"
+        f"[Service]\nUser={KIOSK_USER}\nEnvironment=HOME={KIOSK_HOME}\nPAMName=login\nTTYPath=/dev/tty1\n"
+        "StandardInput=tty\nStandardOutput=journal\nExecStart=/usr/bin/kodi-standalone\n"
+        "Restart=on-failure\nRestartSec=5\n\n"
+        "[Install]\nWantedBy=multi-user.target\n"
+    )
+
+
+def kiosk_refusal(os_info: dict) -> str | None:
+
+    if os_info.get("os_is_atomic"):
+        return ("Kodi kiosk isn't supported on atomic/immutable systems (Bazzite, Silverblue, ...) - "
+                "the stack still works; play from the TV's Jellyfin app instead")
+
+    if _family_for(os_info.get("os_id")) != "debian":
+        return "Kodi kiosk needs Debian or Ubuntu in this release - the stack still works"
+
+    if os_info.get("architecture") not in ("x86_64", "amd64"):
+        return "Kodi kiosk is x86-64 only in this release (Pi 5 is experimental) - the stack still works"
+
+    return None
+
+
+def kiosk_install_steps(user_exists: bool, groups: list[str]) -> list[list[str]]:
+
+    member = ["usermod", "-aG", ",".join(groups), KIOSK_USER] if user_exists else [
+        "useradd", "--system", "--create-home", "--home-dir", KIOSK_HOME,
+        "--shell", "/usr/sbin/nologin", "--groups", ",".join(groups), KIOSK_USER,
+    ]
+
+    return [["apt-get", "install", "-y", *KIOSK_PACKAGES], member]
+
+
+def _user_exists(name: str) -> bool:
+
+    try:
+        pwd.getpwnam(name)
+    except KeyError:
+        return False
+
+    return True
+
+
+def _existing_groups(names) -> list[str]:
+
+    found = []
+
+    for name in names:
+        try:
+            grp.getgrnam(name)
+            found.append(name)
+        except KeyError:
+            pass
+
+    return found
+
+
+def install_kiosk(run, write, user_exists: bool, groups: list[str]) -> dict:
+
+    result = apply_steps(kiosk_install_steps(user_exists, groups), run)
+
+    if not result["ok"]:
+        return result
+
+    unit_path = f"{SYSTEMD_DIR}/{KIOSK_UNIT}.service"
+    written = write(unit_path, kiosk_unit(), run)
+
+    if not written["success"]:
+        return {"ok": False, "error": f"couldn't write {unit_path}: {written['error']}"}
+
+    return apply_steps([["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", f"{KIOSK_UNIT}.service"]], run)
+
+
+def remove_kiosk(run, exists) -> dict:
+    """--no-kiosk: the unit goes, tty1 gets its login prompt back. Kodi and the
+    kiosk user stay installed."""
+
+    unit_path = f"{SYSTEMD_DIR}/{KIOSK_UNIT}.service"
+
+    if not exists(unit_path):
+        return {"ok": True, "error": None, "skipped": True}
+
+    return apply_steps([
+        ["systemctl", "disable", "--now", f"{KIOSK_UNIT}.service"],
+        ["rm", "-f", unit_path],
+        ["systemctl", "daemon-reload"],
+        ["systemctl", "start", "getty@tty1.service"],
+    ], run)
+
+
+def kodi_credentials(login: dict, port: int) -> str:
+    """The Jellyfin add-on's own saved-login file (addon_data/.../data.json)."""
+
+    return json.dumps({"Servers": [{
+        "Id": login["server_id"],
+        "Name": login["server_name"],
+        "address": f"http://localhost:{port}",
+        "AccessToken": login["token"],
+        "UserId": login["user_id"],
+        "DateLastAccessed": "1970-01-01T00:00:00Z",
+    }]}, indent=4, sort_keys=True)
+
+
+def kiosk_jellyfin_login(url: str, api_key: str, password: str, opener=urllib.request.urlopen) -> dict:
+    """Create the "kiosk" Jellyfin user if missing, then sign in as it."""
+
+    jf = Jellyfin(url, api_key)
+    info = jf("/System/Info/Public")
+
+    if not any(user["Name"] == KIOSK_JELLYFIN_USER for user in jf("/Users")):
+        jf("/Users/New", "POST", {"Name": KIOSK_JELLYFIN_USER, "Password": password})
+
+    request = urllib.request.Request(
+        url.rstrip("/") + "/Users/AuthenticateByName", method="POST",
+        data=json.dumps({"Username": KIOSK_JELLYFIN_USER, "Pw": password}).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": 'MediaBrowser Client="Vulcan kiosk", Device="vulcan-kiosk", DeviceId="vulcan-kiosk", Version="1"',
+        },
+    )
+    auth = json.loads(opener(request, timeout=30).read())
+
+    return {"server_id": auth["ServerId"], "server_name": info["ServerName"],
+            "user_id": auth["User"]["Id"], "token": auth["AccessToken"]}
+
+
+def install_kodi_addon(login: dict | None, port: int, run=run_privileged, fetch=urllib.request.urlretrieve) -> dict:
+    """Place the Jellyfin repo + add-on in the kiosk user's Kodi, plus its saved
+    login when we have one. Needs the internet (the zips), hence 'set it up at
+    home first'."""
+
+    staging = Path(tempfile.mkdtemp(prefix="vulcan-kodi-"))
+
+    try:
+
+        addons = staging / "addons"
+        addons.mkdir()
+
+        for url in JELLYFIN_KODI_ZIPS:
+
+            zip_path = staging / url.rsplit("/", 1)[1]
+            fetch(url, zip_path)
+
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(addons)
+
+            zip_path.unlink()
+
+        if login:
+            data = staging / "userdata" / "addon_data" / "plugin.video.jellyfin" / "data.json"
+            data.parent.mkdir(parents=True)
+            data.write_text(kodi_credentials(login, port))
+            data.chmod(0o600)  # holds the access token
+
+        kodi_dir = f"{KIOSK_HOME}/.kodi"
+
+        return apply_steps([
+            ["mkdir", "-p", kodi_dir],
+            ["cp", "-a", f"{staging}/.", kodi_dir],
+            ["chown", "-R", f"{KIOSK_USER}:{KIOSK_USER}", kodi_dir],
+        ], run)
+
+    except (OSError, zipfile.BadZipFile) as error:
+        return {"ok": False, "error": f"couldn't fetch the Kodi Jellyfin add-on ({error}) - needs internet, run it at home"}
+
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def _row(step: str, result: dict) -> dict:
 
     return {"step": step, "ok": result["ok"], "error": result.get("error"), "skipped": result.get("skipped", False)}
@@ -264,6 +458,22 @@ def host_setup(
         )))
     else:
         rows.append(_row("media-register timer (removed)", remove_timer(MEDIA_REGISTER_UNIT, run, exists)))
+
+    if kiosk:
+
+        refusal = kiosk_refusal(os_info)
+
+        if refusal:
+            rows.append(_row("kiosk", {"ok": False, "error": refusal}))
+        else:
+            rows.append(_row("kiosk", install_kiosk(
+                run, write,
+                _user_exists(KIOSK_USER) if user_exists is None else user_exists,
+                _existing_groups(KIOSK_GROUPS) if groups is None else groups,
+            )))
+
+    else:
+        rows.append(_row("kiosk (removed)", remove_kiosk(run, exists)))
 
     return rows
 

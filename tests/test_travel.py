@@ -349,3 +349,140 @@ def test_sync_from_home_refuses_root_path_and_option_like_hosts(tmp_path):
 
     assert "can't be /" in root["error"]
     assert "option" in option["error"]
+
+
+import io
+import json
+import zipfile
+from unittest.mock import patch
+
+from installer.travel import (
+    install_kodi_addon,
+    kiosk_jellyfin_login,
+    kiosk_refusal,
+    kiosk_unit,
+    kodi_credentials,
+)
+
+LOGIN = {"server_id": "srv1", "server_name": "trip", "user_id": "u1", "token": "tok"}
+
+
+def test_kiosk_unit_takes_over_tty1_as_the_kiosk_user():
+
+    unit = kiosk_unit()
+
+    assert "User=vulcan-kiosk" in unit and "TTYPath=/dev/tty1" in unit
+    assert "Conflicts=getty@tty1.service" in unit and "ExecStart=/usr/bin/kodi-standalone" in unit
+    assert "WantedBy=multi-user.target" in unit
+
+
+def test_kiosk_refusals():
+
+    assert kiosk_refusal(DEBIAN) is None
+    assert "atomic" in kiosk_refusal({"os_id": "fedora", "os_is_atomic": True, "architecture": "x86_64"})
+    assert "Debian or Ubuntu" in kiosk_refusal({"os_id": "fedora", "os_is_atomic": False, "architecture": "x86_64"})
+    assert "x86-64" in kiosk_refusal({"os_id": "debian", "os_is_atomic": False, "architecture": "aarch64"})
+
+
+def test_host_setup_installs_the_kiosk():
+
+    calls, run = fake_runner()
+    written = {}
+    results = host_setup({"jellyfin"}, "trip", True, DEBIAN, run=run, write=fake_write(written),
+                         exists=lambda p: False, user_exists=False, groups=["video", "audio"])
+
+    assert ["apt-get", "install", "-y", "kodi", "cec-utils"] in calls
+    assert ["useradd", "--system", "--create-home", "--home-dir", "/var/lib/vulcan-kiosk",
+            "--shell", "/usr/sbin/nologin", "--groups", "video,audio", "vulcan-kiosk"] in calls
+    assert "/etc/systemd/system/vulcan-kiosk.service" in written
+    assert ["systemctl", "enable", "--now", "vulcan-kiosk.service"] in calls
+    assert any(r["step"] == "kiosk" and r["ok"] for r in results)
+
+
+def test_host_setup_refuses_the_kiosk_on_an_atomic_os():
+
+    calls, run = fake_runner()
+    results = host_setup({"jellyfin"}, "trip", True, {"os_id": "fedora", "os_is_atomic": True, "architecture": "x86_64"},
+                         run=run, write=fake_write({}), exists=lambda p: False, user_exists=True, groups=["video"])
+
+    kiosk = next(r for r in results if r["step"] == "kiosk")
+    assert kiosk["ok"] is False and "atomic" in kiosk["error"]
+    assert not any(argv[:2] == ["apt-get", "install"] for argv in calls)
+
+
+def test_no_kiosk_removes_the_unit_and_gives_tty1_back():
+
+    calls, run = fake_runner()
+    host_setup({"jellyfin"}, "trip", False, DEBIAN, run=run, write=fake_write({}), exists=lambda p: True)
+
+    assert ["systemctl", "disable", "--now", "vulcan-kiosk.service"] in calls
+    assert ["rm", "-f", "/etc/systemd/system/vulcan-kiosk.service"] in calls
+    assert ["systemctl", "start", "getty@tty1.service"] in calls
+
+
+def test_kodi_credentials_point_at_localhost():
+
+    servers = json.loads(kodi_credentials(LOGIN, 8096))["Servers"]
+
+    assert servers == [{"Id": "srv1", "Name": "trip", "address": "http://localhost:8096", "AccessToken": "tok",
+                        "UserId": "u1", "DateLastAccessed": "1970-01-01T00:00:00Z"}]
+
+
+def test_install_kodi_addon_stages_addons_and_login():
+
+    def fetch(url, dest):
+        top = "repository.jellyfin.kodi" if "repository" in url else "plugin.video.jellyfin"
+        with zipfile.ZipFile(dest, "w") as archive:
+            archive.writestr(f"{top}/addon.xml", "<addon/>")
+
+    staged = {}
+
+    def run(argv):
+        if argv[0] == "cp":
+            source = Path(argv[2][:-1])
+            staged.update({str(p.relative_to(source)): p.read_text() for p in source.rglob("*") if p.is_file()})
+        return {"success": True, "error": None}
+
+    result = install_kodi_addon(LOGIN, 8096, run=run, fetch=fetch)
+
+    assert result == {"ok": True, "error": None}
+    assert {"addons/plugin.video.jellyfin/addon.xml", "addons/repository.jellyfin.kodi/addon.xml"} <= set(staged)
+    data = json.loads(staged["userdata/addon_data/plugin.video.jellyfin/data.json"])
+    assert data["Servers"][0]["address"] == "http://localhost:8096"
+
+
+def test_install_kodi_addon_without_internet_says_so():
+
+    def fetch(url, dest):
+        raise OSError("Temporary failure in name resolution")
+
+    result = install_kodi_addon(None, 8096, run=lambda argv: {"success": True, "error": None}, fetch=fetch)
+
+    assert result["ok"] is False and "internet" in result["error"]
+
+
+class FakeJellyfin:
+
+    calls = []
+
+    def __init__(self, url, key):
+        self.url = url
+
+    def __call__(self, path, method="GET", body=None):
+        FakeJellyfin.calls.append((path, method, body))
+        return {"/System/Info/Public": {"ServerName": "trip", "Id": "srv1"}, "/Users": [],
+                "/Users/New": {"Id": "u1"}}[path]
+
+
+def test_kiosk_login_creates_the_user_then_signs_in():
+
+    def opener(req, timeout):
+        assert req.full_url == "http://localhost:8096/Users/AuthenticateByName"
+        assert json.loads(req.data) == {"Username": "kiosk", "Pw": "pw"}
+        return io.BytesIO(json.dumps({"AccessToken": "tok", "ServerId": "srv1", "User": {"Id": "u1"}}).encode())
+
+    with patch("installer.travel.Jellyfin", FakeJellyfin):
+        login = kiosk_jellyfin_login("http://localhost:8096", "key", "pw", opener=opener)
+
+    assert login == LOGIN
+    assert ("/Users/New", "POST", {"Name": "kiosk", "Password": "pw"}) in FakeJellyfin.calls
