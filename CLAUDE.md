@@ -53,6 +53,7 @@ Also: `_ensure_docker_ready()` and the TUI `DockerReadyScreen` now check the res
 - **Light** — ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free
 - **Medium** — ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free
 - **Heavy** — ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free
+- **Travel** — ≥ 2 cores, ≥ 4 GB RAM, ≥ 64 GB free; chosen explicitly, never recommended. Jellyfin + Homepage + FileBrowser, optional self-download / home sync / Kodi kiosk; host pieces in `installer/travel.py`.
 
 Every tier also offers tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage/Dashy (dashboard), MeTube/Downtify (downloaders), Netdata (monitoring), Vaultwarden (password manager). Heavy adds GPU transcoding (when a GPU is detected), plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, and Tailscale via custom mode.
 

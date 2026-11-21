@@ -37,6 +37,7 @@ nav:
   - Post-Install Walkthrough: walkthrough.md
   - "Guide: Homepage Widgets": guides/homepage-widgets.md
   - "Guide: Media Assistant": guides/media-assistant.md
+  - "Guide: Travel": guides/travel.md
   - Roadmap: roadmap.md
 
 markdown_extensions:
