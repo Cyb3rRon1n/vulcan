@@ -1,7 +1,7 @@
 import socket
 import subprocess
 
-from installer.travel import apply_steps, avahi_steps, doctor_checks, host_setup
+from installer.travel import MEDIA_REGISTER_UNIT, apply_steps, avahi_steps, doctor_checks, host_setup, remove_timer, timer_units
 
 HOSTS = "127.0.0.1 localhost\n"
 DEBIAN = {"os_id": "debian", "os_is_atomic": False, "architecture": "x86_64"}
@@ -207,3 +207,44 @@ def test_every_127_0_1_1_line_is_rewritten_and_restorecon_failure_is_labelled():
                       read_hosts=lambda: HOSTS, which=lambda n: "/x")
 
     assert rows[1]["ok"] is False and rows[1]["error"].startswith("written; restorecon failed")
+
+
+def test_timer_units_content():
+
+    units = timer_units("vulcan-media-register", "Vulcan: register imported media",
+                        "/venv/bin/python -m installer media register", "hourly", "ron", "/home/ron/vulcan")
+    service = units["/etc/systemd/system/vulcan-media-register.service"]
+    timer = units["/etc/systemd/system/vulcan-media-register.timer"]
+
+    assert "Type=oneshot" in service and "User=ron" in service
+    assert "WorkingDirectory=/home/ron/vulcan" in service
+    assert "ExecStart=/venv/bin/python -m installer media register" in service
+    assert "OnCalendar=hourly" in timer and "Persistent=true" in timer and "WantedBy=timers.target" in timer
+
+
+def test_host_setup_installs_the_register_timer_when_arrs_are_in_the_stack():
+
+    calls, run = fake_runner()
+    written = {}
+    host_setup({"jellyfin", "sonarr", "radarr"}, "trip", False, DEBIAN,
+               run=run, write=fake_write(written), exists=lambda p: False)
+
+    assert f"/etc/systemd/system/{MEDIA_REGISTER_UNIT}.timer" in written
+    assert ["systemctl", "enable", "--now", "vulcan-media-register.timer"] in calls
+
+
+def test_host_setup_removes_the_register_timer_without_arrs():
+
+    calls, run = fake_runner()
+    results = host_setup({"jellyfin"}, "trip", False, DEBIAN, run=run, write=fake_write({}), exists=lambda p: True)
+
+    assert ["systemctl", "disable", "--now", "vulcan-media-register.timer"] in calls
+    assert any(r["step"] == "media-register timer (removed)" and r["ok"] for r in results)
+
+
+def test_remove_timer_is_a_skipped_no_op_when_not_installed():
+
+    calls, run = fake_runner()
+
+    assert remove_timer("vulcan-media-register", run, exists=lambda p: False) == {"ok": True, "error": None, "skipped": True}
+    assert calls == []

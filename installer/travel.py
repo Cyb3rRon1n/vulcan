@@ -5,12 +5,14 @@ the checks `vulcan doctor` runs. Plan builders are pure; apply_steps() is
 the only thing that executes, always through run_privileged.
 """
 
+import getpass
 import ipaddress
 import os
 import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 
 from installer.deps import _INSTALL_CMD, _family_for
@@ -24,6 +26,9 @@ AVAHI_PACKAGES = {
     "fedora": ["avahi", "nss-mdns"],
     "arch": ["avahi", "nss-mdns"],
 }
+
+SYSTEMD_DIR = "/etc/systemd/system"
+MEDIA_REGISTER_UNIT = "vulcan-media-register"
 
 
 def valid_hostname(name: str) -> bool:
@@ -122,6 +127,65 @@ def _read_hosts() -> str | None:
         return None
 
 
+def invoking_user() -> str:
+    """The real user behind sudo - timers must run as them, not root."""
+
+    return os.environ.get("SUDO_USER") or getpass.getuser()
+
+
+def timer_units(name: str, description: str, command: str, on_calendar: str, user: str, workdir: str) -> dict[str, str]:
+
+    service = (
+        f"[Unit]\nDescription={description}\nAfter=network-online.target docker.service\n"
+        "Wants=network-online.target\n\n"
+        f"[Service]\nType=oneshot\nUser={user}\nWorkingDirectory={workdir}\nExecStart={command}\n"
+    )
+    timer = (
+        f"[Unit]\nDescription={description} (timer)\n\n"
+        f"[Timer]\nOnCalendar={on_calendar}\nPersistent=true\nRandomizedDelaySec=5m\n\n"
+        "[Install]\nWantedBy=timers.target\n"
+    )
+
+    return {f"{SYSTEMD_DIR}/{name}.service": service, f"{SYSTEMD_DIR}/{name}.timer": timer}
+
+
+def install_timer(
+    name: str,
+    description: str,
+    command: str,
+    on_calendar: str = "hourly",
+    run=run_privileged,
+    write=write_root_file,
+    user: str | None = None,
+    workdir: str | None = None,
+) -> dict:
+
+    units = timer_units(name, description, command, on_calendar, user or invoking_user(), workdir or os.getcwd())
+
+    for path, content in units.items():
+
+        written = write(path, content, run)
+
+        if not written["success"]:
+            return {"ok": False, "error": f"couldn't write {path}: {written['error']}"}
+
+    return apply_steps([["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", f"{name}.timer"]], run)
+
+
+def remove_timer(name: str, run=run_privileged, exists=os.path.exists) -> dict:
+
+    timer = f"{SYSTEMD_DIR}/{name}.timer"
+
+    if not exists(timer):
+        return {"ok": True, "error": None, "skipped": True}
+
+    return apply_steps([
+        ["systemctl", "disable", "--now", f"{name}.timer"],
+        ["rm", "-f", timer, f"{SYSTEMD_DIR}/{name}.service"],
+        ["systemctl", "daemon-reload"],
+    ], run)
+
+
 def _row(step: str, result: dict) -> dict:
 
     return {"step": step, "ok": result["ok"], "error": result.get("error"), "skipped": result.get("skipped", False)}
@@ -184,6 +248,16 @@ def host_setup(
                     result = {"success": False, "error": f"written; restorecon failed: {label['error']}"}
 
             rows.append(_hosts_row(result))
+
+    # Hourly catch-up for imports queued while Sonarr/Radarr were offline -
+    # only meaningful when the self-download group is in the stack.
+    if services & {"sonarr", "radarr"}:
+        rows.append(_row("media-register timer", install_timer(
+            MEDIA_REGISTER_UNIT, "Vulcan: register imported media with Sonarr/Radarr",
+            f"{sys.executable} -m installer media register", run=run, write=write,
+        )))
+    else:
+        rows.append(_row("media-register timer (removed)", remove_timer(MEDIA_REGISTER_UNIT, run, exists)))
 
     return rows
 

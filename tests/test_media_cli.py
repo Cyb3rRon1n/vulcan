@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from installer.cli import app
+from installer.services import TRAVEL_IMAGES
 
 runner = CliRunner()
 
@@ -56,8 +58,31 @@ def test_import_offline_queues_imported_rows_for_registration(tmp_path):
 
 
 def test_register_without_reachable_arrs_exits_1(tmp_path):
+    pending = Path("stack/media-plans/pending-registration.json")
+    pending.parent.mkdir(parents=True)
+    pending.write_text(json.dumps([{"destination": "/lib/media/movies/A (2020)/a.mkv", "reason": "stack offline"}]))
     result = runner.invoke(app, ["media", "register"])
     assert result.exit_code == 1 and "Sonarr/Radarr" in result.output
+
+
+def test_register_is_a_quiet_no_op_when_nothing_is_queued(tmp_path):
+    result = runner.invoke(app, ["media", "register"])
+    assert result.exit_code == 0 and "Nothing queued" in result.output
+
+
+def test_scan_on_travel_uses_the_pinned_jellyfin_image(tmp_path):
+    seen = {}
+
+    class RecordingProber(NullProber):
+        def __init__(self, *a, **k): seen.update(k)
+
+    state = {"tier": "travel", "media_path": str(tmp_path / "lib")}
+    with patch("installer.cli.load_previous_state", return_value=state), \
+         patch("installer.cli.MediaProber", RecordingProber), \
+         patch("installer.cli.media_scan_engine", return_value=fake_plan(tmp_path)):
+        result = runner.invoke(app, ["media", "scan", str(tmp_path), "--offline", "--plan", str(tmp_path / "p.json")])
+    assert result.exit_code == 0, result.output
+    assert seen["image"] == TRAVEL_IMAGES["jellyfin"]
 
 
 class RaisingProber:
