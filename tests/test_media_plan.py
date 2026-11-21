@@ -170,3 +170,15 @@ def test_scan_import_marked_duplicate_of_library_conflict(tmp_path):
     assert by["Heat.1995.1080p.mkv"]["action"] == "skip:conflict"
     assert by["Heat (1995) 720p.mkv"]["action"] == "skip:duplicate"
     assert by["Heat (1995) 720p.mkv"]["duplicate_of"] == by["Heat.1995.1080p.mkv"]["destination"]
+
+
+def test_scan_skips_rsync_partial_files_and_hidden_paths(tmp_path):
+    src = tmp_path / "from-home"
+    make(src, "Heat.1995.1080p.mkv")
+    make(src, "movies/.vulcan-partial/Big.Film.2020.mkv")
+    make(src, ".hidden/Other.Film.2021.mkv")
+    prober = FakeProber({"Heat.1995.1080p.mkv": media(), "Big.Film.2020.mkv": media(), "Other.Film.2021.mkv": media()})
+
+    plan = scan(src, tmp_path / "lib", prober)
+
+    assert [Path(r["source"]).name for r in plan["rows"]] == ["Heat.1995.1080p.mkv"]

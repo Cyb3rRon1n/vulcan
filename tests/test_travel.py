@@ -1,10 +1,21 @@
 import socket
 import subprocess
+from unittest.mock import patch
 
-from installer.travel import MEDIA_REGISTER_UNIT, apply_steps, avahi_steps, doctor_checks, host_setup, remove_timer, timer_units
+import pytest
+
+from installer.travel import MEDIA_REGISTER_UNIT, apply_steps, avahi_steps, doctor_checks, host_setup, remove_timer, timer_units, home_host_problem, sync_from_home, travel_teardown
 
 HOSTS = "127.0.0.1 localhost\n"
 DEBIAN = {"os_id": "debian", "os_is_atomic": False, "architecture": "x86_64"}
+
+
+@pytest.fixture(autouse=True)
+def _avahi_not_installed():
+    """Keep tests independent of whether the dev box has Avahi."""
+
+    with patch("installer.travel._avahi_installed", return_value=False):
+        yield
 
 
 def fake_runner(fail_on=None):
@@ -212,7 +223,7 @@ def test_every_127_0_1_1_line_is_rewritten_and_restorecon_failure_is_labelled():
 def test_timer_units_content():
 
     units = timer_units("vulcan-media-register", "Vulcan: register imported media",
-                        "/venv/bin/python -m installer media register", "hourly", "ron", "/home/ron/vulcan")
+                        ["/venv/bin/python", "-m", "installer", "media", "register"], "hourly", "ron", "/home/ron/vulcan")
     service = units["/etc/systemd/system/vulcan-media-register.service"]
     timer = units["/etc/systemd/system/vulcan-media-register.timer"]
 
@@ -252,7 +263,7 @@ def test_remove_timer_is_a_skipped_no_op_when_not_installed():
 
 from pathlib import Path
 
-from installer.travel import list_command, parse_listing, select_files, sync_from_home, transfer_command
+from installer.travel import list_command, parse_listing, select_files, transfer_command
 
 
 def test_parse_listing_keeps_files_only():
@@ -354,7 +365,6 @@ def test_sync_from_home_refuses_root_path_and_option_like_hosts(tmp_path):
 import io
 import json
 import zipfile
-from unittest.mock import patch
 
 from installer.travel import (
     install_kodi_addon,
@@ -395,7 +405,9 @@ def test_host_setup_installs_the_kiosk():
     assert ["useradd", "--system", "--create-home", "--home-dir", "/var/lib/vulcan-kiosk",
             "--shell", "/usr/sbin/nologin", "--groups", "video,audio", "vulcan-kiosk"] in calls
     assert "/etc/systemd/system/vulcan-kiosk.service" in written
-    assert ["systemctl", "enable", "--now", "vulcan-kiosk.service"] in calls
+    assert ["systemctl", "enable", "vulcan-kiosk.service"] in calls
+    assert ["systemctl", "enable", "--now", "vulcan-kiosk.service"] not in calls
+    assert not any(argv[:2] == ["systemctl", "start"] for argv in calls)
     assert any(r["step"] == "kiosk" and r["ok"] for r in results)
 
 
@@ -506,3 +518,103 @@ def test_install_kodi_addon_already_installed_offline_still_writes_the_login():
 
     assert result == {"ok": True, "error": None}
     assert list(staged) == ["userdata/addon_data/plugin.video.jellyfin/data.json"]
+
+
+def test_timer_units_quote_arguments_with_spaces():
+
+    units = timer_units("t", "d", ["/my venv/bin/python", "-m", "installer"], "hourly", "ron", "/home/ron/my vulcan")
+
+    assert "ExecStart='/my venv/bin/python' -m installer\n" in units["/etc/systemd/system/t.service"]
+
+
+def test_host_setup_removes_the_sync_timer_without_tailscale():
+
+    calls, run = fake_runner()
+    exists = lambda p: p.endswith("vulcan-travel-sync.timer")
+    host_setup({"jellyfin"}, "trip", False, DEBIAN, run=run, write=fake_write({}), exists=exists, read_hosts=lambda: HOSTS)
+
+    assert ["systemctl", "disable", "--now", "vulcan-travel-sync.timer"] in calls
+
+    calls.clear()
+    host_setup({"jellyfin", "tailscale"}, "trip", False, DEBIAN, run=run, write=fake_write({}), exists=exists, read_hosts=lambda: HOSTS)
+
+    assert ["systemctl", "disable", "--now", "vulcan-travel-sync.timer"] not in calls
+
+
+def test_travel_teardown_removes_what_is_installed_and_does_nothing_otherwise():
+
+    calls, run = fake_runner()
+    rows = travel_teardown(run, exists=lambda p: False)
+
+    assert calls == [] and all(row["skipped"] for row in rows)
+
+    rows = travel_teardown(run, exists=lambda p: True)
+    flat = [" ".join(argv) for argv in calls]
+
+    assert "systemctl disable --now vulcan-kiosk.service" in flat
+    assert "systemctl disable --now vulcan-media-register.timer" in flat
+    assert "systemctl disable --now vulcan-travel-sync.timer" in flat
+    assert all(row["ok"] for row in rows)
+
+
+def test_avahi_install_is_skipped_when_already_installed():
+
+    assert avahi_steps("fedora", False, "trip", installed=True) == [
+        ["hostnamectl", "set-hostname", "trip"],
+        ["systemctl", "enable", "--now", "avahi-daemon"],
+    ]
+
+    calls, run = fake_runner()
+    host_setup({"jellyfin"}, "trip", False, {"os_id": "fedora", "os_is_atomic": False}, run=run, write=fake_write({}),
+               exists=lambda p: False, read_hosts=lambda: HOSTS, avahi_installed=lambda: True)
+
+    assert not any(argv[0] == "dnf" for argv in calls)
+    assert ["systemctl", "enable", "--now", "avahi-daemon"] in calls
+
+
+def test_home_host_problem_refuses_this_box_and_loopback():
+
+    def loopback(host, port):
+        return [(2, 1, 6, "", ("127.0.1.1", 0))]
+
+    def remote(host, port):
+        return [(2, 1, 6, "", ("100.64.0.9", 0))]
+
+    def nothing(host, port):
+        raise socket.gaierror("x")
+
+    assert home_host_problem("you@vulcan", ["vulcan"], remote)
+    assert home_host_problem("you@Vulcan.local", ["vulcan"], remote)
+    assert home_host_problem("you@home-vulcan", ["trip"], loopback)
+    assert home_host_problem("you@home-vulcan", ["trip"], remote) is None
+    assert home_host_problem("you@home-vulcan", ["trip"], nothing) is None
+
+
+def test_sync_from_home_refuses_this_box_itself(tmp_path):
+
+    def run(argv, **kw):
+        raise AssertionError("must not run anything")
+
+    result = sync_from_home("you@vulcan", "/m/media", tmp_path, 10**9, 0, ledger_path=tmp_path / "l", run=run,
+                            own_names=("vulcan",), resolve=lambda h, p: [])
+
+    assert "this box itself" in result["error"]
+
+
+def test_sync_ledger_skips_a_file_whose_size_does_not_match(tmp_path):
+
+    media = tmp_path / "media"
+    ledger = tmp_path / "ledger.txt"
+    listing = "30 movies/Cut (2026)/cut.mkv\n"
+
+    def run(argv, **kw):
+        if argv[0] == "ssh" or "--dry-run" in argv:
+            return subprocess.CompletedProcess(argv, 0, listing, "")
+        target = media / "downloads" / "from-home" / "movies/Cut (2026)/cut.mkv"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"x" * 12)  # truncated
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    result = sync_from_home("you@home", "/m/media", media, 10**9, 0, ledger_path=ledger, run=run, free=10**12)
+
+    assert result["files"] == [] and not ledger.exists()

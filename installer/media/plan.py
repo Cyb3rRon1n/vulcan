@@ -77,7 +77,9 @@ def scan(source, media_path, prober, arr=None, free_bytes=None):
     if source.is_file():
         files = [source]
     else:
-        files = sorted(p for p in source.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS)
+        # Skip anything under a dotted folder/file: rsync's .vulcan-partial holds half-copied videos.
+        files = sorted(p for p in source.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+                       and not any(part.startswith(".") for part in p.relative_to(source).parts))
     roots = library_roots(media_path, arr.roots() if arr else None)
 
     rows = []

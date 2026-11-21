@@ -4647,12 +4647,13 @@ def test_travel_tailscale_gets_its_own_node_name():
     assert "TS_HOSTNAME=trip-travel" in services["tailscale"]["environment"]
 
 
-def test_travel_env_has_sync_settings_only_with_home_sync():
+def test_travel_env_has_sync_settings_on_every_travel_build_home_tiers_never():
 
     assert "TRAVEL_SYNC_FROM=" in render_env(travel_config(enabled_optional={"tailscale"}))
     assert "TRAVEL_SYNC_MAX_GB=200" in render_env(travel_config(enabled_optional={"tailscale"}))
-    assert "TRAVEL_SYNC_FROM" not in render_env(travel_config())
+    assert "TRAVEL_SYNC_FROM" in render_env(travel_config())  # kept for a later --home-sync
     assert "TRAVEL_SYNC_FROM" not in render_env(make_config("heavy", enabled_optional={"tailscale"}))
+    assert "TRAVEL_SYNC_FROM" not in render_env(make_config("light"))
 
 
 def test_travel_env_always_has_a_kiosk_password_home_tiers_never():
@@ -4672,3 +4673,28 @@ def test_kiosk_password_survives_kiosk_off_and_on(tmp_path):
         values.append(re.search(r"^KIOSK_JELLYFIN_PASSWORD=(\S+)$", (stack / ".env").read_text(), re.M).group(1))
 
     assert values[0] == values[1] == values[2]
+
+
+def test_home_compose_with_gluetun_has_no_travel_comment():
+
+    for tier in ("light", "heavy"):
+        compose = render_compose(make_config(tier, {"gluetun"}))
+        assert "gluetun:" in compose and "service_healthy" in compose
+        assert "Travel:" not in compose
+
+    assert "Travel:" in render_compose(travel_config(enabled_optional=set(TRAVEL_SELF_DOWNLOAD)))
+
+
+def test_travel_sync_values_survive_a_no_home_sync_then_home_sync_rebuild(tmp_path):
+
+    stack = tmp_path / "stack"
+    media = str(tmp_path / "media")
+    write_stack(travel_config(enabled_optional={"tailscale"}, media_path=media), output_dir=stack)
+    env = stack / ".env"
+    env.write_text(env.read_text().replace("TRAVEL_SYNC_FROM=", "TRAVEL_SYNC_FROM=you@home-box"))
+
+    write_stack(travel_config(media_path=media), output_dir=stack)
+    assert "TRAVEL_SYNC_FROM=you@home-box" in env.read_text()
+
+    write_stack(travel_config(enabled_optional={"tailscale"}, media_path=media), output_dir=stack)
+    assert "TRAVEL_SYNC_FROM=you@home-box" in env.read_text()

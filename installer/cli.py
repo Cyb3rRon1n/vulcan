@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import urllib.error
@@ -128,8 +129,11 @@ from installer.travel import (
     install_kodi_addon,
     install_timer,
     kiosk_jellyfin_login,
+    kiosk_refusal,
     remove_timer,
+    sync_args_problem,
     sync_from_home,
+    travel_teardown,
     valid_hostname,
     valid_ip,
 )
@@ -1688,6 +1692,9 @@ def uninstall(
         console.print("[red]--yes is required alongside --non-interactive.[/red]")
         raise typer.Exit(code=1)
 
+    state = load_previous_state(STACK_DIR)
+    was_travel = bool(state and state["tier"] == "travel")
+
     console.print(
         f"This will stop the running stack (if any) and permanently delete {STACK_DIR}/ "
         "(containers, network, and all app config/data)."
@@ -1733,6 +1740,9 @@ def uninstall(
     if not result["success"]:
         console.print(f"[red]{result['error']}[/red]")
         raise typer.Exit(code=1)
+
+    if was_travel:
+        _travel_teardown()
 
     console.print("[green]Stack removed.[/green] Run `./install` again for a fresh setup.")
 
@@ -2089,6 +2099,8 @@ def run_install(
         # before start. Failures warn; `vulcan travel setup` re-applies.
         if config.tier.name == "travel" and not dry_run:
             _travel_host_setup(config, panel)
+        elif previous and previous.get("tier") == "travel" and not dry_run:
+            _travel_teardown(panel)
 
         # Phase 6 - Configure: fill in the credentials enabled services
         # need but don't have yet (VPN key, tunnel token, ...). Env vars
@@ -2798,8 +2810,10 @@ def _gather_generation_config(
         else:
             kiosk_value = typer.confirm("Kodi kiosk: start Kodi full-screen on the TV at boot?", default=kiosk_default)
 
-        if kiosk_value and info.os_is_atomic:
-            console.print("[red]Kodi kiosk isn't supported on atomic/immutable systems.[/red] Re-run with --no-kiosk.")
+        refusal = kiosk_refusal({"os_id": info.os_id, "os_is_atomic": info.os_is_atomic, "architecture": info.architecture}) if kiosk_value else None
+
+        if refusal:
+            console.print(f"[red]{refusal}.[/red] Re-run with --no-kiosk.")
             raise typer.Exit(code=1)
 
     elif any(value is not None for value in (hostname, travel_ip, kiosk, self_download, home_sync)):
@@ -3576,10 +3590,30 @@ def _travel_host_setup(config: GenerationConfig, panel: RunPanel | _NoOpPanel | 
     if any(step["step"] == "kiosk" and step["ok"] for step in results):
         ok = _kiosk_addon(config, panel) and ok
 
+    if any(step["step"] == "kiosk" and step["ok"] for step in results):
+        panel.note("Kodi starts on the TV after a reboot - or now with: sudo systemctl start vulcan-kiosk")
+
     if not ok:
         panel.note("Fix the above, then re-run: vulcan travel setup   (check with: vulcan doctor)")
 
     return ok
+
+
+def _travel_teardown(panel: RunPanel | _NoOpPanel | None = None) -> None:
+    """Leaving the travel tier: remove the kiosk unit and the two timers.
+    A failure warns only - the stack itself is already gone or rebuilt."""
+
+    panel = panel if panel is not None else _NoOpPanel(console)
+
+    for step in travel_teardown():
+
+        if step["skipped"]:
+            continue
+
+        if step["ok"]:
+            panel.note(f"[green]✓[/green] {step['step']}")
+        else:
+            panel.note(f"[yellow]! {step['step']}: {step['error']}[/yellow]")
 
 
 def _kiosk_addon(config: GenerationConfig, panel: RunPanel | _NoOpPanel) -> bool:
@@ -3634,10 +3668,39 @@ def travel_setup():
         raise typer.Exit(code=1)
 
 
+def _set_env_values(path: Path, values: dict[str, str]) -> None:
+    """Update KEY=value lines in place (append if missing); other lines and the
+    file's mode stay as they are."""
+
+    if not values:
+        return
+
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        lines = []
+
+    for key, value in values.items():
+
+        for i, line in enumerate(lines):
+
+            if line.startswith(f"{key}="):
+                lines[i] = f"{key}={value}"
+                break
+        else:
+            lines.append(f"{key}={value}")
+
+    existed = path.exists()
+    path.write_text("\n".join(lines) + "\n")  # keeps an existing file's mode
+
+    if not existed:
+        path.chmod(0o600)
+
+
 @travel_app.command(name="sync")
 def travel_sync(
     home: str | None = typer.Option(
-        None, "--from", help="Home Vulcan as ssh reaches it over Tailscale, e.g. you@vulcan (default: TRAVEL_SYNC_FROM)"
+        None, "--from", help="Home Vulcan as ssh reaches it over Tailscale, e.g. you@<home-tailnet-name> (default: TRAVEL_SYNC_FROM)"
     ),
     remote_path: str | None = typer.Option(None, "--remote-path", help="Home library folder (default: TRAVEL_SYNC_PATH)"),
     max_gb: float | None = typer.Option(None, "--max-gb", help="Most to pull this run (default: TRAVEL_SYNC_MAX_GB)"),
@@ -3656,14 +3719,45 @@ def travel_sync(
         console.print("[red]No Travel stack here.[/red] Build one first: vulcan build --tier travel --home-sync")
         raise typer.Exit(code=1)
 
-    if install and not (home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")):
-        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@vulcan), then install the timer.")
-        raise typer.Exit(code=1)
+    own_names = (state.get("hostname"), socket.gethostname())
+
+    if install:
+
+        given = {"TRAVEL_SYNC_FROM": home, "TRAVEL_SYNC_PATH": remote_path,
+                 "TRAVEL_SYNC_MAX_GB": max_gb, "TRAVEL_SYNC_MIN_FREE_GB": min_free_gb}
+        home = home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")
+
+        if not home:
+            console.print("[red]Which home box?[/red] Pass --from, or set TRAVEL_SYNC_FROM in stack/.env (e.g. you@<home-tailnet-name>).")
+            raise typer.Exit(code=1)
+
+        wanted = {
+            "TRAVEL_SYNC_FROM": home,
+            "TRAVEL_SYNC_PATH": remote_path or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_PATH", "") or "/mnt/media/media",
+            "TRAVEL_SYNC_MAX_GB": str(max_gb) if max_gb is not None else _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MAX_GB", "200"),
+            "TRAVEL_SYNC_MIN_FREE_GB": (
+                str(min_free_gb) if min_free_gb is not None else _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MIN_FREE_GB", "20")
+            ),
+        }
+        problem = sync_args_problem(home, wanted["TRAVEL_SYNC_PATH"], own_names)
+
+        try:
+            if float(wanted["TRAVEL_SYNC_MAX_GB"]) < 0 or float(wanted["TRAVEL_SYNC_MIN_FREE_GB"]) < 0:
+                problem = problem or "--max-gb and --min-free-gb can't be negative"
+        except ValueError:
+            problem = problem or "TRAVEL_SYNC_MAX_GB and TRAVEL_SYNC_MIN_FREE_GB must be numbers"
+
+        if problem:
+            console.print(f"[red]{problem}[/red]")
+            raise typer.Exit(code=1)
+
+        # The hourly run reads only stack/.env, so what was passed has to be saved there.
+        _set_env_values(STACK_DIR / ".env", {k: v for k, v in wanted.items() if given[k] is not None})
 
     if install or remove:
 
         result = (
-            install_timer(SYNC_UNIT, "Vulcan: sync new media from home", f"{sys.executable} -m installer travel sync --if-reachable")
+            install_timer(SYNC_UNIT, "Vulcan: sync new media from home", [sys.executable, "-m", "installer", "travel", "sync", "--if-reachable"])
             if install else remove_timer(SYNC_UNIT)
         )
 
@@ -3677,7 +3771,7 @@ def travel_sync(
     home = home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")
 
     if not home:
-        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@vulcan) or pass --from.")
+        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@<home-tailnet-name>) or pass --from.")
         raise typer.Exit(code=1)
 
     if not shutil.which("rsync"):
@@ -3688,7 +3782,7 @@ def travel_sync(
     cap = max_gb if max_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MAX_GB", "200"))
     floor = min_free_gb if min_free_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MIN_FREE_GB", "20"))
 
-    result = sync_from_home(home, remote, state["media_path"], int(cap * 1e9), int(floor * 1e9))
+    result = sync_from_home(home, remote, state["media_path"], int(cap * 1e9), int(floor * 1e9), own_names=own_names)
 
     if result["error"] and not result["files"]:
         console.print(f"[red]{result['error']}[/red]")

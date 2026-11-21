@@ -12,6 +12,7 @@ import json
 import os
 import pwd
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -96,14 +97,22 @@ def write_root_file(path: str, content: str, run=run_privileged) -> dict:
         os.unlink(handle.name)
 
 
-def avahi_steps(os_id: str | None, os_is_atomic: bool, hostname: str) -> list[list[str]] | None:
+def _avahi_installed() -> bool:
+
+    return bool(shutil.which("avahi-daemon") or os.path.exists("/usr/sbin/avahi-daemon"))
+
+
+def avahi_steps(
+    os_id: str | None, os_is_atomic: bool, hostname: str, installed: bool = False
+) -> list[list[str]] | None:
     """Install + enable Avahi and set the system hostname it publishes.
-    None when Vulcan doesn't know this distro's package names."""
+    None when Vulcan doesn't know this distro's package names. When Avahi is
+    already installed the package step is skipped, so an offline re-run works."""
 
     tail = [["hostnamectl", "set-hostname", hostname], ["systemctl", "enable", "--now", "avahi-daemon"]]
 
     # Atomic desktops (Bazzite, Silverblue) ship Avahi in the base image.
-    if os_is_atomic:
+    if os_is_atomic or installed:
         return tail
 
     family = _family_for(os_id)
@@ -157,12 +166,12 @@ def invoking_user() -> str:
     return os.environ.get("SUDO_USER") or getpass.getuser()
 
 
-def timer_units(name: str, description: str, command: str, on_calendar: str, user: str, workdir: str) -> dict[str, str]:
+def timer_units(name: str, description: str, command: list[str], on_calendar: str, user: str, workdir: str) -> dict[str, str]:
 
     service = (
         f"[Unit]\nDescription={description}\nAfter=network-online.target docker.service\n"
         "Wants=network-online.target\n\n"
-        f"[Service]\nType=oneshot\nUser={user}\nWorkingDirectory={workdir}\nExecStart={command}\n"
+        f"[Service]\nType=oneshot\nUser={user}\nWorkingDirectory={workdir}\nExecStart={shlex.join(command)}\n"
     )
     timer = (
         f"[Unit]\nDescription={description} (timer)\n\n"
@@ -176,7 +185,7 @@ def timer_units(name: str, description: str, command: str, on_calendar: str, use
 def install_timer(
     name: str,
     description: str,
-    command: str,
+    command: list[str],
     on_calendar: str = "hourly",
     run=run_privileged,
     write=write_root_file,
@@ -287,7 +296,8 @@ def install_kiosk(run, write, user_exists: bool, groups: list[str]) -> dict:
     if not written["success"]:
         return {"ok": False, "error": f"couldn't write {unit_path}: {written['error']}"}
 
-    return apply_steps([["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", f"{KIOSK_UNIT}.service"]], run)
+    # enable only: --now would grab tty1 (Conflicts=getty) in the middle of the install.
+    return apply_steps([["systemctl", "daemon-reload"], ["systemctl", "enable", f"{KIOSK_UNIT}.service"]], run)
 
 
 def remove_kiosk(run, exists) -> dict:
@@ -406,6 +416,7 @@ def host_setup(
     groups: list[str] | None = None,
     read_hosts=_read_hosts,
     which=shutil.which,
+    avahi_installed=None,
 ) -> list[dict]:
     """Every host-side travel step, in order. Re-run safe: each step is
     idempotent. services/kiosk/write/exists/user_exists/groups are used by
@@ -415,7 +426,7 @@ def host_setup(
         return [_row(f"avahi ({hostname}.local)", {"ok": False, "error": f"'{hostname}' is not a valid hostname (letters, digits, dashes; max 63)"})]
 
     atomic = os_info.get("os_is_atomic", False)
-    steps = avahi_steps(os_info.get("os_id"), atomic, hostname)
+    steps = avahi_steps(os_info.get("os_id"), atomic, hostname, (avahi_installed or _avahi_installed)())
 
     if steps is None:
         avahi = {"ok": False, "error": f"install avahi (avahi-daemon) by hand, then: sudo systemctl enable --now avahi-daemon. If this host is atomic/immutable: {ATOMIC_HINT}"}
@@ -457,10 +468,14 @@ def host_setup(
     if services & {"sonarr", "radarr"}:
         rows.append(_row("media-register timer", install_timer(
             MEDIA_REGISTER_UNIT, "Vulcan: register imported media with Sonarr/Radarr",
-            f"{sys.executable} -m installer media register", run=run, write=write,
+            [sys.executable, "-m", "installer", "media", "register"], run=run, write=write,
         )))
     else:
         rows.append(_row("media-register timer (removed)", remove_timer(MEDIA_REGISTER_UNIT, run, exists)))
+
+    # The sync timer needs Tailscale; without it (--no-home-sync) drop the timer.
+    if "tailscale" not in services:
+        rows.append(_row("sync timer (removed)", remove_timer(SYNC_UNIT, run, exists)))
 
     if kiosk:
 
@@ -479,6 +494,17 @@ def host_setup(
         rows.append(_row("kiosk (removed)", remove_kiosk(run, exists)))
 
     return rows
+
+
+def travel_teardown(run=run_privileged, exists=os.path.exists) -> list[dict]:
+    """Leaving the travel tier (uninstall, or a rebuild as a home tier): the
+    kiosk unit and both timers go. Nothing installed means no privileged calls."""
+
+    return [
+        _row("kiosk (removed)", remove_kiosk(run, exists)),
+        _row("media-register timer (removed)", remove_timer(MEDIA_REGISTER_UNIT, run, exists)),
+        _row("sync timer (removed)", remove_timer(SYNC_UNIT, run, exists)),
+    ]
 
 
 def _hosts_row(result: dict) -> dict:
@@ -588,6 +614,40 @@ def select_files(
     return chosen, limited_by
 
 
+def home_host_problem(home: str, own_names, resolve=socket.getaddrinfo) -> str | None:
+    """The travel box answers to its own hostname (default `vulcan`, same as a
+    home box often is), so syncing "from" that would pull from itself."""
+
+    host = home.rpartition("@")[2].strip("[]").lower()
+    own = {name.lower() for name in own_names if name}
+    own |= {f"{name}.local" for name in own}
+
+    message = (f"'{home}' is this box itself - use the home box's own tailnet name, "
+               "e.g. you@home-vulcan (see `tailscale status`)")
+
+    if host in own:
+        return message
+
+    try:
+        found = {ipaddress.ip_address(item[4][0]) for item in resolve(host, None)}
+    except (OSError, ValueError):
+        return None
+
+    return message if any(address.is_loopback for address in found) else None
+
+
+def sync_args_problem(home: str, remote_path: str, own_names=None, resolve=socket.getaddrinfo) -> str | None:
+    """Why a sync (or an hourly timer for it) can't use these settings; None if fine."""
+
+    if home.startswith("-"):
+        return f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
+
+    if not remote_path.strip("/"):
+        return "the home library path can't be / - set TRAVEL_SYNC_PATH (e.g. /mnt/media/media)"
+
+    return home_host_problem(home, own_names, resolve) if own_names is not None else None
+
+
 def sync_from_home(
     home: str,
     remote_path: str,
@@ -597,6 +657,8 @@ def sync_from_home(
     ledger_path=SYNC_LEDGER,
     run=subprocess.run,
     free: int | None = None,
+    own_names=None,
+    resolve=socket.getaddrinfo,
 ) -> dict:
     """Pull files the box doesn't have yet into <media>/downloads/from-home.
     The ledger remembers what arrived, so a file imported (and moved out of
@@ -607,12 +669,9 @@ def sync_from_home(
     ledger = Path(ledger_path)
     result = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None, "inbox": str(inbox)}
 
-    if home.startswith("-"):
-        result["error"] = f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
-        return result
+    result["error"] = sync_args_problem(home, remote_path, own_names, resolve)
 
-    if not remote_path.strip("/"):
-        result["error"] = "the home library path can't be / - set TRAVEL_SYNC_PATH (e.g. /mnt/media/media)"
+    if result["error"]:
         return result
 
     result["reachable"], result["error"] = home_status(home, run)

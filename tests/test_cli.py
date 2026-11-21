@@ -4586,7 +4586,7 @@ def _build_travel(tmp_path, *extra, info=None):
 
     media_path = str(tmp_path / "media")
 
-    with patch("installer.cli.detect_system", return_value=info or make_system_info()), patch(
+    with patch("installer.cli.detect_system", return_value=info or make_system_info(os_id="debian")), patch(
         "installer.cli.detect_disk", return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}
     ), patch("installer.cli.write_stack", return_value=READY_WRITE_RESULT) as mock_write_stack:
 
@@ -4854,12 +4854,13 @@ def test_travel_sync_install_timer():
 
     with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
         "installer.cli.install_timer", return_value={"ok": True, "error": None}
-    ) as mock_install, patch("installer.cli._preserved_vpn_value", return_value="you@home"):
+    ) as mock_install, patch("installer.travel.home_host_problem", return_value=None):
+        _env_with(Path("."), "TRAVEL_SYNC_FROM=you@home\n")
         result = runner.invoke(app, ["travel", "sync", "--install-timer"])
 
     assert result.exit_code == 0, result.output
     assert mock_install.call_args[0][0] == "vulcan-travel-sync"
-    assert mock_install.call_args[0][2].endswith("-m installer travel sync --if-reachable")
+    assert mock_install.call_args[0][2][-4:] == ["installer", "travel", "sync", "--if-reachable"]
 
 
 def test_travel_sync_if_reachable_still_fails_on_an_ssh_refusal():
@@ -4944,3 +4945,135 @@ def test_detect_shell_emits_previous_kiosk(tmp_path):
         result = runner.invoke(app, ["detect"])
 
     assert "PREVIOUS_KIOSK='true'" in result.output.splitlines()
+
+
+def _env_with(tmp_path, text="OTHER=keep\nTRAVEL_SYNC_MAX_GB=200\n"):
+
+    (tmp_path / "stack").mkdir(exist_ok=True)
+    env = tmp_path / "stack" / ".env"
+    env.write_text(text)
+    env.chmod(0o600)
+
+    return env
+
+
+def test_travel_sync_install_timer_saves_the_given_settings_to_env(tmp_path):
+
+    env = _env_with(tmp_path)
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.install_timer", return_value={"ok": True, "error": None}
+    ) as mock_install, patch("installer.travel.home_host_problem", return_value=None):
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home-box", "--remote-path", "/m/media",
+                                     "--max-gb", "50", "--install-timer"])
+
+    assert result.exit_code == 0, result.output
+    lines = env.read_text().splitlines()
+    assert "TRAVEL_SYNC_FROM=you@home-box" in lines and "TRAVEL_SYNC_PATH=/m/media" in lines
+    assert "TRAVEL_SYNC_MAX_GB=50.0" in lines and "OTHER=keep" in lines
+    assert not any(line.startswith("TRAVEL_SYNC_MIN_FREE_GB") for line in lines)  # not given, not written
+    assert oct(env.stat().st_mode & 0o777) == "0o600"
+    mock_install.assert_called_once()
+
+
+def test_travel_sync_install_timer_refuses_bad_settings_before_writing(tmp_path):
+
+    env = _env_with(tmp_path)
+    before = env.read_text()
+
+    for args in (["--from", "-oProxyCommand=x"], ["--from", "you@h", "--remote-path", "/"],
+                 ["--from", "you@h", "--max-gb", "-3"]):
+
+        with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+            "installer.cli.install_timer"
+        ) as mock_install, patch("installer.travel.home_host_problem", return_value=None):
+            result = runner.invoke(app, ["travel", "sync", *args, "--install-timer"])
+
+        assert result.exit_code == 1, args
+        mock_install.assert_not_called()
+        assert env.read_text() == before
+
+
+def test_travel_sync_refuses_the_box_itself(tmp_path):
+
+    for command in (["--install-timer"], []):
+
+        with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+            "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+        ), patch("installer.cli.install_timer") as mock_install, patch(
+            "installer.cli.socket.gethostname", return_value="vulcan"
+        ):
+            result = runner.invoke(app, ["travel", "sync", "--from", "you@vulcan", *command])
+
+        assert result.exit_code == 1
+        assert "this box itself" in result.output
+        mock_install.assert_not_called()
+
+
+def test_travel_teardown_runs_on_uninstall_of_a_travel_stack(tmp_path):
+
+    (tmp_path / "stack").mkdir()
+
+    with patch("installer.cli.load_previous_state", return_value=TRAVEL_STATE), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ), patch("installer.cli.travel_teardown", return_value=[]) as mock_teardown:
+        result = runner.invoke(app, ["uninstall", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    mock_teardown.assert_called_once()
+
+
+def test_travel_teardown_skipped_on_uninstall_of_a_home_stack(tmp_path):
+
+    (tmp_path / "stack").mkdir()
+
+    with patch("installer.cli.load_previous_state", return_value=PREVIOUS_STATE), patch(
+        "installer.cli.uninstall_stack", return_value={"success": True, "error": None}
+    ), patch("installer.cli.travel_teardown", return_value=[]) as mock_teardown:
+        result = runner.invoke(app, ["uninstall", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    mock_teardown.assert_not_called()
+
+
+def test_rebuild_from_travel_to_a_home_tier_tears_the_travel_pieces_down(tmp_path):
+
+    media_path = str(tmp_path / "media")
+
+    with patch("installer.cli.load_previous_state", return_value={**TRAVEL_STATE, "media_path": media_path}), patch(
+        "installer.cli.detect_system", return_value=make_system_info()
+    ), patch("installer.cli.detect_disk", return_value={"disk_free_gb": 900.0, "disk_path_checked": media_path}), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch("installer.cli.travel_teardown", return_value=[]) as mock_teardown:
+        result = runner.invoke(app, ["build", "--tier", "light", "--media-path", media_path,
+                                     "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    mock_teardown.assert_called_once()
+
+
+def test_build_travel_refuses_kiosk_on_a_non_debian_host(tmp_path):
+
+    result, mock_write_stack = _build_travel(tmp_path, "--kiosk", info=make_system_info(os_id="fedora"))
+
+    assert result.exit_code == 1
+    assert "Debian or Ubuntu" in result.output
+    mock_write_stack.assert_not_called()
+
+
+def test_travel_host_setup_tells_the_user_how_to_start_kodi():
+
+    config = _config_from_previous_state({**TRAVEL_STATE, "kiosk": True})
+    rows = [{"step": "kiosk", "ok": True, "error": None, "skipped": False}]
+    notes = []
+
+    class Panel:
+        def note(self, text):
+            notes.append(text)
+
+    with patch("installer.cli.host_setup", return_value=rows), patch(
+        "installer.cli.detect_os", return_value={"os_id": "debian"}
+    ), patch("installer.cli._kiosk_addon", return_value=True):
+        REAL_TRAVEL_HOST_SETUP(config, Panel())
+
+    assert any("sudo systemctl start vulcan-kiosk" in note for note in notes)
