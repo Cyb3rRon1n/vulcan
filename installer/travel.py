@@ -645,7 +645,7 @@ def sync_args_problem(home: str, remote_path: str, own_names=None, resolve=socke
     """Why a sync (or an hourly timer for it) can't use these settings; None if fine."""
 
     if any(c.isspace() or ord(c) < 32 for c in home) or any(ord(c) < 32 for c in remote_path):
-        return "the home box and library path can't contain spaces, newlines or control characters"
+        return "the home box can't contain spaces, and neither it nor the library path can contain newlines or control characters"
 
     if home.startswith("-"):
         return f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
