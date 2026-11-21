@@ -5,6 +5,7 @@ the checks `vulcan doctor` runs. Plan builders are pure; apply_steps() is
 the only thing that executes, always through run_privileged.
 """
 
+import fcntl
 import getpass
 import grp
 import ipaddress
@@ -559,6 +560,9 @@ def home_status(home: str, run=subprocess.run) -> tuple[bool, str | None]:
     if "Host key verification failed" in stderr:
         return True, f"ssh doesn't trust {home} yet - run `ssh {home}` once and accept its host key"
 
+    if "Connection refused" in stderr:
+        return True, f"{home} is up but isn't accepting ssh - start its ssh server (or `sudo tailscale set --ssh` there)"
+
     if "Permission denied" in stderr:
         return True, f"ssh to {home} was refused (key or user) - check TRAVEL_SYNC_FROM and that your ssh key is on the home box"
 
@@ -623,7 +627,8 @@ def home_host_problem(home: str, own_names, resolve=socket.getaddrinfo) -> str |
     own |= {f"{name}.local" for name in own}
 
     message = (f"'{home}' is this box itself - use the home box's own tailnet name, "
-               "e.g. you@home-vulcan (see `tailscale status`)")
+               "e.g. you@home-vulcan, or its full name like you@vulcan.<tailnet>.ts.net when both are "
+               "called vulcan (see `tailscale status`)")
 
     if host in own:
         return message
@@ -638,6 +643,9 @@ def home_host_problem(home: str, own_names, resolve=socket.getaddrinfo) -> str |
 
 def sync_args_problem(home: str, remote_path: str, own_names=None, resolve=socket.getaddrinfo) -> str | None:
     """Why a sync (or an hourly timer for it) can't use these settings; None if fine."""
+
+    if any(c.isspace() or ord(c) < 32 for c in home) or any(ord(c) < 32 for c in remote_path):
+        return "the home box and library path can't contain spaces, newlines or control characters"
 
     if home.startswith("-"):
         return f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
@@ -667,12 +675,31 @@ def sync_from_home(
     inbox = Path(media_path) / SYNC_INBOX
     library = Path(media_path) / "media"
     ledger = Path(ledger_path)
-    result = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None, "inbox": str(inbox)}
+    result = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None, "inbox": str(inbox),
+              "busy": False}
 
     result["error"] = sync_args_problem(home, remote_path, own_names, resolve)
 
     if result["error"]:
         return result
+
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(ledger.with_suffix(".lock"), "w")
+
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock.close()
+        result["busy"] = True
+        return result
+
+    try:
+        return _sync_locked(home, remote_path, inbox, library, ledger, max_bytes, min_free_bytes, run, free, result)
+    finally:
+        lock.close()  # closing drops the lock
+
+
+def _sync_locked(home, remote_path, inbox, library, ledger, max_bytes, min_free_bytes, run, free, result) -> dict:
 
     result["reachable"], result["error"] = home_status(home, run)
 
@@ -708,7 +735,6 @@ def sync_from_home(
                if (inbox / name).is_file() and (inbox / name).stat().st_size == size]
 
     if arrived:
-        ledger.parent.mkdir(parents=True, exist_ok=True)
         with ledger.open("a") as out:
             out.write("".join(f"{name}\n" for _, name in arrived))
 
