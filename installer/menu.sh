@@ -1115,7 +1115,7 @@ guided_setup_no_start() {
     TOGGLE_FLAGS=()
 
     if [ "$TIER" = "travel" ]; then
-        _guided_setup_travel_options
+        _guided_setup_travel_options || return
     else
         if whiptail --backtitle "$BACKTITLE" --title "Services" \
             --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
@@ -1131,7 +1131,7 @@ guided_setup_no_start() {
     fi
 
     # If gluetun (VPN) was selected, prompt for credentials now
-    if [[ " ${TOGGLE_FLAGS[*]:-} " =~ " --vpn " ]]; then
+    if [[ " ${TOGGLE_FLAGS[*]:-} " =~ " --vpn " || " ${TOGGLE_FLAGS[*]:-} " =~ " --self-download " ]]; then
         if [ -z "${VPN_SERVICE_PROVIDER:-}" ] || [ -z "${VPN_TYPE:-}" ]; then
             if whiptail --backtitle "$BACKTITLE" --title "Gluetun VPN Required" --yesno \
                 $'Gluetun VPN was selected but no VPN credentials were provided.\n\nYou must provide VPN credentials for the stack to start successfully.\n\nWould you like to configure VPN credentials now?' "$DLG_ROWS" "$DLG_COLS"; then
@@ -1166,6 +1166,7 @@ guided_setup_no_start() {
                     $'Gluetun requires VPN credentials to function. Disabling VPN for this installation.' \
                     "$DLG_ROWS" "$DLG_COLS"
                 TOGGLE_FLAGS=( "${TOGGLE_FLAGS[@]/--vpn/--no-vpn}" )
+                TOGGLE_FLAGS=( "${TOGGLE_FLAGS[@]/--self-download/--no-self-download}" )
             fi
         fi
     fi
@@ -1294,7 +1295,7 @@ guided_setup() {
     TOGGLE_FLAGS=()
 
     if [ "$TIER" = "travel" ]; then
-        _guided_setup_travel_options
+        _guided_setup_travel_options || return
     else
         if whiptail --backtitle "$BACKTITLE" --title "Services" \
             --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
@@ -1448,7 +1449,7 @@ _guided_setup_travel_options() {
         "download" "Self-download: Sonarr, Radarr, Prowlarr, qBittorrent behind a VPN" "$download_on" \
         "sync"     "Sync from home Vulcan over Tailscale" "$sync_on" \
         "kiosk"    "Kodi kiosk: Kodi full-screen on the TV at boot" "$kiosk_on" \
-        3>&1 1>&2 2>&3) || chosen=""
+        3>&1 1>&2 2>&3) || return 1
 
     if [[ "$chosen" == *'"download"'* ]]; then TOGGLE_FLAGS+=(--self-download); else TOGGLE_FLAGS+=(--no-self-download); fi
     if [[ "$chosen" == *'"sync"'* ]]; then TOGGLE_FLAGS+=(--home-sync); else TOGGLE_FLAGS+=(--no-home-sync); fi

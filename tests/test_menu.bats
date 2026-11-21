@@ -1218,3 +1218,68 @@ print(' '.join(s.key for s in ALL_SERVICES))
         [[ "$output" != *"HOME TOGGLES ASKED"* ]]
     done
 }
+
+@test "cancelling the travel checklist aborts without a build" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-tcancel-$$"
+    export SETUP_LOG="$BATS_TMPDIR/setup-tcancel-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect) _detect "GPU_VENDOR=''" ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Choose a Tier"*) echo -n "travel" >&3; return 0 ;;
+            *"Travel Options"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    for flow in guided_setup guided_setup_no_start; do
+
+        : > "$VULCAN_CALLS"
+        run bash -c "source '$MENU_SH'; VULCAN_BIN=fake_vulcan; $flow <<< \$'\n\n\n'"
+
+        ! grep -q 'build' "$VULCAN_CALLS"
+    done
+}
+
+@test "travel self-download asks for VPN credentials; leaving it unticked does not" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-tvpn-$$"
+    export SETUP_LOG="$BATS_TMPDIR/setup-tvpn-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect) _detect "GPU_VENDOR=''" ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Choose a Tier"*) echo -n "travel" >&3; return 0 ;;
+            *"Travel Options"*) echo -n "$TRAVEL_PICK" >&3; return 0 ;;
+            *"Gluetun VPN Required"*) echo "VPN PROMPT ASKED"; return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    export TRAVEL_PICK='"download"'
+    run bash -c "unset VPN_SERVICE_PROVIDER VPN_TYPE; source '$MENU_SH'; VULCAN_BIN=fake_vulcan; guided_setup_no_start <<< \$'\n\n\n'"
+    [[ "$output" == *"VPN PROMPT ASKED"* ]]
+
+    export TRAVEL_PICK='"kiosk"'
+    run bash -c "unset VPN_SERVICE_PROVIDER VPN_TYPE; source '$MENU_SH'; VULCAN_BIN=fake_vulcan; guided_setup_no_start <<< \$'\n\n\n'"
+    [[ "$output" != *"VPN PROMPT ASKED"* ]]
+}
