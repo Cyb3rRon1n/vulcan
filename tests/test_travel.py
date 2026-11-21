@@ -248,3 +248,77 @@ def test_remove_timer_is_a_skipped_no_op_when_not_installed():
 
     assert remove_timer("vulcan-media-register", run, exists=lambda p: False) == {"ok": True, "error": None, "skipped": True}
     assert calls == []
+
+
+from pathlib import Path
+
+from installer.travel import list_command, parse_listing, select_files, sync_from_home, transfer_command
+
+
+def test_parse_listing_keeps_files_only():
+
+    assert parse_listing("4096 movies/\n30 movies/New (2026)/new.mkv\n\nnoise\n") == [(30, "movies/New (2026)/new.mkv")]
+
+
+def test_select_files_respects_cap_and_floor():
+
+    files = [(30, "a"), (50, "b"), (5, "c")]
+
+    assert select_files(files, 40, 10**6, 0) == ([(30, "a"), (5, "c")], "size cap")
+    assert select_files(files, 10**6, 60, 20) == ([(30, "a"), (5, "c")], "free-space floor")
+    assert select_files(files, 10**6, 10, 20) == ([], "free-space floor")
+    assert select_files(files, 10**6, 10**6, 0) == (files, None)
+
+
+def test_sync_commands_go_over_ssh_and_resume():
+
+    inbox = Path("/m/downloads/from-home")
+    listing = list_command("you@home", "/mnt/media/media/", inbox)
+    transfer = transfer_command("you@home", "/mnt/media/media", inbox, "/tmp/list.txt")
+
+    assert listing[:2] == ["rsync", "-a"] and "--dry-run" in listing and "--out-format=%l %n" in listing
+    assert listing[-2:] == ["you@home:/mnt/media/media/", "/m/downloads/from-home/"]
+    assert "--partial-dir=.vulcan-partial" in transfer and "--files-from=/tmp/list.txt" in transfer
+    assert transfer[transfer.index("-e") + 1] == "ssh -o BatchMode=yes -o ConnectTimeout=10"
+
+
+def test_sync_from_home_pulls_only_new_files_within_the_cap(tmp_path):
+
+    media = tmp_path / "media"
+    (media / "media" / "movies" / "Old (2020)").mkdir(parents=True)
+    (media / "media" / "movies" / "Old (2020)" / "old.mkv").write_bytes(b"x" * 10)
+    ledger = tmp_path / "ledger.txt"
+    ledger.write_text("tv/Show/S01E01.mkv\n")
+    listing = ("4096 movies/\n10 movies/Old (2020)/old.mkv\n10 tv/Show/S01E01.mkv\n"
+               "30 movies/New (2026)/new.mkv\n50 movies/Big (2026)/big.mkv\n")
+
+    def run(argv, **kw):
+        if argv[0] == "ssh" or "--dry-run" in argv:
+            return subprocess.CompletedProcess(argv, 0, listing, "")
+        files_from = next(a for a in argv if a.startswith("--files-from=")).split("=", 1)[1]
+        for name in Path(files_from).read_text().splitlines():
+            target = media / "downloads" / "from-home" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"x" * 30)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    result = sync_from_home("you@home", "/mnt/media/media", media, max_bytes=40, min_free_bytes=0,
+                            ledger_path=ledger, run=run, free=10**12)
+
+    assert result["files"] == ["movies/New (2026)/new.mkv"]
+    assert result["bytes"] == 30 and result["limited_by"] == "size cap" and result["error"] is None
+    assert "movies/New (2026)/new.mkv" in ledger.read_text().splitlines()
+
+
+def test_sync_from_home_does_nothing_when_home_is_unreachable(tmp_path):
+
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 255, "", "no route")
+
+    result = sync_from_home("you@home", "/mnt/media/media", tmp_path, 10**9, 0, ledger_path=tmp_path / "l", run=run)
+
+    assert result["reachable"] is False and result["files"] == []
+    assert [argv[0] for argv in calls] == ["ssh"]

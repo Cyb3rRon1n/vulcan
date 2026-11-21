@@ -4638,3 +4638,18 @@ def test_home_tier_gluetun_keeps_its_health_gate():
 
     assert "HEALTH_RESTART_VPN=off" not in services["gluetun"]["environment"]
     assert services["qbittorrent"]["depends_on"]["gluetun"]["condition"] == "service_healthy"
+
+
+def test_travel_tailscale_gets_its_own_node_name():
+
+    services = yaml.safe_load(render_compose(travel_config(enabled_optional={"tailscale"}, hostname="trip")))["services"]
+
+    assert "TS_HOSTNAME=trip-travel" in services["tailscale"]["environment"]
+
+
+def test_travel_env_has_sync_settings_only_with_home_sync():
+
+    assert "TRAVEL_SYNC_FROM=" in render_env(travel_config(enabled_optional={"tailscale"}))
+    assert "TRAVEL_SYNC_MAX_GB=200" in render_env(travel_config(enabled_optional={"tailscale"}))
+    assert "TRAVEL_SYNC_FROM" not in render_env(travel_config())
+    assert "TRAVEL_SYNC_FROM" not in render_env(make_config("heavy", enabled_optional={"tailscale"}))

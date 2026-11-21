@@ -718,6 +718,7 @@ def render_compose(config: GenerationConfig, host_ip: str | None = None) -> str:
         docker_gid=detect_docker_group_gid() if "atlas" in enabled else None,
         travel=travel,
         jellyfin_published_url=f"http://{config.hostname}.local:{ports['jellyfin']}" if travel else None,
+        tailscale_hostname=f"{config.hostname}-travel",
     )
 
     return pin_travel_images(rendered) if travel else rendered
@@ -744,7 +745,11 @@ def render_env(
     backup_offsite_ssh_key: str = "",
     atlas_ollama_host: str = "",
     atlas_model: str = "qwen3:8b",
-    atlas_scan_minutes: str = "15"
+    atlas_scan_minutes: str = "15",
+    travel_sync_from: str = "",
+    travel_sync_path: str = "/mnt/media/media",
+    travel_sync_max_gb: str = "200",
+    travel_sync_min_free_gb: str = "20"
 ) -> str:
 
     template = _jinja_env().get_template("env.j2")
@@ -805,7 +810,12 @@ def render_env(
         atlas_enabled="atlas" in enabled,
         atlas_ollama_host=atlas_ollama_host,
         atlas_model=atlas_model,
-        atlas_scan_minutes=atlas_scan_minutes
+        atlas_scan_minutes=atlas_scan_minutes,
+        travel_sync=config.tier.name == "travel" and "tailscale" in enabled,
+        travel_sync_from=travel_sync_from,
+        travel_sync_path=travel_sync_path,
+        travel_sync_max_gb=travel_sync_max_gb,
+        travel_sync_min_free_gb=travel_sync_min_free_gb
     )
 
 
@@ -1705,7 +1715,12 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
         atlas_scan_minutes=_preserved_vpn_value(
             output_dir, "ATLAS_SCAN_MINUTES",
             _preserved_vpn_value(output_dir, "ATLAS_REFRESH_MINUTES", "15")
-        )
+        ),
+        # User-filled travel sync settings - must survive a rebuild.
+        travel_sync_from=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_FROM", ""),
+        travel_sync_path=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_PATH", "/mnt/media/media"),
+        travel_sync_max_gb=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_MAX_GB", "200"),
+        travel_sync_min_free_gb=_preserved_vpn_value(output_dir, "TRAVEL_SYNC_MIN_FREE_GB", "20")
     )
 
     compose_path.write_text(render_compose(config, host_ip))
