@@ -1,0 +1,1015 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Deploy a self-hosted media homelab, sized to your hardware - a tailored Docker Compose stack.">
+      
+      
+      
+      
+        <link rel="prev" href="../media-assistant/">
+      
+      
+        <link rel="next" href="../../roadmap/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../images/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Guide: Travel - Vulcan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#travel-a-vulcan-you-carry" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Vulcan" class="md-header__button md-logo" aria-label="Vulcan" data-md-component="logo">
+      
+  <img src="../../images/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Vulcan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Guide: Travel
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Cyb3rRon1n/vulcan" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Cyb3rRon1n/vulcan
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Vulcan" class="md-nav__button md-logo" aria-label="Vulcan" data-md-component="logo">
+      
+  <img src="../../images/logo.svg" alt="logo">
+
+    </a>
+    Vulcan
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Cyb3rRon1n/vulcan" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Cyb3rRon1n/vulcan
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers & Custom Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optional Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Planning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintaining a Stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Post-Install Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../homepage-widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide: Homepage Widgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../media-assistant/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide: Media Assistant
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide: Travel
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide: Travel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-set-it-up-at-home-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Set it up at home first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-finding-the-box-on-any-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Finding the box on any network
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-three-ways-to-catch-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Three ways to catch up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-kodi-kiosk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Kodi kiosk
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-offline-what-to-expect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Offline: what to expect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-set-it-up-at-home-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Set it up at home first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-finding-the-box-on-any-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Finding the box on any network
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-three-ways-to-catch-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Three ways to catch up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-kodi-kiosk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The Kodi kiosk
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-offline-what-to-expect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Offline: what to expect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/Cyb3rRon1n/vulcan/edit/main/docs/guides/travel.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="travel-a-vulcan-you-carry">Travel: a Vulcan you carry<a class="headerlink" href="#travel-a-vulcan-you-carry" title="Permanent link">&para;</a></h1>
+<p>Travel is a small box (an N100 mini PC or an old laptop) that you take with you. It plays your movies and shows from its own drives with no internet. You can reach it by name on any network. It can run a TV by itself. And it catches up on new media whenever it gets online.</p>
+<p><strong>Supported:</strong> x86-64 boxes. The stack runs on any distro Vulcan supports. The Kodi kiosk needs Debian or Ubuntu. On other systems the build refuses <code>--kiosk</code>. <strong>Raspberry Pi 5:</strong> experimental. It has no hardware video encoder. Set your Jellyfin apps to direct play, and bring files that play everywhere (the media assistant flags files that may need converting).</p>
+<h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The box: at least 2 cores, 4 GB RAM and 64 GB free. An Intel N100 is ideal, because Quick Sync transcodes for free.</li>
+<li>A drive with your media (internal or USB).</li>
+<li>A travel router (a GL.iNet, for example) if you want the same network everywhere. It is optional, but it keeps "by IP" links stable.</li>
+<li>For the kiosk: an HDMI TV. To control Kodi with the TV remote (HDMI-CEC), most PCs need a USB-CEC adapter.</li>
+</ul>
+<h2 id="1-set-it-up-at-home-first">1. Set it up at home first<a class="headerlink" href="#1-set-it-up-at-home-first" title="Permanent link">&para;</a></h2>
+<p>Do the whole setup at home, with internet. That is when the images download, posters and metadata fill in, and the Kodi add-on installs. After that, the box needs nothing from the internet.</p>
+<pre><code>./install            # pick Travel in the tier menu
+</code></pre>
+<p>Or without the menu:</p>
+<pre><code>./install --plain --tier travel --media-path /mnt/media --hostname vulcan \
+    --self-download --home-sync --kiosk --non-interactive --yes --start
+</code></pre>
+<p>Travel is never recommended for you. You choose it yourself. It never includes a domain, Traefik, Authelia, CrowdSec, Cloudflare Tunnel or Watchtower, and it refuses <code>--domain</code>.</p>
+<p>In the menu, Travel shows a checklist with three extras. Your last choices are ticked again on a re-run, and Cancel stops the setup.</p>
+<table>
+<thead>
+<tr>
+<th>Extra</th>
+<th>What it does</th>
+<th>Flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Self-download</td>
+<td>Sonarr, Radarr, Prowlarr and qBittorrent. Downloads new episodes when online and waits quietly when not. It always runs behind the gluetun VPN, so the menu asks for your VPN details.</td>
+<td><code>--self-download</code> / <code>--no-self-download</code></td>
+</tr>
+<tr>
+<td>Sync from home Vulcan</td>
+<td>Tailscale plus <code>vulcan travel sync</code>: pulls new files from your home Vulcan.</td>
+<td><code>--home-sync</code> / <code>--no-home-sync</code></td>
+</tr>
+<tr>
+<td>Kodi kiosk</td>
+<td>Kodi full-screen on the TV at boot, already signed in to Jellyfin.</td>
+<td><code>--kiosk</code> / <code>--no-kiosk</code></td>
+</tr>
+</tbody>
+</table>
+<p>You can also pick the name with <code>--hostname NAME</code> (default <code>vulcan</code>).</p>
+<p>Then:</p>
+<ol>
+<li>Open Jellyfin (<code>http://vulcan.local:8096</code>), finish its first-run wizard and add your libraries.</li>
+<li>If you picked self-download: give it your VPN details. The build asks for them. If you skipped that, run <code>vulcan configure</code> (it fills in <code>stack/.env</code> for you).</li>
+<li>If you picked the kiosk: in Jellyfin go to Dashboard, then API Keys, then <strong>+</strong>. Paste the key after <code>JELLYFIN_API_KEY=</code> in <code>stack/.env</code>. Then run <code>vulcan travel setup</code>. It creates a Jellyfin user called <code>kiosk</code> and signs Kodi in. Kodi starts on the TV after a reboot (or run <code>sudo systemctl start vulcan-kiosk</code>).</li>
+<li>Run <code>vulcan doctor</code>. It should show two green ticks.</li>
+</ol>
+<h2 id="2-finding-the-box-on-any-network">2. Finding the box on any network<a class="headerlink" href="#2-finding-the-box-on-any-network" title="Permanent link">&para;</a></h2>
+<p>The box answers as <strong><code>&lt;hostname&gt;.local</code></strong> (default <code>vulcan.local</code>). This works through Avahi (also called mDNS), a small service that announces the name on the local network. The setup summary and Homepage use this name. A <code>.local</code> name works on any network, which an IP address does not.</p>
+<ul>
+<li>Homepage: <code>http://vulcan.local:3000</code></li>
+<li>Jellyfin: <code>http://vulcan.local:8096</code></li>
+</ul>
+<p>Some devices (many Android phones, some smart TVs) can't find <code>.local</code> names. For those, reserve an IP on your travel router and give it to Vulcan:</p>
+<ol>
+<li>Open your router's admin page (on a GL.iNet it is <code>http://192.168.8.1</code>). Go to <strong>Network, LAN, Address Reservation</strong>. Add the Vulcan box and keep the IP it shows.</li>
+<li>Rebuild with <code>--travel-ip 192.168.8.50</code> (use your IP). Homepage gets a <strong>By IP</strong> tab with the same tiles at that address. The summary shows both links.</li>
+</ol>
+<p>If <code>.local</code> does not work, run <code>vulcan doctor</code>. It checks that Avahi is running and that the name resolves, and prints the fix if not.</p>
+<h2 id="3-three-ways-to-catch-up">3. Three ways to catch up<a class="headerlink" href="#3-three-ways-to-catch-up" title="Permanent link">&para;</a></h2>
+<p><strong>By hand: the media assistant.</strong> Plug in a drive. Run <em>Media, Scan &amp; import</em> in the menu, or run <code>vulcan media scan /mnt/usb</code> and then <code>vulcan media import &lt;plan&gt;</code>. This works fully offline. Anything Sonarr or Radarr could not see yet is queued. With self-download on, <code>vulcan-media-register.timer</code> registers the queue every hour once they are back. Without self-download there is no Sonarr or Radarr to register with. See the <a href="../media-assistant/">media assistant guide</a>.</p>
+<p><strong>Self-download.</strong> With self-download on, Sonarr and Radarr grab new episodes and movies whenever the box is online. Offline, they just wait.</p>
+<p><strong>Sync from home.</strong> Your home Vulcan already has everything. Pull what this box does not have:</p>
+<ol>
+<li>Put both boxes on the same tailnet (your private Tailscale network). On this box, set <code>TS_AUTHKEY</code> in <code>stack/.env</code> (make a key at <a href="https://login.tailscale.com/admin/settings/keys">https://login.tailscale.com/admin/settings/keys</a>). This step needs a build with <code>--home-sync</code>. Then start the stack. It joins as <code>&lt;hostname&gt;-travel</code>.</li>
+<li>Let this box log in to the home box over the tailnet. Either run <code>ssh-copy-id you@&lt;home-tailnet-name&gt;</code>, or install Tailscale on the home host itself and run <code>sudo tailscale set --ssh</code>. The home Vulcan's own Tailscale container can't do this, because SSH would land inside the container.</li>
+<li>Connect once by hand: run <code>ssh you@&lt;home-tailnet-name&gt;</code> and answer <code>yes</code> to accept the host key. The sync never asks questions, so it fails until you have done this once.</li>
+<li>In <code>stack/.env</code> set <code>TRAVEL_SYNC_FROM=you@&lt;home-tailnet-name&gt;</code> (for example <code>you@home-vulcan</code>; see <code>tailscale status</code> for the name). Do not use <code>vulcan</code>: this travel box answers to that name itself, so the sync would look at itself. Vulcan refuses a home name that is this box or points back at it. If the home box is also called <code>vulcan</code> on the tailnet, use its full name, for example <code>you@vulcan.&lt;tailnet&gt;.ts.net</code>. Set <code>TRAVEL_SYNC_PATH=</code> to the home media path plus <code>/media</code> (default <code>/mnt/media/media</code>). It can't be <code>/</code>.</li>
+<li>Run <code>vulcan travel sync</code>. New files land in <code>&lt;media path&gt;/downloads/from-home</code>. Import them with <code>vulcan media scan &lt;that folder&gt;</code>, then <code>vulcan media import &lt;plan&gt; --move</code>.</li>
+</ol>
+<p>It never pulls more than <code>TRAVEL_SYNC_MAX_GB</code> (default 200) per run. It always leaves <code>TRAVEL_SYNC_MIN_FREE_GB</code> (default 20) free. An interrupted run picks up where it stopped. A file you already imported is not pulled again.</p>
+<p>To run it every hour, use <code>vulcan travel sync --install-timer</code>. It needs the home box set first (<code>--from</code> or <code>TRAVEL_SYNC_FROM</code>). The timer reads only <code>stack/.env</code>, so <code>--install-timer</code> saves any <code>--from</code>, <code>--remote-path</code>, <code>--max-gb</code> and <code>--min-free-gb</code> you give into <code>stack/.env</code>, after checking them. The timer is called <code>vulcan-travel-sync.timer</code> and runs <code>vulcan travel sync --if-reachable</code>. If the home box is away, it quietly does nothing. If ssh answers but refuses you (unknown host key, wrong key), it reports an error with a hint, even with <code>--if-reachable</code>. <code>--remove-timer</code> stops it.</p>
+<h2 id="4-the-kodi-kiosk">4. The Kodi kiosk<a class="headerlink" href="#4-the-kodi-kiosk" title="Permanent link">&para;</a></h2>
+<p>With <code>--kiosk</code>, the box boots straight into Kodi full-screen on the TV. The build only sets this up. Kodi starts after a reboot, or when you run <code>sudo systemctl start vulcan-kiosk</code>. This is <code>vulcan-kiosk.service</code>, running as its own <code>vulcan-kiosk</code> user. Kodi's Jellyfin add-on is installed and points at <code>http://localhost:8096</code>.</p>
+<ul>
+<li>The add-on download needs internet, so do the first setup at home. After the add-on is installed, <code>vulcan travel setup</code> works offline.</li>
+<li>If Kodi shows the Jellyfin add-on as disabled the first time: Add-ons, My add-ons, Video add-ons, Jellyfin, then <strong>Enable</strong>.</li>
+<li>If setup says Jellyfin refused the kiosk login: a Jellyfin user named <code>kiosk</code> already exists with a different password. Delete that user in Jellyfin (Dashboard, Users) and run <code>vulcan travel setup</code> again.</li>
+<li>TV remote (CEC): Kodi uses it when it finds a CEC adapter. <code>cec-client -l</code> lists adapters.</li>
+<li>Turn it off: rebuild with <code>--no-kiosk</code>. The normal login prompt comes back. Kodi stays installed. The kiosk password stays in <code>stack/.env</code>, so turning the kiosk on again keeps the TV signed in.</li>
+<li>Only Debian and Ubuntu can run the kiosk. Atomic or immutable systems (Bazzite, Silverblue) and other distros are refused when you build. Use the TV's own Jellyfin app instead.</li>
+<li>Leaving Travel (a rebuild as another tier, or <code>vulcan uninstall</code>) removes the kiosk unit and both timers.</li>
+</ul>
+<h2 id="5-offline-what-to-expect">5. Offline: what to expect<a class="headerlink" href="#5-offline-what-to-expect" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Everything starts with no internet. The images are pinned and already on the box. There is no Watchtower.</li>
+<li>Jellyfin plays everything already on the drive. Posters fetched at home stay.</li>
+<li>Open Homepage once at home. Its tile icons load from the internet the first time, and your browser keeps them (the box does not). A phone that never opened Homepage at home will not have them.</li>
+<li>Updates are a choice. The image versions are pinned, so they do not change on their own. At home, with internet, run <code>vulcan update-self</code> to get a newer Vulcan, then rebuild to move to its pinned versions.</li>
+</ul>
+<p>Setup has not yet been tested on real travel hardware for every case. If something does not work as written, please open an issue.</p>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vulcan travel setup</code></td>
+<td>Applies the host pieces again: Avahi and hostname, timers, kiosk (and its Jellyfin sign-in)</td>
+</tr>
+<tr>
+<td><code>vulcan travel sync [--from you@&lt;home-tailnet-name&gt;] [--remote-path PATH] [--max-gb N] [--min-free-gb N] [--if-reachable]</code></td>
+<td>Pulls new files from your home Vulcan</td>
+</tr>
+<tr>
+<td><code>vulcan travel sync --install-timer</code> / <code>--remove-timer</code></td>
+<td>Hourly sync whenever home is reachable (<code>--install-timer</code> saves the given settings into <code>stack/.env</code>)</td>
+</tr>
+<tr>
+<td><code>vulcan doctor</code></td>
+<td>Checks Avahi and <code>&lt;hostname&gt;.local</code>, with fixes</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.action.edit", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
