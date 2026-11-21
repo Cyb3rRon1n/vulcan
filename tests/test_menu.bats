@@ -54,6 +54,7 @@ PREVIOUS_CLOUDFLARE_DNS='false'
 PREVIOUS_CLOUDFLARE_EMAIL=''
 PREVIOUS_HOMEPAGE_PRIVATE='true'
 PREVIOUS_DASHY_PRIVATE='true'
+PREVIOUS_KIOSK='false'
 PREVIOUS_GENERATED_AT=''
 DETECT
     printf '%s\n' "$@"
@@ -1006,7 +1007,7 @@ print(' '.join(s.key for s in ALL_SERVICES))
     for var in DOCKER_INSTALLED DOCKER_RUNNING DOCKER_COMPOSE_V2 \
         RECOMMENDED_TIER RECOMMENDED_TIER_EXPLANATION PREVIOUS_TIER \
         PREVIOUS_MEDIA_PATH PREVIOUS_PUID PREVIOUS_PGID PREVIOUS_TIMEZONE \
-        PREVIOUS_ENABLED_OPTIONAL PREVIOUS_DOMAIN PREVIOUS_CLOUDFLARE_EMAIL \
+        PREVIOUS_ENABLED_OPTIONAL PREVIOUS_DOMAIN PREVIOUS_CLOUDFLARE_EMAIL PREVIOUS_KIOSK \
         DEFAULT_PUID DEFAULT_PGID DEFAULT_TIMEZONE CPU_CORES_LOGICAL \
         RAM_TOTAL_GB DISK_FREE_GB GPU_VENDOR STORAGE_MOUNT; do
 
@@ -1120,4 +1121,165 @@ print(' '.join(s.key for s in ALL_SERVICES))
     [ "$status" -eq 0 ]
     [[ "$output" == *"VULCAN media import stack/media-plans/menu-latest.json"* ]]
     [[ "$output" != *"--move"* ]]
+}
+
+@test "travel options map the checklist to real build flags" {
+
+    whiptail() {
+        case "$*" in
+            *"Travel Options"*) echo -n '"download" "kiosk"' >&3; return 0 ;;
+            *"GPU Passthrough"*) return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_ENABLED_OPTIONAL=''
+        PREVIOUS_KIOSK='false'
+        GPU_VENDOR='intel'
+        TOGGLE_FLAGS=()
+        _guided_setup_travel_options
+        echo \"\${TOGGLE_FLAGS[*]}\"
+    "
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--self-download"* ]]
+    [[ "$output" == *"--no-home-sync"* ]]
+    [[ "$output" == *"--kiosk"* ]]
+    [[ "$output" == *"--gpu"* ]]
+    [[ "$output" != *"--no-self-download"* ]]
+}
+
+@test "travel options pre-check what the previous travel build had" {
+
+    whiptail() {
+        case "$*" in
+            *"Travel Options"*) echo "ARGS: $*"; return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    run bash -c "
+        source '$MENU_SH'
+        PREVIOUS_ENABLED_OPTIONAL='tailscale'
+        PREVIOUS_KIOSK='true'
+        GPU_VENDOR=''
+        TOGGLE_FLAGS=()
+        _guided_setup_travel_options
+    "
+
+    [[ "$output" == *"Sync from home Vulcan over Tailscale ON"* ]]
+    [[ "$output" == *"Kodi full-screen on the TV at boot ON"* ]]
+    [[ "$output" == *"behind a VPN OFF"* ]]
+}
+
+@test "both guided setups offer Travel and use its checklist instead of the home-tier toggles" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-travel-$$"
+    export SETUP_LOG="$BATS_TMPDIR/setup-travel-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect) _detect "GPU_VENDOR=''" ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Choose a Tier"*)
+                [[ "$*" == *'"travel"'* || "$*" == *" travel "* ]] || echo "NO TRAVEL ITEM" >&2
+                echo -n "travel" >&3; return 0 ;;
+            *"Travel Options"*) echo -n '"download" "kiosk"' >&3; return 0 ;;
+            *"Customize the full service list"*) echo "CUSTOMIZE ASKED" >&2; return 1 ;;
+            *"Optional Services"*) echo "HOME TOGGLES ASKED" >&2; return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    for flow in guided_setup guided_setup_no_start; do
+
+        : > "$VULCAN_CALLS"
+        run bash -c "source '$MENU_SH'; VULCAN_BIN=fake_vulcan; $flow <<< \$'\n\n\n'"
+
+        [ "$status" -eq 0 ]
+        grep -q -- '--tier travel' "$VULCAN_CALLS"
+        grep -q -- '--self-download' "$VULCAN_CALLS"
+        grep -q -- '--no-home-sync' "$VULCAN_CALLS"
+        grep -q -- ' --kiosk' "$VULCAN_CALLS"
+        [[ "$output" != *"NO TRAVEL ITEM"* ]]
+        [[ "$output" != *"CUSTOMIZE ASKED"* ]]
+        [[ "$output" != *"HOME TOGGLES ASKED"* ]]
+    done
+}
+
+@test "cancelling the travel checklist aborts without a build" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-tcancel-$$"
+    export SETUP_LOG="$BATS_TMPDIR/setup-tcancel-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect) _detect "GPU_VENDOR=''" ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Choose a Tier"*) echo -n "travel" >&3; return 0 ;;
+            *"Travel Options"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    for flow in guided_setup guided_setup_no_start; do
+
+        : > "$VULCAN_CALLS"
+        run bash -c "source '$MENU_SH'; VULCAN_BIN=fake_vulcan; $flow <<< \$'\n\n\n'"
+
+        ! grep -q 'build' "$VULCAN_CALLS"
+    done
+}
+
+@test "travel self-download asks for VPN credentials; leaving it unticked does not" {
+
+    export VULCAN_CALLS="$BATS_TMPDIR/vcalls-tvpn-$$"
+    export SETUP_LOG="$BATS_TMPDIR/setup-tvpn-$$.log"
+
+    fake_vulcan() {
+        case "$1" in
+            detect) _detect "GPU_VENDOR=''" ;;
+            *) printf '%s\n' "$*" >> "$VULCAN_CALLS"; return 0 ;;
+        esac
+    }
+    export -f fake_vulcan
+
+    whiptail() {
+        case "$*" in
+            *"Media Library"*) echo -n "${@: -1}" >&3; return 0 ;;
+            *"Choose a Tier"*) echo -n "travel" >&3; return 0 ;;
+            *"Travel Options"*) echo -n "$TRAVEL_PICK" >&3; return 0 ;;
+            *"Gluetun VPN Required"*) echo "VPN PROMPT ASKED"; return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f whiptail
+
+    export TRAVEL_PICK='"download"'
+    run bash -c "unset VPN_SERVICE_PROVIDER VPN_TYPE; source '$MENU_SH'; VULCAN_BIN=fake_vulcan; guided_setup_no_start <<< \$'\n\n\n'"
+    [[ "$output" == *"VPN PROMPT ASKED"* ]]
+
+    export TRAVEL_PICK='"kiosk"'
+    run bash -c "unset VPN_SERVICE_PROVIDER VPN_TYPE; source '$MENU_SH'; VULCAN_BIN=fake_vulcan; guided_setup_no_start <<< \$'\n\n\n'"
+    [[ "$output" != *"VPN PROMPT ASKED"* ]]
 }

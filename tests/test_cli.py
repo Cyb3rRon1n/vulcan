@@ -4934,3 +4934,13 @@ def test_kodi_login_401_gets_its_own_message():
 
     text = " ".join(notes)
     assert "different one" in text and "didn't answer" not in text
+
+
+def test_detect_shell_emits_previous_kiosk(tmp_path):
+
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch("installer.cli.load_previous_state", return_value={**TRAVEL_STATE, "kiosk": True}):
+        result = runner.invoke(app, ["detect"])
+
+    assert "PREVIOUS_KIOSK='true'" in result.output.splitlines()
