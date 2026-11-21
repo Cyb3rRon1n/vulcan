@@ -1090,12 +1090,13 @@ guided_setup_no_start() {
         3>&1 1>&2 2>&3) || return
     [ -z "$MEDIA_PATH" ] && return
 
-    local light_on medium_on heavy_on
-    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
+    local light_on medium_on heavy_on travel_on
+    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"; travel_on="OFF"
     case "$default_tier" in
         light) light_on="ON" ;;
         medium) medium_on="ON" ;;
         heavy) heavy_on="ON" ;;
+        travel) travel_on="ON" ;;
     esac
 
     TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
@@ -1104,24 +1105,29 @@ guided_setup_no_start() {
         "light"  "Light - low-resource baseline" "$light_on" \
         "medium" "Medium - the common case" "$medium_on" \
         "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
+        "travel" "Travel - a small box you carry; plays with no internet" "$travel_on" \
         3>&1 1>&2 2>&3) || return
 
     local customize=false
-
-    if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
-        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
-        customize=true
-    fi
 
     SERVICES_FLAG=()
     DOMAIN_FLAGS=()
     TOGGLE_FLAGS=()
 
-    if [ "$customize" = true ]; then
-        _guided_setup_customize_services
+    if [ "$TIER" = "travel" ]; then
+        _guided_setup_travel_options
     else
-        _guided_setup_quick_toggles
+        if whiptail --backtitle "$BACKTITLE" --title "Services" \
+            --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+            "$DLG_ROWS" "$DLG_COLS" --defaultno; then
+            customize=true
+        fi
+
+        if [ "$customize" = true ]; then
+            _guided_setup_customize_services
+        else
+            _guided_setup_quick_toggles
+        fi
     fi
 
     # If gluetun (VPN) was selected, prompt for credentials now
@@ -1263,12 +1269,13 @@ guided_setup() {
         3>&1 1>&2 2>&3) || return
     [ -z "$MEDIA_PATH" ] && return
 
-    local light_on medium_on heavy_on
-    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"
+    local light_on medium_on heavy_on travel_on
+    light_on="OFF"; medium_on="OFF"; heavy_on="OFF"; travel_on="OFF"
     case "$default_tier" in
         light) light_on="ON" ;;
         medium) medium_on="ON" ;;
         heavy) heavy_on="ON" ;;
+        travel) travel_on="ON" ;;
     esac
 
     TIER=$(whiptail --backtitle "$BACKTITLE" --title "Choose a Tier" \
@@ -1277,24 +1284,29 @@ guided_setup() {
         "light"  "Light - low-resource baseline" "$light_on" \
         "medium" "Medium - the common case" "$medium_on" \
         "heavy"  "Heavy - full stack, GPU transcoding, more services" "$heavy_on" \
+        "travel" "Travel - a small box you carry; plays with no internet" "$travel_on" \
         3>&1 1>&2 2>&3) || return
 
     local customize=false
-
-    if whiptail --backtitle "$BACKTITLE" --title "Services" \
-        --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
-        "$DLG_ROWS" "$DLG_COLS" --defaultno; then
-        customize=true
-    fi
 
     SERVICES_FLAG=()
     DOMAIN_FLAGS=()
     TOGGLE_FLAGS=()
 
-    if [ "$customize" = true ]; then
-        _guided_setup_customize_services
+    if [ "$TIER" = "travel" ]; then
+        _guided_setup_travel_options
     else
-        _guided_setup_quick_toggles
+        if whiptail --backtitle "$BACKTITLE" --title "Services" \
+            --yesno "Customize the full service list? (adds Traefik/Authelia domain routing, CrowdSec, Tailscale, Decluttarr, Maintainerr, and more)\n\nChoose No for the common case - just the tier's usual services plus the toggles on the next screen." \
+            "$DLG_ROWS" "$DLG_COLS" --defaultno; then
+            customize=true
+        fi
+
+        if [ "$customize" = true ]; then
+            _guided_setup_customize_services
+        else
+            _guided_setup_quick_toggles
+        fi
     fi
 
     PUID=$(whiptail --backtitle "$BACKTITLE" --title "User/Group" \
@@ -1416,6 +1428,40 @@ guided_setup() {
     fi
 
     return "$rc"
+}
+
+# Travel tier: its own short checklist instead of the home-tier toggles.
+# Every item maps to a real `vulcan build` flag; the engine owns the rest
+# (installer/tiers.py's TRAVEL_SELF_DOWNLOAD / TRAVEL_HOME_SYNC groups).
+_guided_setup_travel_options() {
+
+    local prev_optional=",${PREVIOUS_ENABLED_OPTIONAL},"
+    local download_on="OFF" sync_on="OFF" kiosk_on="OFF" chosen
+
+    [[ "$prev_optional" == *",gluetun,"* ]] && download_on="ON"
+    [[ "$prev_optional" == *",tailscale,"* ]] && sync_on="ON"
+    [ "${PREVIOUS_KIOSK:-false}" = "true" ] && kiosk_on="ON"
+
+    chosen=$(whiptail --backtitle "$BACKTITLE" --title "Travel Options" \
+        --checklist "Plays from this box's own drives, no internet needed. Add any of these:" \
+        "$DLG_ROWS" "$DLG_COLS" "$DLG_ITEMS" \
+        "download" "Self-download: Sonarr, Radarr, Prowlarr, qBittorrent behind a VPN" "$download_on" \
+        "sync"     "Sync from home Vulcan over Tailscale" "$sync_on" \
+        "kiosk"    "Kodi kiosk: Kodi full-screen on the TV at boot" "$kiosk_on" \
+        3>&1 1>&2 2>&3) || chosen=""
+
+    if [[ "$chosen" == *'"download"'* ]]; then TOGGLE_FLAGS+=(--self-download); else TOGGLE_FLAGS+=(--no-self-download); fi
+    if [[ "$chosen" == *'"sync"'* ]]; then TOGGLE_FLAGS+=(--home-sync); else TOGGLE_FLAGS+=(--no-home-sync); fi
+    if [[ "$chosen" == *'"kiosk"'* ]]; then TOGGLE_FLAGS+=(--kiosk); else TOGGLE_FLAGS+=(--no-kiosk); fi
+
+    if [ -n "$GPU_VENDOR" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "GPU Passthrough" \
+            --yesno "Use the $GPU_VENDOR GPU for Jellyfin hardware transcoding (Intel Quick Sync on most mini PCs)?" "$DLG_ROWS" "$DLG_COLS"; then
+            TOGGLE_FLAGS+=(--gpu)
+        else
+            TOGGLE_FLAGS+=(--no-gpu)
+        fi
+    fi
 }
 
 # Quick path: tier's own default services, plus the same individual

@@ -340,6 +340,7 @@ def detect_shell():
         "PREVIOUS_DASHY_PRIVATE": (
             "true" if (previous is None or previous.get("dashy_private", True)) else "false"
         ),
+        "PREVIOUS_KIOSK": "true" if (previous and previous.get("kiosk")) else "false",
         "PREVIOUS_GENERATED_AT": (previous.get("generated_at") or "") if previous else "",
     }
 
