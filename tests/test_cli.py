@@ -4911,3 +4911,26 @@ def test_travel_host_setup_wires_the_kodi_addon_after_the_kiosk_step():
 
     mock_login.assert_called_once_with("http://localhost:8096", "key", "pw")
     assert mock_addon.call_args[0][1] == 8096
+
+
+def test_kodi_login_401_gets_its_own_message():
+
+    import urllib.error
+
+    config = _config_from_previous_state({**TRAVEL_STATE, "kiosk": True})
+    rows = [{"step": "kiosk", "ok": True, "error": None, "skipped": False}]
+    notes = []
+    panel = MagicMock()
+    panel.note.side_effect = notes.append
+    error = urllib.error.HTTPError("http://localhost:8096", 401, "Unauthorized", {}, None)
+
+    with patch("installer.cli.host_setup", return_value=rows), patch(
+        "installer.cli.detect_os", return_value={"os_id": "debian"}
+    ), patch("installer.cli._preserved_vpn_value", side_effect=lambda d, k, default: {"JELLYFIN_API_KEY": "key", "KIOSK_JELLYFIN_PASSWORD": "pw"}.get(k, default)), patch(
+        "installer.cli.kiosk_jellyfin_login", side_effect=error
+    ), patch("installer.cli.install_kodi_addon", return_value={"ok": True, "error": None}):
+
+        REAL_TRAVEL_HOST_SETUP(config, panel)
+
+    text = " ".join(notes)
+    assert "different one" in text and "didn't answer" not in text

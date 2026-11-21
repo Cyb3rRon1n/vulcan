@@ -817,7 +817,7 @@ def render_env(
         travel_sync_path=travel_sync_path,
         travel_sync_max_gb=travel_sync_max_gb,
         travel_sync_min_free_gb=travel_sync_min_free_gb,
-        kiosk=config.kiosk and config.tier.name == "travel",
+        kiosk=config.tier.name == "travel",
         kiosk_jellyfin_password=kiosk_jellyfin_password or secrets.token_urlsafe(18)
     )
 

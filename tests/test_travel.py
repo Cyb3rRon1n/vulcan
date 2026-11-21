@@ -443,7 +443,7 @@ def test_install_kodi_addon_stages_addons_and_login():
             staged.update({str(p.relative_to(source)): p.read_text() for p in source.rglob("*") if p.is_file()})
         return {"success": True, "error": None}
 
-    result = install_kodi_addon(LOGIN, 8096, run=run, fetch=fetch)
+    result = install_kodi_addon(LOGIN, 8096, run=run, fetch=fetch, exists=lambda p: False)
 
     assert result == {"ok": True, "error": None}
     assert {"addons/plugin.video.jellyfin/addon.xml", "addons/repository.jellyfin.kodi/addon.xml"} <= set(staged)
@@ -456,7 +456,8 @@ def test_install_kodi_addon_without_internet_says_so():
     def fetch(url, dest):
         raise OSError("Temporary failure in name resolution")
 
-    result = install_kodi_addon(None, 8096, run=lambda argv: {"success": True, "error": None}, fetch=fetch)
+    result = install_kodi_addon(None, 8096, run=lambda argv: {"success": True, "error": None}, fetch=fetch,
+                                exists=lambda p: False)
 
     assert result["ok"] is False and "internet" in result["error"]
 
@@ -486,3 +487,22 @@ def test_kiosk_login_creates_the_user_then_signs_in():
 
     assert login == LOGIN
     assert ("/Users/New", "POST", {"Name": "kiosk", "Password": "pw"}) in FakeJellyfin.calls
+
+
+def test_install_kodi_addon_already_installed_offline_still_writes_the_login():
+
+    def fetch(url, dest):
+        raise AssertionError("must not download once the add-on is in place")
+
+    staged = {}
+
+    def run(argv):
+        if argv[0] == "cp":
+            source = Path(argv[2][:-1])
+            staged.update({str(p.relative_to(source)): p.read_text() for p in source.rglob("*") if p.is_file()})
+        return {"success": True, "error": None}
+
+    result = install_kodi_addon(LOGIN, 8096, run=run, fetch=fetch, exists=lambda p: p.endswith("addons/plugin.video.jellyfin"))
+
+    assert result == {"ok": True, "error": None}
+    assert list(staged) == ["userdata/addon_data/plugin.video.jellyfin/data.json"]

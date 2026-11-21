@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 
 import typer
@@ -3593,6 +3594,14 @@ def _kiosk_addon(config: GenerationConfig, panel: RunPanel | _NoOpPanel) -> bool
     if key and password:
         try:
             login = kiosk_jellyfin_login(f"http://localhost:{port}", key, password)
+        except urllib.error.HTTPError as error:
+            if error.code == 401:
+                panel.note("[yellow]! Kodi login: Jellyfin refused the kiosk user's password - a 'kiosk' user already "
+                           "exists with a different one. Delete that user in Jellyfin (Dashboard > Users), then "
+                           "re-run vulcan travel setup[/yellow]")
+            else:
+                panel.note(f"[yellow]! Kodi login: Jellyfin answered HTTP {error.code} - re-run vulcan travel setup "
+                           "once it is healthy[/yellow]")
         except (OSError, ValueError, KeyError) as error:
             panel.note(f"[yellow]! Kodi login: Jellyfin didn't answer ({error}) - start the stack, then re-run "
                        "vulcan travel setup[/yellow]")

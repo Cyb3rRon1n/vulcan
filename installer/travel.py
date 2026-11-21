@@ -343,11 +343,16 @@ def kiosk_jellyfin_login(url: str, api_key: str, password: str, opener=urllib.re
             "user_id": auth["User"]["Id"], "token": auth["AccessToken"]}
 
 
-def install_kodi_addon(login: dict | None, port: int, run=run_privileged, fetch=urllib.request.urlretrieve) -> dict:
+def install_kodi_addon(login: dict | None, port: int, run=run_privileged, fetch=urllib.request.urlretrieve, exists=None) -> dict:
     """Place the Jellyfin repo + add-on in the kiosk user's Kodi, plus its saved
     login when we have one. Needs the internet (the zips), hence 'set it up at
-    home first'."""
+    home first'. Once the add-on is in place nothing is downloaded, so a re-run
+    on the road (offline) still refreshes the saved login."""
 
+    kodi_dir = f"{KIOSK_HOME}/.kodi"
+    marker = f"{kodi_dir}/addons/plugin.video.jellyfin"
+    # The kiosk home isn't readable by us - ask through sudo unless told.
+    installed = exists(marker) if exists else run(["test", "-d", marker])["success"]
     staging = Path(tempfile.mkdtemp(prefix="vulcan-kodi-"))
 
     try:
@@ -355,7 +360,7 @@ def install_kodi_addon(login: dict | None, port: int, run=run_privileged, fetch=
         addons = staging / "addons"
         addons.mkdir()
 
-        for url in JELLYFIN_KODI_ZIPS:
+        for url in () if installed else JELLYFIN_KODI_ZIPS:
 
             zip_path = staging / url.rsplit("/", 1)[1]
             fetch(url, zip_path)
@@ -370,8 +375,6 @@ def install_kodi_addon(login: dict | None, port: int, run=run_privileged, fetch=
             data.parent.mkdir(parents=True)
             data.write_text(kodi_credentials(login, port))
             data.chmod(0o600)  # holds the access token
-
-        kodi_dir = f"{KIOSK_HOME}/.kodi"
 
         return apply_steps([
             ["mkdir", "-p", kodi_dir],
