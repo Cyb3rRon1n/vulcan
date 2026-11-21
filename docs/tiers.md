@@ -7,6 +7,9 @@ Both the guided menu and the plain CLI show what each tier actually contains bef
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB free | Jellyfin, Radarr, Sonarr, Prowlarr, qBittorrent |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB free | Light + Jellyseerr, Bazarr, FlareSolverr |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB free | Medium + Uptime Kuma, Watchtower |
+| Travel | ≥ 2 cores, ≥ 4 GB RAM, ≥ 64 GB free (x86-64; Pi 5 experimental) | Jellyfin, Homepage, FileBrowser (+ optional self-download, sync from home, Kodi kiosk) |
+
+**Travel** is a separate shape, not a step above Heavy: a small box you carry that plays with no internet. You choose it yourself (`--tier travel` or *Travel* in the menu). Vulcan never recommends it. It never includes a domain, Traefik, Authelia, CrowdSec, Cloudflare Tunnel or Watchtower, and its container limits are sized from the box itself. See [Guide: Travel](guides/travel.md).
 
 Every tier also offers the same tier-agnostic optional extras: Gluetun (VPN, on by default), SABnzbd (Usenet), Recyclarr (TRaSH sync), Decluttarr (queue cleanup), Maintainerr (library cleanup), Homepage or Dashy (dashboard), MeTube/Downtify (downloaders), Netdata/Glances (monitoring), ntfy (push notifications), Navidrome (music streaming), Komga/Kavita (comic/manga/ebook readers), Suwayomi (browse + download manga), Mylar3 (comic PVR), LazyLibrarian (ebook/audiobook PVR), slskd (Soulseek music client), Vaultwarden (password manager), Pi-hole/AdGuard Home (DNS ad-blocking), FileBrowser (web file manager), and Portainer (container management). Heavy tier adds GPU transcoding when a GPU is detected, plus Lidarr, Readarr, Traefik, Authelia, CrowdSec, Tailscale, Cloudflare Tunnel, and Threadfin via custom mode.
 

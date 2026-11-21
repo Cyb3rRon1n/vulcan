@@ -78,6 +78,8 @@ All three originally-planned phases are complete; everything below shipped after
 
 The following are genuine open items, not shipped:
 
+- [ ] **Travel tier - real-hardware verification** - code, tests and docs are merged (Tasks 1-8 of `specs/2026-11-19-travel-tier-plan.md`); still owed before release: an online and an offline run, `.local` from another device, a real `vulcan travel sync` from the home Vulcan over Tailscale, the Kodi kiosk on a real x86 box with a screen.
+
 - [ ] **aarch64/ARM end-to-end verification** — static readiness audit has been done (every referenced Docker image confirmed to publish a real `linux/arm64` manifest, both install paths confirmed architecture-agnostic, two real known gaps in CPU/GPU detection documented rather than hidden) but has never actually been run on real ARM hardware. x86_64 is now real-verified on two distros (Fedora dev box + a live Ubuntu 26.04 homelab); aarch64 is the only remaining untested architecture.
 - [ ] **`whiptail` interactive testing — human-at-a-terminal pass** — the real-pty harness now exists (`tests/test_menu_pty.bats`, see Shipped), so real newt rendering, real keystrokes, screen transitions and clean exit are all under CI. What's still not covered: a human actually driving it (visual theme/color correctness, resize behaviour mid-dialog, terminals other than the tmux `xterm-256color` the harness uses) and the deeper multi-screen flows (full guided setup, storage checklist, services picker) — the harness proves the mechanism, not every path through it.
 - [ ] **Real GUIX/GuixSD support** — not currently in scope; only x86_64/Fedora, Ubuntu/Debian/Raspbian, and Arch are tested/verified.

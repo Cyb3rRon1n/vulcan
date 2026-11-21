@@ -6,6 +6,18 @@ Every service Vulcan knows how to deploy, one row each, grouped by category. Thi
 
 48 services total, all exercised together on a real 34+ service live-hardware run (see [ROADMAP.md](roadmap.md)) — this list grows as new services are added and verified; open an issue or PR to propose one.
 
+## Travel tier
+
+The Travel tier uses its own short list (not Light + extras). Every image is pinned so it starts offline.
+
+| Service | Travel | What it's for there |
+|---|---|---|
+| Jellyfin | core | Plays from the box's own drives, `http://<hostname>.local:8096` |
+| Homepage | core | Start page, `.local` links (+ a By IP tab with `--travel-ip`) |
+| FileBrowser | core | Manage files on the box from a phone |
+| Sonarr, Radarr, Prowlarr, qBittorrent, Gluetun | optional, together (`--self-download`) | Downloads when online, waits offline |
+| Tailscale | optional (`--home-sync`) | Reaches the home Vulcan for `vulcan travel sync` |
+
 ## Media Server
 
 | Service | Tier | Type | What it does |

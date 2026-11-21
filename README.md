@@ -72,6 +72,7 @@ Each tier's actual service list is shown before you pick — not just the name. 
 | Light | ≥ 2 cores, ≥ 4 GB RAM, ≥ 100 GB | a download client, two library-management apps, a shared indexer manager |
 | Medium | ≥ 4 cores, ≥ 8 GB RAM, ≥ 500 GB | Light + a request front-end, subtitle management, an indexer CAPTCHA-solver |
 | Heavy | ≥ 6–8 cores, ≥ 16 GB RAM, ≥ 1 TB | Medium + uptime monitoring, automatic image updates |
+| Travel | ≥ 2 cores, ≥ 4 GB RAM, ≥ 64 GB free (x86-64; Pi 5 experimental) | Jellyfin, Homepage, FileBrowser (+ optional self-download, sync from home, Kodi kiosk) |
 
 Every tier also offers the same ~25 tier-agnostic optional extras, spanning: a VPN client (on by default), a second download-client type, automated quality-profile sync, download-queue/library cleanup, a dashboard, on-demand media downloaders, system monitoring, a password manager, DNS-level ad blocking, a file manager, and container management. Heavy adds GPU transcoding (when a GPU is detected) plus, via custom mode, more library-management apps, a reverse proxy, a login wall, intrusion protection, a private mesh VPN, a zero-forwarded-ports tunnel, and live-TV/sports automation. **Full named list, one row per service, by category: [Services Catalog](docs/services-catalog.md).**
 
@@ -131,6 +132,8 @@ Most are also in the Main Menu; `userdata` and `plan` are CLI-only:
 | `vulcan plan export [file]` | Writes the current stack's shape (tier, services, settings — no credentials) to a shareable JSON file |
 | `vulcan build --from-plan <file>` | Builds a new stack from an exported plan, on this machine or another — every other flag still overrides the plan's value for that field |
 | `vulcan media scan <path>` / `media import <plan>` / `media register` | Scans an existing drive of movies/shows, copies what's new into the library (never overwrites, resumable), and registers it with Sonarr/Radarr — see [Media Assistant guide](docs/guides/media-assistant.md) |
+| `vulcan travel setup` / `vulcan travel sync` | Travel tier: re-apply host setup (Avahi, timers, kiosk); pull new media from your home Vulcan over Tailscale — see [Travel guide](docs/guides/travel.md) |
+| `vulcan doctor` | Checks the host pieces a stack relies on (Travel: Avahi + `<hostname>.local`) |
 
 Airgap/offline: `--offline` skips the Docker install attempt; `vulcan export`/`import` move a stack's images to a machine never online at all, and `vulcan export-bundle`/`install-bundle` (or `./install --bundle FILE`) carry Vulcan's own Python deps for a zero-network first boot.
 
