@@ -268,9 +268,13 @@ services:
     # gluetun's VPN handshake finishes, runc fails to attach with a
     # cryptic "namespace path ... no such file or directory". Waiting on
     # gluetun's (image-defined) healthcheck removes that race.
+    # Travel: gluetun reports unhealthy with no internet, and a
+    # service_healthy gate would then make `up -d` fail offline - start
+    # once gluetun has started and let restart: unless-stopped absorb the
+    # namespace race.
     depends_on:
       gluetun:
-        condition: service_healthy
+        condition: {{ 'service_started' if travel else 'service_healthy' }}
 {% else %}
     ports:
       - "{{ ports['qbittorrent'] }}:8080"
@@ -977,6 +981,12 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
       - TZ=${TZ}
+{% if travel %}
+      # Travel boxes are often offline: don't restart the tunnel every few
+      # seconds when the internet is simply gone - WireGuard picks up again
+      # on its own once a network is back. Stops the log flood.
+      - HEALTH_RESTART_VPN=off
+{% endif %}
       # --- Port forwarding (ProtonVPN / PIA only) -------------------------
       # Without this, gluetun connects to a random server on every
       # (re)connect; on ProtonVPN a non-P2P server silently drops

@@ -113,3 +113,19 @@ def test_prober_returns_none_on_ffprobe_failure(tmp_path):
     run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, stdout="", stderr="bad")
     with Prober(tmp_path, run=run, host_ffprobe="/usr/bin/ffprobe") as p:
         assert p.probe(video) is None
+
+
+def test_prober_starts_its_container_from_the_given_image(tmp_path):
+    import subprocess as sp
+    from installer.media.probe import Prober
+
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return sp.CompletedProcess(cmd, 0, "", "")
+
+    with Prober(tmp_path, run=fake_run, host_ffprobe="", image="lscr.io/linuxserver/jellyfin:pinned"):
+        pass
+
+    assert "lscr.io/linuxserver/jellyfin:pinned" in calls[0]

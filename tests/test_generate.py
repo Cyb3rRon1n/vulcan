@@ -4622,3 +4622,19 @@ def test_travel_homepage_allows_dot_local_and_travel_ip_hosts():
 
     assert "trip.local:3000" in allowed
     assert "192.168.8.50:3000" in allowed
+
+
+def test_travel_gluetun_tolerates_no_internet():
+
+    services = yaml.safe_load(render_compose(travel_config(enabled_optional=set(TRAVEL_SELF_DOWNLOAD))))["services"]
+
+    assert "HEALTH_RESTART_VPN=off" in services["gluetun"]["environment"]
+    assert services["qbittorrent"]["depends_on"]["gluetun"]["condition"] == "service_started"
+
+
+def test_home_tier_gluetun_keeps_its_health_gate():
+
+    services = yaml.safe_load(render_compose(make_config("light", enabled_optional={"gluetun"})))["services"]
+
+    assert "HEALTH_RESTART_VPN=off" not in services["gluetun"]["environment"]
+    assert services["qbittorrent"]["depends_on"]["gluetun"]["condition"] == "service_healthy"

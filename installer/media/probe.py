@@ -83,7 +83,8 @@ def sidecar_subtitles(video):
 
 class Prober:
 
-    def __init__(self, root, cache_path=None, run=subprocess.run, host_ffprobe=None):
+    def __init__(self, root, cache_path=None, run=subprocess.run, host_ffprobe=None, image=JELLYFIN_IMAGE):
+        self.image = image
         self.root = Path(root).resolve()
         self.run = run
         self.host = shutil.which("ffprobe") if host_ffprobe is None else host_ffprobe
@@ -100,7 +101,7 @@ class Prober:
         if not self.host:
             self.container = f"vulcan-media-probe-{os.getpid()}"
             self.run(["docker", "run", "-d", "--rm", "--name", self.container, "-v", f"{self.root}:/in:ro",
-                      "--entrypoint", "sleep", JELLYFIN_IMAGE, "infinity"],
+                      "--entrypoint", "sleep", self.image, "infinity"],
                      capture_output=True, text=True, check=True)
         return self
 

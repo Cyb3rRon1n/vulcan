@@ -52,10 +52,11 @@ from installer.generate import (
     resolve_ports,
     write_stack,
 )
-from installer.media.arr import add_pending, connect_arrs, register_pending
+from installer.media.arr import PENDING_FILE, add_pending, connect_arrs, register_pending
 from installer.media.plan import PLANS_DIR, write_plan
 from installer.media.plan import load_plan as load_media_plan
 from installer.media.plan import scan as media_scan_engine
+from installer.media.probe import JELLYFIN_IMAGE
 from installer.media.probe import Prober as MediaProber
 from installer.media.transfer import import_plan
 from installer.userdata import USERDATA_DIR, Jellyfin, export_userdata, restore_userdata
@@ -118,6 +119,7 @@ from installer.tiers import (
     tier_description,
     tier_shortfalls,
 )
+from installer.services import TRAVEL_IMAGES
 from installer.travel import doctor_checks, host_setup, valid_hostname, valid_ip
 
 
@@ -1303,7 +1305,10 @@ def media_scan(
                                         else "not used - built-in name parser only"))
     root = source if source.is_dir() else source.parent
     try:
-        with MediaProber(root, cache_path=PLANS_DIR / ".probe-cache.json") as prober:
+        state = load_previous_state(STACK_DIR)
+        # A travel box may be offline: probe with the Jellyfin image it already has.
+        image = TRAVEL_IMAGES["jellyfin"] if state and state["tier"] == "travel" else JELLYFIN_IMAGE
+        with MediaProber(root, cache_path=PLANS_DIR / ".probe-cache.json", image=image) as prober:
             plan = media_scan_engine(source, media_path, prober, clients)
     except (OSError, subprocess.CalledProcessError) as error:
         console.print(f"[red]Couldn't start ffprobe ({error}).[/red] Install ffmpeg on this machine, or make sure "
@@ -1387,6 +1392,11 @@ def media_import(
 @media_app.command(name="register")
 def media_register():
     """Register files imported while offline (or not picked up yet) with Sonarr/Radarr."""
+
+    # The hourly travel timer runs this - nothing queued is the normal case, not an error.
+    if not (json.loads(PENDING_FILE.read_text() or "[]") if PENDING_FILE.exists() else []):
+        console.print("Nothing queued - nothing to register.")
+        return
 
     _, clients = _media_context(None, False) if load_previous_state(STACK_DIR) else (None, None)
     if not clients:
