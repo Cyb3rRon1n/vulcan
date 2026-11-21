@@ -3607,6 +3607,10 @@ def travel_sync(
         console.print("[red]No Travel stack here.[/red] Build one first: vulcan build --tier travel --home-sync")
         raise typer.Exit(code=1)
 
+    if install and not (home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")):
+        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@vulcan), then install the timer.")
+        raise typer.Exit(code=1)
+
     if install or remove:
 
         result = (
@@ -3631,11 +3635,15 @@ def travel_sync(
         console.print("[red]rsync is required[/red] - e.g. `sudo apt install rsync`, then re-run.")
         raise typer.Exit(code=1)
 
-    remote = remote_path or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_PATH", "/mnt/media/media")
+    remote = remote_path or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_PATH", "") or "/mnt/media/media"
     cap = max_gb if max_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MAX_GB", "200"))
     floor = min_free_gb if min_free_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MIN_FREE_GB", "20"))
 
     result = sync_from_home(home, remote, state["media_path"], int(cap * 1e9), int(floor * 1e9))
+
+    if result["error"] and not result["files"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
 
     if not result["reachable"]:
         console.print(f"Home Vulcan ({home}) isn't reachable over Tailscale - nothing to do.")

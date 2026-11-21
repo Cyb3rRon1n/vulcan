@@ -4854,9 +4854,34 @@ def test_travel_sync_install_timer():
 
     with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
         "installer.cli.install_timer", return_value={"ok": True, "error": None}
-    ) as mock_install:
+    ) as mock_install, patch("installer.cli._preserved_vpn_value", return_value="you@home"):
         result = runner.invoke(app, ["travel", "sync", "--install-timer"])
 
     assert result.exit_code == 0, result.output
     assert mock_install.call_args[0][0] == "vulcan-travel-sync"
     assert mock_install.call_args[0][2].endswith("-m installer travel sync --if-reachable")
+
+
+def test_travel_sync_if_reachable_still_fails_on_an_ssh_refusal():
+
+    refused = {**NOT_REACHABLE, "reachable": True, "error": "ssh to you@home was refused"}
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home", return_value=refused):
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--if-reachable"])
+
+    assert result.exit_code == 1
+    assert "refused" in result.output
+
+
+def test_travel_sync_install_timer_needs_a_home_host():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.install_timer"
+    ) as mock_install:
+        result = runner.invoke(app, ["travel", "sync", "--install-timer"])
+
+    assert result.exit_code == 1
+    assert "TRAVEL_SYNC_FROM" in result.output
+    mock_install.assert_not_called()

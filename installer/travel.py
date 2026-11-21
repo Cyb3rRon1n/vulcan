@@ -302,18 +302,34 @@ def doctor_checks(hostname: str, run_capture=subprocess.run, resolve=socket.geta
     ]
 
 
-def home_reachable(home: str, run=subprocess.run) -> bool:
+def home_status(home: str, run=subprocess.run) -> tuple[bool, str | None]:
+    """(reachable, error). Home being away is (False, None); ssh getting an
+    answer but refusing us (host key, key, user) is (True, a plain fix hint) -
+    BatchMode makes all of those exit 255, same as no route."""
 
     try:
-        return run([*SSH_COMMAND.split(), home, "true"], capture_output=True, text=True, timeout=30).returncode == 0
+        probe = run([*SSH_COMMAND.split(), home, "true"], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return False, None
+
+    if probe.returncode == 0:
+        return True, None
+
+    stderr = probe.stderr or ""
+
+    if "Host key verification failed" in stderr:
+        return True, f"ssh doesn't trust {home} yet - run `ssh {home}` once and accept its host key"
+
+    if "Permission denied" in stderr:
+        return True, f"ssh to {home} was refused (key or user) - check TRAVEL_SYNC_FROM and that your ssh key is on the home box"
+
+    return False, None
 
 
 def list_command(home: str, remote_path: str, inbox: Path) -> list[str]:
     """Dry run: every file the inbox doesn't already have, as '<bytes> <path>' lines."""
 
-    return ["rsync", "-a", "-s", "--dry-run", "--out-format=%l %n", "-e", SSH_COMMAND,
+    return ["rsync", "-a", "-s", "-8", "--dry-run", "--out-format=%l %n", "-e", SSH_COMMAND,
             f"{home}:{remote_path.rstrip('/')}/", f"{inbox}/"]
 
 
@@ -378,10 +394,19 @@ def sync_from_home(
     ledger = Path(ledger_path)
     result = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None, "inbox": str(inbox)}
 
-    if not home_reachable(home, run):
+    if home.startswith("-"):
+        result["error"] = f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
         return result
 
-    result["reachable"] = True
+    if not remote_path.strip("/"):
+        result["error"] = "the home library path can't be / - set TRAVEL_SYNC_PATH (e.g. /mnt/media/media)"
+        return result
+
+    result["reachable"], result["error"] = home_status(home, run)
+
+    if not result["reachable"] or result["error"]:
+        return result
+
     inbox.mkdir(parents=True, exist_ok=True)
     listed = run(list_command(home, remote_path, inbox), capture_output=True, text=True)
 

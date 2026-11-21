@@ -276,7 +276,7 @@ def test_sync_commands_go_over_ssh_and_resume():
     listing = list_command("you@home", "/mnt/media/media/", inbox)
     transfer = transfer_command("you@home", "/mnt/media/media", inbox, "/tmp/list.txt")
 
-    assert listing[:2] == ["rsync", "-a"] and "--dry-run" in listing and "--out-format=%l %n" in listing
+    assert listing[:2] == ["rsync", "-a"] and "-8" in listing and "--dry-run" in listing and "--out-format=%l %n" in listing
     assert listing[-2:] == ["you@home:/mnt/media/media/", "/m/downloads/from-home/"]
     assert "--partial-dir=.vulcan-partial" in transfer and "--files-from=/tmp/list.txt" in transfer
     assert transfer[transfer.index("-e") + 1] == "ssh -o BatchMode=yes -o ConnectTimeout=10"
@@ -322,3 +322,30 @@ def test_sync_from_home_does_nothing_when_home_is_unreachable(tmp_path):
 
     assert result["reachable"] is False and result["files"] == []
     assert [argv[0] for argv in calls] == ["ssh"]
+
+
+def _ssh_says(code, stderr):
+
+    return lambda argv, **kw: subprocess.CompletedProcess(argv, code, "", stderr)
+
+
+def test_sync_from_home_reports_ssh_refusals_as_errors_not_unreachable(tmp_path):
+
+    for stderr in ("Host key verification failed.", "you@home: Permission denied (publickey)."):
+
+        result = sync_from_home("you@home", "/m/media", tmp_path, 10**9, 0, ledger_path=tmp_path / "l",
+                                run=_ssh_says(255, stderr))
+
+        assert result["reachable"] is True and result["error"] and result["files"] == []
+
+
+def test_sync_from_home_refuses_root_path_and_option_like_hosts(tmp_path):
+
+    def run(argv, **kw):
+        raise AssertionError("must not run anything")
+
+    root = sync_from_home("you@home", "/", tmp_path, 10**9, 0, ledger_path=tmp_path / "l", run=run)
+    option = sync_from_home("-oProxyCommand=x", "/m/media", tmp_path, 10**9, 0, ledger_path=tmp_path / "l", run=run)
+
+    assert "can't be /" in root["error"]
+    assert "option" in option["error"]
