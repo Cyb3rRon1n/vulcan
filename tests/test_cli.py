@@ -5077,3 +5077,57 @@ def test_travel_host_setup_tells_the_user_how_to_start_kodi():
         REAL_TRAVEL_HOST_SETUP(config, Panel())
 
     assert any("sudo systemctl start vulcan-kiosk" in note for note in notes)
+
+
+def test_travel_sync_install_timer_refuses_nan_and_inf():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.install_timer"
+    ) as mock_install, patch("installer.travel.home_host_problem", return_value=None):
+        for value in ("nan", "inf"):
+            result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--max-gb", value, "--install-timer"])
+            assert result.exit_code == 1 and "plain numbers" in result.output
+
+    mock_install.assert_not_called()
+
+
+def test_travel_sync_says_so_when_another_sync_is_running():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home", return_value={**NOT_REACHABLE, "busy": True}):
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--if-reachable"])
+
+    assert result.exit_code == 0 and "already running" in result.output
+
+
+def test_set_env_values_creates_a_new_env_private(tmp_path):
+    from installer.cli import _set_env_values
+
+    env = tmp_path / ".env"
+    _set_env_values(env, {"A": "1"})
+
+    assert env.read_text() == "A=1\n" and (env.stat().st_mode & 0o777) == 0o600
+
+
+def test_set_env_values_keeps_an_existing_env_mode(tmp_path):
+    from installer.cli import _set_env_values
+
+    env = tmp_path / ".env"
+    env.write_text("A=1\nB=2\n")
+    env.chmod(0o644)
+    _set_env_values(env, {"A": "3"})
+
+    assert env.read_text() == "A=3\nB=2\n" and (env.stat().st_mode & 0o777) == 0o644
+
+
+def test_travel_sync_refuses_a_nan_size_saved_in_env():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home") as mock_sync:
+        _env_with(Path("."), "TRAVEL_SYNC_FROM=you@home\nTRAVEL_SYNC_MAX_GB=nan\n")
+        result = runner.invoke(app, ["travel", "sync"])
+
+    assert result.exit_code == 1 and "plain numbers" in result.output
+    mock_sync.assert_not_called()

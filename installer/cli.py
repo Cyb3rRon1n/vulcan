@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import math
 import os
 import shutil
 import socket
@@ -3690,11 +3691,9 @@ def _set_env_values(path: Path, values: dict[str, str]) -> None:
         else:
             lines.append(f"{key}={value}")
 
-    existed = path.exists()
-    path.write_text("\n".join(lines) + "\n")  # keeps an existing file's mode
-
-    if not existed:
-        path.chmod(0o600)
+    # O_CREAT with 0o600 so a new file is never readable by others, even briefly; an existing one keeps its mode
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as out:
+        out.write("\n".join(lines) + "\n")
 
 
 @travel_app.command(name="sync")
@@ -3742,8 +3741,9 @@ def travel_sync(
         problem = sync_args_problem(home, wanted["TRAVEL_SYNC_PATH"], own_names)
 
         try:
-            if float(wanted["TRAVEL_SYNC_MAX_GB"]) < 0 or float(wanted["TRAVEL_SYNC_MIN_FREE_GB"]) < 0:
-                problem = problem or "--max-gb and --min-free-gb can't be negative"
+            numbers = (float(wanted["TRAVEL_SYNC_MAX_GB"]), float(wanted["TRAVEL_SYNC_MIN_FREE_GB"]))
+            if not all(math.isfinite(n) and n >= 0 for n in numbers):
+                problem = problem or "--max-gb and --min-free-gb must be plain numbers, 0 or more"
         except ValueError:
             problem = problem or "TRAVEL_SYNC_MAX_GB and TRAVEL_SYNC_MIN_FREE_GB must be numbers"
 
@@ -3782,7 +3782,15 @@ def travel_sync(
     cap = max_gb if max_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MAX_GB", "200"))
     floor = min_free_gb if min_free_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MIN_FREE_GB", "20"))
 
+    if not all(math.isfinite(n) and n >= 0 for n in (cap, floor)):
+        console.print("[red]--max-gb and --min-free-gb must be plain numbers, 0 or more[/red] (check TRAVEL_SYNC_* in stack/.env)")
+        raise typer.Exit(code=1)
+
     result = sync_from_home(home, remote, state["media_path"], int(cap * 1e9), int(floor * 1e9), own_names=own_names)
+
+    if result.get("busy"):
+        console.print("Another sync is already running - this one is skipped.")
+        return
 
     if result["error"] and not result["files"]:
         console.print(f"[red]{result['error']}[/red]")

@@ -618,3 +618,35 @@ def test_sync_ledger_skips_a_file_whose_size_does_not_match(tmp_path):
     result = sync_from_home("you@home", "/m/media", media, 10**9, 0, ledger_path=ledger, run=run, free=10**12)
 
     assert result["files"] == [] and not ledger.exists()
+
+
+def test_sync_from_home_refuses_whitespace_and_control_characters(tmp_path):
+
+    def run(argv, **kw):
+        raise AssertionError("must not run anything")
+
+    for home, path in (("you@home\nX=1", "/m/media"), ("you@home", "/m/media\nX=1"), ("you @home", "/m/media")):
+        result = sync_from_home(home, path, tmp_path, 10**9, 0, ledger_path=tmp_path / "l", run=run)
+        assert "control characters" in result["error"]
+
+
+def test_sync_from_home_reports_a_refused_ssh_port(tmp_path):
+
+    result = sync_from_home("you@home", "/m/media", tmp_path, 10**9, 0, ledger_path=tmp_path / "l",
+                            run=_ssh_says(255, "ssh: connect to host home port 22: Connection refused"))
+
+    assert result["reachable"] is True and "ssh" in result["error"]
+
+
+def test_sync_from_home_skips_while_another_sync_holds_the_lock(tmp_path):
+    import fcntl
+
+    def run(argv, **kw):
+        raise AssertionError("must not run anything")
+
+    ledger = tmp_path / "ledger.txt"
+    with open(ledger.with_suffix(".lock"), "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = sync_from_home("you@home", "/m/media", tmp_path, 10**9, 0, ledger_path=ledger, run=run)
+
+    assert result["busy"] is True and result["error"] is None
