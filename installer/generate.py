@@ -812,7 +812,7 @@ def render_env(
         atlas_ollama_host=atlas_ollama_host,
         atlas_model=atlas_model,
         atlas_scan_minutes=atlas_scan_minutes,
-        travel_sync=config.tier.name == "travel" and "tailscale" in enabled,
+        travel_sync=config.tier.name == "travel",
         travel_sync_from=travel_sync_from,
         travel_sync_path=travel_sync_path,
         travel_sync_max_gb=travel_sync_max_gb,

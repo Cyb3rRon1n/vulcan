@@ -268,10 +268,12 @@ services:
     # gluetun's VPN handshake finishes, runc fails to attach with a
     # cryptic "namespace path ... no such file or directory". Waiting on
     # gluetun's (image-defined) healthcheck removes that race.
+{% if travel %}
     # Travel: gluetun reports unhealthy with no internet, and a
     # service_healthy gate would then make `up -d` fail offline - start
     # once gluetun has started and let restart: unless-stopped absorb the
     # namespace race.
+{% endif %}
     depends_on:
       gluetun:
         condition: {{ 'service_started' if travel else 'service_healthy' }}
