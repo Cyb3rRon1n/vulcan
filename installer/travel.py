@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from installer.deps import _INSTALL_CMD, _family_for
 from installer.shell import run_privileged
@@ -29,6 +30,11 @@ AVAHI_PACKAGES = {
 
 SYSTEMD_DIR = "/etc/systemd/system"
 MEDIA_REGISTER_UNIT = "vulcan-media-register"
+SYNC_UNIT = "vulcan-travel-sync"
+# Relative to the media path; the media assistant imports from here.
+SYNC_INBOX = Path("downloads") / "from-home"
+SYNC_LEDGER = Path("stack") / "travel-sync-ledger.txt"
+SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10"
 
 
 def valid_hostname(name: str) -> bool:
@@ -294,3 +300,150 @@ def doctor_checks(hostname: str, run_capture=subprocess.run, resolve=socket.geta
                    "sudo rpm-ostree install avahi nss-mdns then reboot - and check the name with: hostnamectl",
         },
     ]
+
+
+def home_status(home: str, run=subprocess.run) -> tuple[bool, str | None]:
+    """(reachable, error). Home being away is (False, None); ssh getting an
+    answer but refusing us (host key, key, user) is (True, a plain fix hint) -
+    BatchMode makes all of those exit 255, same as no route."""
+
+    try:
+        probe = run([*SSH_COMMAND.split(), home, "true"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return False, None
+
+    if probe.returncode == 0:
+        return True, None
+
+    stderr = probe.stderr or ""
+
+    if "Host key verification failed" in stderr:
+        return True, f"ssh doesn't trust {home} yet - run `ssh {home}` once and accept its host key"
+
+    if "Permission denied" in stderr:
+        return True, f"ssh to {home} was refused (key or user) - check TRAVEL_SYNC_FROM and that your ssh key is on the home box"
+
+    return False, None
+
+
+def list_command(home: str, remote_path: str, inbox: Path) -> list[str]:
+    """Dry run: every file the inbox doesn't already have, as '<bytes> <path>' lines."""
+
+    return ["rsync", "-a", "-s", "-8", "--dry-run", "--out-format=%l %n", "-e", SSH_COMMAND,
+            f"{home}:{remote_path.rstrip('/')}/", f"{inbox}/"]
+
+
+def transfer_command(home: str, remote_path: str, inbox: Path, files_from: str) -> list[str]:
+    """--partial-dir keeps an interrupted file, so the next run resumes it."""
+
+    return ["rsync", "-a", "-s", "--partial-dir=.vulcan-partial", "--info=progress2", f"--files-from={files_from}",
+            "-e", SSH_COMMAND, f"{home}:{remote_path.rstrip('/')}/", f"{inbox}/"]
+
+
+def parse_listing(output: str) -> list[tuple[int, str]]:
+
+    files = []
+
+    for line in output.splitlines():
+
+        size, _, name = line.partition(" ")
+
+        if size.isdigit() and name and not name.endswith("/"):
+            files.append((int(size), name))
+
+    return files
+
+
+def select_files(
+    files: list[tuple[int, str]], max_bytes: int, free_bytes: int, min_free_bytes: int
+) -> tuple[list[tuple[int, str]], str | None]:
+    """Files that fit both the per-run cap and the free-space floor, in listing
+    order; a file too big for what's left is skipped, smaller ones still go."""
+
+    budget = min(max_bytes, free_bytes - min_free_bytes)
+    chosen, total, limited_by = [], 0, None
+
+    for size, name in files:
+
+        if total + size > budget:
+            limited_by = "size cap" if max_bytes <= free_bytes - min_free_bytes else "free-space floor"
+            continue
+
+        chosen.append((size, name))
+        total += size
+
+    return chosen, limited_by
+
+
+def sync_from_home(
+    home: str,
+    remote_path: str,
+    media_path,
+    max_bytes: int,
+    min_free_bytes: int,
+    ledger_path=SYNC_LEDGER,
+    run=subprocess.run,
+    free: int | None = None,
+) -> dict:
+    """Pull files the box doesn't have yet into <media>/downloads/from-home.
+    The ledger remembers what arrived, so a file imported (and moved out of
+    the inbox) by the media assistant is never pulled twice."""
+
+    inbox = Path(media_path) / SYNC_INBOX
+    library = Path(media_path) / "media"
+    ledger = Path(ledger_path)
+    result = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None, "inbox": str(inbox)}
+
+    if home.startswith("-"):
+        result["error"] = f"'{home}' isn't a valid home box (it looks like an option) - use [user@]host"
+        return result
+
+    if not remote_path.strip("/"):
+        result["error"] = "the home library path can't be / - set TRAVEL_SYNC_PATH (e.g. /mnt/media/media)"
+        return result
+
+    result["reachable"], result["error"] = home_status(home, run)
+
+    if not result["reachable"] or result["error"]:
+        return result
+
+    inbox.mkdir(parents=True, exist_ok=True)
+    listed = run(list_command(home, remote_path, inbox), capture_output=True, text=True)
+
+    if listed.returncode != 0:
+        result["error"] = f"couldn't list {home}:{remote_path} ({(listed.stderr or '').strip()[:200]})"
+        return result
+
+    done = set(ledger.read_text().splitlines()) if ledger.exists() else set()
+    new = [(size, name) for size, name in parse_listing(listed.stdout)
+           if name not in done and not (library / name).exists()]
+    chosen, result["limited_by"] = select_files(
+        new, max_bytes, shutil.disk_usage(inbox).free if free is None else free, min_free_bytes
+    )
+
+    if not chosen:
+        return result
+
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
+        handle.write("".join(f"{name}\n" for _, name in chosen))
+
+    try:
+        copied = run(transfer_command(home, remote_path, inbox, handle.name))
+    finally:
+        os.unlink(handle.name)
+
+    arrived = [(size, name) for size, name in chosen
+               if (inbox / name).is_file() and (inbox / name).stat().st_size == size]
+
+    if arrived:
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        with ledger.open("a") as out:
+            out.write("".join(f"{name}\n" for _, name in arrived))
+
+    result["files"] = [name for _, name in arrived]
+    result["bytes"] = sum(size for size, _ in arrived)
+
+    if copied.returncode != 0:
+        result["error"] = f"rsync stopped (exit {copied.returncode}) - run again to resume"
+
+    return result

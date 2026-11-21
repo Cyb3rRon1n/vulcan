@@ -1783,6 +1783,10 @@ services:
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
+{% if travel %}
+      # Its own tailnet name - the home box is usually already "vulcan".
+      - TS_HOSTNAME={{ tailscale_hostname }}
+{% endif %}
       # network_mode: host means TS_ACCEPT_DNS=true would rewrite the
       # *host's* /etc/resolv.conf to Tailscale MagicDNS. Off when a local
       # DNS server is in the stack (pihole/adguardhome) so it doesn't

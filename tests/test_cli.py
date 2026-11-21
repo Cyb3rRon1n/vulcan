@@ -4808,3 +4808,80 @@ def test_doctor_prints_fixes_and_exits_1_on_failure():
     assert result.exit_code == 1
     assert "libnss-mdns" in result.output
     mock_checks.assert_called_once_with("trip")
+
+
+SYNC_STATE = {**TRAVEL_STATE, "enabled_optional": ["tailscale"]}
+NOT_REACHABLE = {"reachable": False, "files": [], "bytes": 0, "limited_by": None, "error": None,
+                 "inbox": "/m/downloads/from-home"}
+
+
+def test_travel_sync_needs_a_home_host():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE):
+        result = runner.invoke(app, ["travel", "sync"])
+
+    assert result.exit_code == 1
+    assert "TRAVEL_SYNC_FROM" in result.output
+
+
+def test_travel_sync_if_reachable_exits_0_when_home_is_away():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home", return_value=NOT_REACHABLE):
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--if-reachable"])
+
+    assert result.exit_code == 0
+    assert "isn't reachable" in result.output
+
+
+def test_travel_sync_reports_files_and_the_import_step():
+
+    pulled = {**NOT_REACHABLE, "reachable": True, "files": ["movies/A/a.mkv", "tv/B/b.mkv"], "bytes": 3 * 10**9,
+              "limited_by": "size cap"}
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home", return_value=pulled) as mock_sync:
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--max-gb", "5"])
+
+    assert result.exit_code == 0, result.output
+    assert "Pulled 2 files" in result.output and "vulcan media scan" in result.output
+    assert mock_sync.call_args[0][3] == 5 * 10**9
+
+
+def test_travel_sync_install_timer():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.install_timer", return_value={"ok": True, "error": None}
+    ) as mock_install, patch("installer.cli._preserved_vpn_value", return_value="you@home"):
+        result = runner.invoke(app, ["travel", "sync", "--install-timer"])
+
+    assert result.exit_code == 0, result.output
+    assert mock_install.call_args[0][0] == "vulcan-travel-sync"
+    assert mock_install.call_args[0][2].endswith("-m installer travel sync --if-reachable")
+
+
+def test_travel_sync_if_reachable_still_fails_on_an_ssh_refusal():
+
+    refused = {**NOT_REACHABLE, "reachable": True, "error": "ssh to you@home was refused"}
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.shutil.which", return_value="/usr/bin/rsync"
+    ), patch("installer.cli.sync_from_home", return_value=refused):
+        result = runner.invoke(app, ["travel", "sync", "--from", "you@home", "--if-reachable"])
+
+    assert result.exit_code == 1
+    assert "refused" in result.output
+
+
+def test_travel_sync_install_timer_needs_a_home_host():
+
+    with patch("installer.cli.load_previous_state", return_value=SYNC_STATE), patch(
+        "installer.cli.install_timer"
+    ) as mock_install:
+        result = runner.invoke(app, ["travel", "sync", "--install-timer"])
+
+    assert result.exit_code == 1
+    assert "TRAVEL_SYNC_FROM" in result.output
+    mock_install.assert_not_called()

@@ -120,7 +120,16 @@ from installer.tiers import (
     tier_shortfalls,
 )
 from installer.services import TRAVEL_IMAGES
-from installer.travel import doctor_checks, host_setup, valid_hostname, valid_ip
+from installer.travel import (
+    SYNC_UNIT,
+    doctor_checks,
+    host_setup,
+    install_timer,
+    remove_timer,
+    sync_from_home,
+    valid_hostname,
+    valid_ip,
+)
 
 
 app = typer.Typer(
@@ -3573,6 +3582,83 @@ def travel_setup():
         raise typer.Exit(code=1)
 
     if not _travel_host_setup(_config_from_previous_state(state)):
+        raise typer.Exit(code=1)
+
+
+@travel_app.command(name="sync")
+def travel_sync(
+    home: str | None = typer.Option(
+        None, "--from", help="Home Vulcan as ssh reaches it over Tailscale, e.g. you@vulcan (default: TRAVEL_SYNC_FROM)"
+    ),
+    remote_path: str | None = typer.Option(None, "--remote-path", help="Home library folder (default: TRAVEL_SYNC_PATH)"),
+    max_gb: float | None = typer.Option(None, "--max-gb", help="Most to pull this run (default: TRAVEL_SYNC_MAX_GB)"),
+    min_free_gb: float | None = typer.Option(
+        None, "--min-free-gb", help="Free space to always leave here (default: TRAVEL_SYNC_MIN_FREE_GB)"
+    ),
+    if_reachable: bool = typer.Option(False, "--if-reachable", help="Exit 0 quietly when home can't be reached (the timer)"),
+    install: bool = typer.Option(False, "--install-timer", help="Run this hourly whenever home is reachable"),
+    remove: bool = typer.Option(False, "--remove-timer", help="Stop the hourly sync"),
+):
+    """Pull new files from your home Vulcan over Tailscale into downloads/from-home, ready for `vulcan media scan`."""
+
+    state = load_previous_state(STACK_DIR)
+
+    if not state or state["tier"] != "travel":
+        console.print("[red]No Travel stack here.[/red] Build one first: vulcan build --tier travel --home-sync")
+        raise typer.Exit(code=1)
+
+    if install and not (home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")):
+        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@vulcan), then install the timer.")
+        raise typer.Exit(code=1)
+
+    if install or remove:
+
+        result = (
+            install_timer(SYNC_UNIT, "Vulcan: sync new media from home", f"{sys.executable} -m installer travel sync --if-reachable")
+            if install else remove_timer(SYNC_UNIT)
+        )
+
+        if not result["ok"]:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        console.print(f"{SYNC_UNIT}.timer " + ("installed - runs hourly when home is reachable." if install else "removed."))
+        return
+
+    home = home or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_FROM", "")
+
+    if not home:
+        console.print("[red]Which home box?[/red] Set TRAVEL_SYNC_FROM in stack/.env (e.g. you@vulcan) or pass --from.")
+        raise typer.Exit(code=1)
+
+    if not shutil.which("rsync"):
+        console.print("[red]rsync is required[/red] - e.g. `sudo apt install rsync`, then re-run.")
+        raise typer.Exit(code=1)
+
+    remote = remote_path or _preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_PATH", "") or "/mnt/media/media"
+    cap = max_gb if max_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MAX_GB", "200"))
+    floor = min_free_gb if min_free_gb is not None else float(_preserved_vpn_value(STACK_DIR, "TRAVEL_SYNC_MIN_FREE_GB", "20"))
+
+    result = sync_from_home(home, remote, state["media_path"], int(cap * 1e9), int(floor * 1e9))
+
+    if result["error"] and not result["files"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    if not result["reachable"]:
+        console.print(f"Home Vulcan ({home}) isn't reachable over Tailscale - nothing to do.")
+        raise typer.Exit(code=0 if if_reachable else 1)
+
+    console.print(f"Pulled {len(result['files'])} files ({_gb(result['bytes'])}) into {result['inbox']}.")
+
+    if result["limited_by"]:
+        console.print(f"[yellow]Stopped short by the {result['limited_by']}[/yellow] - the rest comes next run.")
+
+    if result["files"]:
+        console.print(f"Next: vulcan media scan {result['inbox']}  then  vulcan media import <plan> --move")
+
+    if result["error"]:
+        console.print(f"[red]{result['error']}[/red]")
         raise typer.Exit(code=1)
 
 
